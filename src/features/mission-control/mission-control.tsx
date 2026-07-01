@@ -6,7 +6,7 @@
 
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -60,6 +60,7 @@ export function MissionControl() {
   const autoFollow = useReplayStore((s) => s.autoFollowEnabled);
   const tickReplay = useReplayStore((s) => s.tick);
   const startReplay = useReplayStore((s) => s.startReplay);
+  const previousReplayMode = useRef(replayMode);
   const fadeUp = useFadeInUp();
   const stagger = useStaggerContainer();
   const runtimeInfo = getQwenRuntimeInfo();
@@ -81,6 +82,16 @@ export function MissionControl() {
     }, 120);
     return () => window.clearInterval(interval);
   }, [replayMode, tickReplay]);
+
+  useEffect(() => {
+    if (previousReplayMode.current === "replay" && replayMode === "live") {
+      setBrief("");
+      setConfig({});
+      setActiveMissionTab("workflow");
+      setActiveView("mission-control");
+    }
+    previousReplayMode.current = replayMode;
+  }, [replayMode]);
 
   const autoFollowTab = useMemo(() => {
     if (replayMode !== "replay" || !autoFollow) return;

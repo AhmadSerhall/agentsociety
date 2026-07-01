@@ -23,10 +23,12 @@ export function NetworkGraphPanel({ className }: { className?: string }) {
   const positions = useMemo(() => {
     const centerRole = nodes.some((agent) => agent.role === "technical-architect") ? "technical-architect" : nodes.some((agent) => agent.role === "product-strategist") ? "product-strategist" : "planner";
     const centerIndex = Math.max(0, nodes.findIndex((agent) => agent.role === centerRole));
+    const ringNodes = nodes.filter((_, index) => index !== centerIndex);
     return nodes.map((agent, index) => {
-      if (index === centerIndex) return { x: 50, y: 48 };
-      const angle = ((index / Math.max(1, nodes.length - 1)) * Math.PI * 2) - Math.PI / 2;
-      return { x: 50 + Math.cos(angle) * 34, y: 50 + Math.sin(angle) * 34 };
+      if (index === centerIndex) return { x: 50, y: 50 };
+      const ringIndex = Math.max(0, ringNodes.findIndex((node) => node.id === agent.id));
+      const angle = ((ringIndex / Math.max(1, ringNodes.length)) * Math.PI * 2) - Math.PI / 2;
+      return { x: 50 + Math.cos(angle) * 34, y: 50 + Math.sin(angle) * 29 };
     });
   }, [nodes]);
   const edges = useMemo(() => {
@@ -79,7 +81,7 @@ export function NetworkGraphPanel({ className }: { className?: string }) {
         return (
           <div
             key={agent.id}
-            className="absolute -translate-x-1/2 -translate-y-1/2 text-center"
+            className="absolute w-28 -translate-x-1/2 -translate-y-1/2 text-center"
             style={{ left: `${position.x}%`, top: `${position.y}%` }}
           >
             <div
@@ -88,7 +90,7 @@ export function NetworkGraphPanel({ className }: { className?: string }) {
             >
               {agent.name.split(" ").map((part) => part[0]).join("").slice(0, 2)}
             </div>
-            <p className="mt-2 max-w-24 text-[0.65rem] leading-4 text-white/60">{agent.name}</p>
+            <p className="mx-auto mt-2 max-w-24 whitespace-normal break-words text-[0.65rem] leading-4 text-white/60">{agent.name}</p>
           </div>
         );
       })}

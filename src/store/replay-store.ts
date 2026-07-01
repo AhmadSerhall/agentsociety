@@ -69,6 +69,7 @@ export const useReplayStore = create<ReplayState>((set, get) => ({
   },
   exitReplay: () => {
     setReplayGuard(false);
+    useMissionStore.getState().reset();
     set({ mode: "live", replayStatus: "idle", replayTime: 0, replayEvents: [], bookmarks: [], selectedReplayEvent: null });
   },
   play: () => set({ replayStatus: "playing" }),

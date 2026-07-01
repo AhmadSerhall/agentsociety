@@ -2,11 +2,11 @@
 
 import { useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { AGENT_DEFINITIONS, getAgentByRole } from "@/agents";
+import { getAgentByRole } from "@/agents";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { useMissionStore } from "@/store";
+import { useMissionStore, useReplayStore } from "@/store";
 import { AgentRole, MissionState } from "@/types";
 import { formatDuration, formatRelativeTime, sanitizeMissionText } from "@/utils";
 import { AlertTriangle, CheckCircle2, CircleDashed, Clock3, Loader2, RadioTower, Shield, X } from "lucide-react";
@@ -30,6 +30,7 @@ function formatStatus(status?: MissionState) {
 
 export function MissionWarRoom({ onCancel }: { onCancel: () => void }) {
   const context = useMissionStore((s) => s.context);
+  const replayMode = useReplayStore((s) => s.mode);
   const progress = context?.progress ?? 0;
   const activeAgent = context?.currentAgent ? getAgentByRole(context.currentAgent) : null;
   const elapsed = context?.startedAt ? Date.now() - new Date(context.startedAt).getTime() : 0;
@@ -53,7 +54,7 @@ export function MissionWarRoom({ onCancel }: { onCancel: () => void }) {
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div className="min-w-0">
             <Badge className="border-cyan-300/20 bg-cyan-300/10 text-cyan-100 hover:bg-cyan-300/10">Live Mission War Room</Badge>
-            <h3 className="mt-3 truncate text-xl font-bold text-white">{context.missionBrief}</h3>
+            <h3 className="mt-3 whitespace-normal break-words text-xl font-bold leading-snug text-white">{context.missionBrief}</h3>
             <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-white/45">
               <span className="capitalize">Phase: {formatStatus(context.status)}</span>
               <span>Active: {activeAgent?.name ?? "None"}</span>
@@ -68,10 +69,12 @@ export function MissionWarRoom({ onCancel }: { onCancel: () => void }) {
               </div>
               <Progress value={progress * 100} className="h-2 bg-white/10" />
             </div>
-            <Button variant="outline" onClick={onCancel} className="gap-2 rounded-full border-red-300/20 bg-red-400/10 text-red-100 hover:bg-red-400/15">
-              <X className="h-4 w-4" />
-              Cancel Mission
-            </Button>
+            {replayMode !== "replay" ? (
+              <Button variant="outline" onClick={onCancel} className="gap-2 rounded-full border-red-300/20 bg-red-400/10 text-red-100 hover:bg-red-400/15">
+                <X className="h-4 w-4" />
+                Cancel Mission
+              </Button>
+            ) : null}
           </div>
         </div>
       </div>
