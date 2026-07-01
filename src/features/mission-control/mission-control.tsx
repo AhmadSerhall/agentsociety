@@ -14,7 +14,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Menu } from "lucide-react";
+import { KeyRound, Menu, Settings } from "lucide-react";
 import { useMissionEngine } from "@/hooks";
 import { useMissionStore } from "@/store";
 import { useHistoryStore, useRuntimeSettingsStore } from "@/store";
@@ -39,10 +39,12 @@ export function MissionControl() {
   const [showConfig, setShowConfig] = useState(false);
   const [showMobileNav, setShowMobileNav] = useState(false);
   const [validationOpen, setValidationOpen] = useState(false);
+  const [apiKeyRequiredOpen, setApiKeyRequiredOpen] = useState(false);
   const [activeView, setActiveView] = useState<MissionView>("mission-control");
   const { context, isRunning, launch, cancel } = useMissionEngine();
   const loadHistory = useHistoryStore((s) => s.load);
   const loadRuntimeSettings = useRuntimeSettingsStore((s) => s.load);
+  const qwenApiKey = useRuntimeSettingsStore((s) => s.qwenApiKey);
   const progress = useMissionStore((s) => s.context?.progress ?? 0);
   const status = useMissionStore((s) => s.context?.status);
   const activeAgents = useMissionStore((s) => s.context?.currentAgent ? 1 : 0);
@@ -50,6 +52,7 @@ export function MissionControl() {
   const stagger = useStaggerContainer();
   const runtimeInfo = getQwenRuntimeInfo();
   const mockMode = runtimeInfo.provider === "Mock";
+  const hasUsableQwenKey = runtimeInfo.hasUsableApiKey && Boolean(qwenApiKey.trim() || process.env.NEXT_PUBLIC_QWEN_API_KEY);
 
   useEffect(() => {
     loadHistory();
@@ -59,6 +62,10 @@ export function MissionControl() {
   const handleLaunch = () => {
     if (brief.trim().length < 10) {
       setValidationOpen(true);
+      return;
+    }
+    if (!hasUsableQwenKey) {
+      setApiKeyRequiredOpen(true);
       return;
     }
     launch(brief.trim(), config);
@@ -218,6 +225,35 @@ export function MissionControl() {
               the better the agents can collaborate.
             </DialogDescription>
           </DialogHeader>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={apiKeyRequiredOpen} onOpenChange={setApiKeyRequiredOpen}>
+        <DialogContent className="border-cyan-200/15 bg-[#07111f]/95 text-white shadow-[0_30px_120px_rgba(34,211,238,0.18)] backdrop-blur-2xl">
+          <DialogHeader>
+            <div className="mb-2 grid h-12 w-12 place-items-center rounded-2xl border border-cyan-200/25 bg-cyan-300/10">
+              <KeyRound className="h-5 w-5 text-cyan-100" />
+            </div>
+            <DialogTitle className="text-xl text-white">Qwen API key required</DialogTitle>
+            <DialogDescription className="leading-relaxed text-white/60">
+              Agent Society is open source and does not ship with a shared API key. Add your own Qwen test or hackathon key in Settings before launching missions.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <Button variant="outline" onClick={() => setApiKeyRequiredOpen(false)} className="border-white/10 bg-white/[0.04] text-white/70 hover:bg-white/[0.08] hover:text-white">
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                setApiKeyRequiredOpen(false);
+                setActiveView("settings");
+              }}
+              className="gap-2 bg-gradient-to-r from-cyan-300 to-purple-400 text-[#06101f] shadow-[0_0_34px_rgba(34,211,238,0.24)] hover:from-cyan-200 hover:to-purple-300"
+            >
+              <Settings className="h-4 w-4" />
+              Open Settings
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

@@ -2,7 +2,7 @@
  * Agent Society — Qwen LLM Client
  *
  * Pure browser-side adapter for the Qwen chat completions API.
- * Falls back to mock mode when no API key is configured.
+ * Uses frontend-provided Qwen credentials when available.
  */
 
 import type {
@@ -23,10 +23,30 @@ export interface QwenClientConfig {
 export interface QwenRuntimeInfo {
   provider: "Qwen" | "Mock";
   hasApiKey: boolean;
+  hasUsableApiKey: boolean;
   model: string;
   baseUrl: string;
   baseHost: string;
   isLocalBaseUrl: boolean;
+}
+
+const RUNTIME_SETTINGS_KEY = "agent-society-runtime-settings";
+const DEFAULT_QWEN_BASE_URL = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1";
+const DEFAULT_QWEN_MODEL = "qwen-turbo";
+
+interface BrowserQwenSettings {
+  qwenApiKey?: string;
+  qwenBaseUrl?: string;
+  qwenModel?: string;
+}
+
+function getBrowserQwenSettings(): BrowserQwenSettings {
+  if (typeof window === "undefined") return {};
+  try {
+    return JSON.parse(localStorage.getItem(RUNTIME_SETTINGS_KEY) ?? "{}") as BrowserQwenSettings;
+  } catch {
+    return {};
+  }
 }
 
 export class QwenApiError extends Error {
@@ -41,10 +61,11 @@ export class QwenApiError extends Error {
 }
 
 function getClientConfig(): QwenClientConfig {
+  const browserSettings = getBrowserQwenSettings();
   return {
-    baseUrl: process.env.NEXT_PUBLIC_QWEN_BASE_URL || "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
-    apiKey: process.env.NEXT_PUBLIC_QWEN_API_KEY || "",
-    defaultModel: process.env.NEXT_PUBLIC_QWEN_MODEL || "qwen-turbo",
+    baseUrl: browserSettings.qwenBaseUrl || process.env.NEXT_PUBLIC_QWEN_BASE_URL || DEFAULT_QWEN_BASE_URL,
+    apiKey: browserSettings.qwenApiKey || process.env.NEXT_PUBLIC_QWEN_API_KEY || "",
+    defaultModel: browserSettings.qwenModel || process.env.NEXT_PUBLIC_QWEN_MODEL || DEFAULT_QWEN_MODEL,
     defaultTemperature: 0.7,
     defaultMaxTokens: 4096,
   };
@@ -67,9 +88,11 @@ export function getQwenRuntimeInfo(): QwenRuntimeInfo {
   const baseHost = getHost(cfg.baseUrl);
   const isLocalBaseUrl = isLocalHost(baseHost) || baseHost === "invalid-url";
   const hasApiKey = Boolean(cfg.apiKey.trim());
+  const hasUsableApiKey = hasApiKey && !isLocalBaseUrl;
   return {
-    provider: hasApiKey && !isLocalBaseUrl ? "Qwen" : "Mock",
+    provider: hasUsableApiKey ? "Qwen" : "Mock",
     hasApiKey,
+    hasUsableApiKey,
     model: cfg.defaultModel,
     baseUrl: cfg.baseUrl,
     baseHost,

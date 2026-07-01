@@ -10,6 +10,7 @@ import {
   FileJson,
   FileText,
   History,
+  KeyRound,
   Lightbulb,
   Megaphone,
   Network,
@@ -19,7 +20,9 @@ import {
   ShieldAlert,
   Sparkles,
   RotateCcw,
+  Save,
   Settings,
+  ShieldCheck,
   Trash2,
   WalletCards,
 } from "lucide-react";
@@ -36,7 +39,9 @@ import {
 import { AGENT_DEFINITIONS } from "@/agents";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { toast } from "@/hooks/use-toast";
 import { getQwenRuntimeInfo } from "@/services/qwen";
 import { useHistoryStore, useMissionStore, useRuntimeSettingsStore } from "@/store";
 import {
@@ -253,7 +258,8 @@ function MissionHistoryPage({ onDuplicate, onOpenMissionControl }: { onDuplicate
 }
 
 function ReportsPage() {
-  const reports = useHistoryStore((state) => state.entries.filter((entry) => entry.finalReport));
+  const entries = useHistoryStore((state) => state.entries);
+  const reports = useMemo(() => entries.filter((entry) => entry.finalReport), [entries]);
 
   return (
     <section className="space-y-5">
@@ -294,10 +300,99 @@ function SettingsPage() {
   const runtime = getQwenRuntimeInfo();
   const allowMockFallback = useRuntimeSettingsStore((state) => state.allowMockFallback);
   const setAllowMockFallback = useRuntimeSettingsStore((state) => state.setAllowMockFallback);
+  const qwenApiKey = useRuntimeSettingsStore((state) => state.qwenApiKey);
+  const qwenBaseUrl = useRuntimeSettingsStore((state) => state.qwenBaseUrl);
+  const qwenModel = useRuntimeSettingsStore((state) => state.qwenModel);
+  const setQwenCredentials = useRuntimeSettingsStore((state) => state.setQwenCredentials);
+  const clearQwenCredentials = useRuntimeSettingsStore((state) => state.clearQwenCredentials);
+  const [apiKeyDraft, setApiKeyDraft] = useState(qwenApiKey);
+  const [baseUrlDraft, setBaseUrlDraft] = useState(qwenBaseUrl);
+  const [modelDraft, setModelDraft] = useState(qwenModel);
 
   return (
     <section className="space-y-5">
-      <PageHeader icon={Settings} title="Settings" meta={`Current mode: ${runtime.provider}`} description="Runtime settings stay frontend-only. API keys must be provided through .env.local and are never displayed here." />
+      <PageHeader icon={Settings} title="Settings" meta={`Current mode: ${runtime.provider}`} description="Bring your own Qwen API key to run missions. Credentials are stored locally in this browser and are never committed to the open-source project." />
+      <div className="rounded-2xl border border-cyan-200/15 bg-cyan-300/[0.055] p-5 shadow-[0_24px_90px_rgba(34,211,238,0.12)]">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex gap-3">
+            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-cyan-200/20 bg-cyan-300/10">
+              <KeyRound className="h-5 w-5 text-cyan-100" />
+            </div>
+            <div>
+              <h3 className="text-base font-semibold text-white">Connect Qwen</h3>
+              <p className="mt-1 max-w-3xl text-sm leading-relaxed text-white/58">
+                Paste your own Qwen API key to enable mission generation. Because this app is frontend-only, use restricted test or hackathon keys and never share production secrets.
+              </p>
+            </div>
+          </div>
+          <Badge className={runtime.hasUsableApiKey ? "bg-emerald-300/15 text-emerald-100 hover:bg-emerald-300/15" : "bg-amber-300/15 text-amber-100 hover:bg-amber-300/15"}>
+            {runtime.hasUsableApiKey ? "Ready for missions" : "API key required"}
+          </Badge>
+        </div>
+
+        <div className="mt-5 grid gap-4 lg:grid-cols-[1.2fr_1fr_0.7fr]">
+          <div className="space-y-2">
+            <label className="text-xs uppercase tracking-[0.18em] text-white/38">Qwen API Key</label>
+            <Input
+              type="password"
+              value={apiKeyDraft}
+              onChange={(event) => setApiKeyDraft(event.target.value)}
+              placeholder="Paste your Qwen API key"
+              className="h-11 border-cyan-200/15 bg-black/25 text-white placeholder:text-white/28 focus-visible:border-cyan-200/45"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-xs uppercase tracking-[0.18em] text-white/38">Base URL</label>
+            <Input
+              value={baseUrlDraft}
+              onChange={(event) => setBaseUrlDraft(event.target.value)}
+              placeholder="https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+              className="h-11 border-cyan-200/15 bg-black/25 text-white placeholder:text-white/28 focus-visible:border-cyan-200/45"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-xs uppercase tracking-[0.18em] text-white/38">Model</label>
+            <Input
+              value={modelDraft}
+              onChange={(event) => setModelDraft(event.target.value)}
+              placeholder="qwen-turbo"
+              className="h-11 border-cyan-200/15 bg-black/25 text-white placeholder:text-white/28 focus-visible:border-cyan-200/45"
+            />
+          </div>
+        </div>
+
+        <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2 text-xs text-white/45">
+            <ShieldCheck className="h-4 w-4 text-cyan-200/70" />
+            Stored in localStorage on this device only. The API key is never displayed outside this password field.
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                clearQwenCredentials();
+                setApiKeyDraft("");
+                toast({ title: "Qwen key removed", description: "Mission launch is locked until a new key is saved." });
+              }}
+              className="border-white/10 bg-white/[0.04] text-white/70 hover:bg-white/[0.08] hover:text-white"
+            >
+              Clear
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                setQwenCredentials({ apiKey: apiKeyDraft, baseUrl: baseUrlDraft, model: modelDraft });
+                toast({ title: "Qwen settings saved", description: "Agent Society will use your local Qwen credentials for missions." });
+              }}
+              className="gap-2 bg-gradient-to-r from-cyan-300 to-purple-400 text-[#06101f] shadow-[0_0_34px_rgba(34,211,238,0.22)] hover:from-cyan-200 hover:to-purple-300"
+            >
+              <Save className="h-4 w-4" />
+              Save Qwen Settings
+            </Button>
+          </div>
+        </div>
+      </div>
       <div className={cardClass()}>
         <h3 className="text-sm font-semibold text-white">Qwen Runtime</h3>
         <div className="mt-4 grid gap-3 md:grid-cols-3">
@@ -306,7 +401,7 @@ function SettingsPage() {
           <Info label="Base URL Host" value={runtime.baseHost} />
         </div>
         <p className="mt-4 text-sm leading-relaxed text-white/55">
-          Set `NEXT_PUBLIC_QWEN_API_KEY`, `NEXT_PUBLIC_QWEN_BASE_URL`, and `NEXT_PUBLIC_QWEN_MODEL` in `.env.local`. Because this app is frontend-only, use restricted test keys only.
+          Open-source users can either paste a local browser key above or set `NEXT_PUBLIC_QWEN_API_KEY`, `NEXT_PUBLIC_QWEN_BASE_URL`, and `NEXT_PUBLIC_QWEN_MODEL` in `.env.local`.
         </p>
       </div>
       <div className={`${cardClass()} flex items-center justify-between gap-4`}>
