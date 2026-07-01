@@ -3,8 +3,9 @@
 import { useMemo } from "react";
 import { AGENT_DEFINITIONS } from "@/agents";
 import { useMissionStore } from "@/store";
+import { cn } from "@/lib/utils";
 
-export function NetworkGraphPanel() {
+export function NetworkGraphPanel({ className }: { className?: string }) {
   const currentAgent = useMissionStore((s) => s.context?.currentAgent);
   const context = useMissionStore((s) => s.context);
   const dialogue = context?.dialogue;
@@ -52,7 +53,7 @@ export function NetworkGraphPanel() {
   };
 
   return (
-    <div className="relative h-[420px] overflow-hidden rounded-2xl border border-cyan-200/10 bg-black/20">
+    <div className={cn("relative h-[420px] overflow-hidden rounded-2xl border border-cyan-200/10 bg-black/20", className)}>
       <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
         {edges.map((edge, index) => {
           const source = positionForRole(edge.from);

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
 import { useMissionStore } from "@/store";
 import { CheckCircle2, Copy, Download } from "lucide-react";
-import { downloadText, reportToMarkdown } from "@/utils";
+import { downloadText, reportToMarkdown, sanitizeMissionText } from "@/utils";
 
 export function ReportPanel() {
   const report = useMissionStore((s) => s.context?.finalReport);
@@ -62,7 +62,7 @@ export function ReportPanel() {
                 <CheckCircle2 className="h-3.5 w-3.5 text-cyan-200/60" />
                 {section.title}
               </h4>
-              <div className="mt-3 whitespace-pre-wrap break-words text-sm leading-relaxed text-white/68">{section.content}</div>
+              <div className="mt-3 whitespace-pre-wrap break-words text-sm leading-relaxed text-white/68">{sanitizeMissionText(section.content)}</div>
             </section>
           ))}
         </div>

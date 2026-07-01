@@ -13,6 +13,7 @@ export function sanitizeMissionText(value: unknown): string {
     .split("\n")
     .map((line) => line
       .replace(/^\s*[-*]\s*(\*\*)?\s*$/g, "")
+      .replace(/^\s*#{1,6}\s*/g, "")
       .replace(/^\s*\*\*\s*/g, "")
       .replace(/\s*\*\*\s*$/g, "")
       .replace(/\*\*/g, "")

@@ -1,4 +1,5 @@
 import type { MissionHistoryEntry, MissionReport } from "@/types";
+import { sanitizeMissionText } from "./mission-text";
 
 const REPORT_SECTIONS: Array<[string, keyof MissionReport]> = [
   ["Executive Summary", "executiveSummary"],
@@ -23,7 +24,7 @@ export function reportToMarkdown(report: MissionReport, title = "Agent Society M
     `# ${title}`,
     ...REPORT_SECTIONS
       .map(([heading, key]) => {
-        const content = report[key];
+        const content = sanitizeMissionText(report[key]);
         return content ? `## ${heading}\n\n${content}` : "";
       })
       .filter(Boolean),
@@ -31,8 +32,8 @@ export function reportToMarkdown(report: MissionReport, title = "Agent Society M
 }
 
 export function historyEntryToMarkdown(entry: MissionHistoryEntry) {
-  if (!entry.finalReport) return `# ${entry.missionBrief}\n\nNo final report was generated.`;
-  return reportToMarkdown(entry.finalReport, entry.missionBrief);
+  if (!entry.finalReport) return `# ${sanitizeMissionText(entry.missionBrief)}\n\nNo final report was generated.`;
+  return reportToMarkdown(entry.finalReport, sanitizeMissionText(entry.missionBrief));
 }
 
 export function downloadText(filename: string, content: string, type = "text/plain") {

@@ -121,7 +121,7 @@ export function MissionWarRoom({ onCancel }: { onCancel: () => void }) {
         </div>
 
         <WarCard title="Live Agent Dialogue" icon={<RadioTower className="h-4 w-4" />}>
-          <div className="max-h-[720px] space-y-3 overflow-hidden">
+          <div className="max-h-[720px] space-y-3 overflow-y-auto overflow-x-hidden pr-2 [scrollbar-color:rgba(34,211,238,0.35)_transparent]">
             <AnimatePresence initial={false}>
               {dialogue.slice(-6).map((entry, index) => {
                 const def = getAgentByRole(entry.agentRole);
@@ -140,7 +140,7 @@ export function MissionWarRoom({ onCancel }: { onCancel: () => void }) {
                         <p className="text-xs text-white/35">{formatRelativeTime(entry.timestamp)} · {entry.status ?? "complete"}</p>
                       </div>
                     </div>
-                    <p className="mt-3 line-clamp-5 whitespace-pre-wrap break-words text-sm leading-relaxed text-white/64">{sanitizeMissionText(entry.content)}</p>
+                    <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-relaxed text-white/64">{sanitizeMissionText(entry.content)}</p>
                   </motion.article>
                 );
               })}
@@ -177,8 +177,8 @@ export function MissionWarRoom({ onCancel }: { onCancel: () => void }) {
             <div className="space-y-2">
               {timeline.slice(-5).map((entry, index) => (
                 <div key={`${entry.timestamp}-${index}`} className="rounded-xl border border-white/10 bg-black/15 p-3">
-                  <p className="text-sm font-medium text-white">{entry.label}</p>
-                  <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-white/45">{entry.description}</p>
+                  <p className="text-sm font-medium text-white">{sanitizeMissionText(entry.label)}</p>
+                  <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-white/45">{sanitizeMissionText(entry.description)}</p>
                 </div>
               ))}
             </div>
@@ -196,8 +196,8 @@ export function MissionWarRoom({ onCancel }: { onCancel: () => void }) {
       </div>
 
       <WarCard title="Agent Constellation" icon={<RadioTower className="h-4 w-4" />}>
-        <div className="h-[300px]">
-          <NetworkGraphPanel />
+        <div>
+          <NetworkGraphPanel className="h-[300px]" />
         </div>
       </WarCard>
     </motion.section>

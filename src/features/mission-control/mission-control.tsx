@@ -248,11 +248,6 @@ export function MissionControl() {
             ) : (
               <SidebarPageView
                 activeView={activeView}
-                onDuplicate={(nextBrief, nextConfig) => {
-                  setBrief(nextBrief);
-                  setConfig(nextConfig);
-                  setActiveView("mission-control");
-                }}
                 onOpenMissionControl={() => setActiveView("mission-control")}
                 onReplay={(events) => {
                   startReplay(events);
@@ -444,7 +439,7 @@ function ConfigForm({ config, onChange, onApply, onReset }: { config: Partial<Mi
           <ConfigSelect icon={<ShieldAlert className="h-4 w-4" />} label="Risk Tolerance" value={config.riskTolerance ?? "balanced"} options={RISK_TOLERANCE_LABELS} onChange={(v) => onChange({ ...config, riskTolerance: v as RiskTolerance })} />
         </div>
       </div>
-      <div className="sticky bottom-0 -mx-5 flex gap-2 border-t border-cyan-200/10 bg-[#06101d]/92 px-5 py-4 backdrop-blur-2xl">
+      <div className="flex gap-2 border-t border-cyan-200/10 pt-5">
         <Button type="button" onClick={onApply} className="flex-1 rounded-full bg-cyan-300 text-[#06101f] hover:bg-cyan-200">
           Apply Settings
         </Button>
@@ -458,7 +453,7 @@ function ConfigForm({ config, onChange, onApply, onReset }: { config: Partial<Mi
 
 function ConfigSelect<T extends string>({ icon, label, value, options, onChange }: { icon: ReactNode; label: string; value: T; options: Record<T, string>; onChange: (v: T) => void }) {
   return (
-    <div className="space-y-1.5">
+    <div className="grid gap-3 sm:grid-cols-[170px_1fr] sm:items-center">
       <Label className="flex items-center gap-2 text-white/70">
         <span className="grid h-7 w-7 place-items-center rounded-lg border border-white/10 bg-white/[0.055] text-cyan-100">{icon}</span>
         {label}

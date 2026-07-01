@@ -3,7 +3,7 @@
 import { AGENT_DEFINITIONS } from "@/agents";
 import { Badge } from "@/components/ui/badge";
 import { useMissionStore } from "@/store";
-import { formatDuration } from "@/utils";
+import { formatDuration, sanitizeMissionText } from "@/utils";
 
 export function TimelinePanel() {
   const timeline = useMissionStore((s) => s.context?.timeline ?? []);
@@ -27,7 +27,7 @@ export function TimelinePanel() {
             </div>
             <div className="min-w-0 flex-1 rounded-xl border border-white/10 bg-black/15 p-3">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm font-semibold text-white">{entry.label}</span>
+                <span className="text-sm font-semibold text-white">{sanitizeMissionText(entry.label)}</span>
                 <Badge variant="outline" className="border-white/10 bg-white/[0.04] text-[0.65rem] capitalize text-white/55">
                   {entry.kind ?? "agent"}
                 </Badge>
@@ -36,7 +36,7 @@ export function TimelinePanel() {
                 )}
               </div>
               {entry.description && (
-                <p className="mt-2 text-sm leading-6 text-white/58">{entry.description}</p>
+                <p className="mt-2 text-sm leading-6 text-white/58">{sanitizeMissionText(entry.description)}</p>
               )}
             </div>
           </div>

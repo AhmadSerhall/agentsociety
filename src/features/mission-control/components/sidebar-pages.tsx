@@ -19,7 +19,6 @@ import {
   Search,
   ShieldAlert,
   Sparkles,
-  RotateCcw,
   PlayCircle,
   Save,
   Settings,
@@ -132,17 +131,15 @@ function contextFromHistory(entry: MissionHistoryEntry): MissionContext {
 
 export function SidebarPageView({
   activeView,
-  onDuplicate,
   onOpenMissionControl,
   onReplay,
 }: {
   activeView: Exclude<MissionView, "mission-control">;
-  onDuplicate: (brief: string, config: Partial<MissionConfiguration>) => void;
   onOpenMissionControl: () => void;
   onReplay: (events: MissionReplayEvent[]) => void;
 }) {
   if (activeView === "agents") return <AgentsPage />;
-  if (activeView === "history") return <MissionHistoryPage onDuplicate={onDuplicate} onOpenMissionControl={onOpenMissionControl} onReplay={onReplay} />;
+  if (activeView === "history") return <MissionHistoryPage onOpenMissionControl={onOpenMissionControl} onReplay={onReplay} />;
   if (activeView === "reports") return <ReportsPage />;
   return <SettingsPage />;
 }
@@ -216,7 +213,7 @@ function AgentsPage() {
   );
 }
 
-function MissionHistoryPage({ onDuplicate, onOpenMissionControl, onReplay }: { onDuplicate: (brief: string, config: Partial<MissionConfiguration>) => void; onOpenMissionControl: () => void; onReplay: (events: MissionReplayEvent[]) => void }) {
+function MissionHistoryPage({ onOpenMissionControl, onReplay }: { onOpenMissionControl: () => void; onReplay: (events: MissionReplayEvent[]) => void }) {
   const entries = useHistoryStore((state) => state.entries);
   const remove = useHistoryStore((state) => state.remove);
   const setContext = useMissionStore((state) => state.setContext);
@@ -241,7 +238,6 @@ function MissionHistoryPage({ onDuplicate, onOpenMissionControl, onReplay }: { o
                   ) : entry.finalReport ? (
                     <Button size="sm" variant="outline" disabled className="gap-1 border-white/10 bg-white/[0.03] text-white/35"><PlayCircle className="h-3.5 w-3.5" /> Replay unavailable</Button>
                   ) : null}
-                  <Button size="sm" variant="outline" onClick={() => onDuplicate(entry.missionBrief, entry.configuration)} className="gap-1 border-white/10 bg-white/[0.04] text-white/70"><RotateCcw className="h-3.5 w-3.5" /> Duplicate</Button>
                   <Button size="sm" variant="outline" onClick={() => setDeleteTarget(entry)} className="gap-1 border-red-300/20 bg-red-400/10 text-red-100 hover:border-red-200/45 hover:bg-red-400/15"><Trash2 className="h-3.5 w-3.5" /> Delete</Button>
                 </div>
               </div>

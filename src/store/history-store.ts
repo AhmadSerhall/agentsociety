@@ -11,7 +11,8 @@ function loadHistory(): MissionHistoryEntry[] {
   if (typeof window === "undefined") return [];
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
+    const parsed = raw ? JSON.parse(raw) as MissionHistoryEntry[] : [];
+    return parsed.filter((entry, index, entries) => entries.findIndex((candidate) => candidate.id === entry.id) === index);
   } catch {
     return [];
   }
@@ -40,7 +41,8 @@ export const useHistoryStore = create<HistorySlice>((set, get) => ({
   load: () => set({ entries: loadHistory() }),
 
   add: (entry) => {
-    const updated = [entry, ...get().entries];
+    const existing = get().entries.filter((current) => current.id !== entry.id);
+    const updated = [entry, ...existing];
     set({ entries: updated });
     saveHistory(updated);
   },
