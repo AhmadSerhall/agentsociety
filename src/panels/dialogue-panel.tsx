@@ -4,7 +4,7 @@ import ReactMarkdown from "react-markdown";
 import { AGENT_DEFINITIONS } from "@/agents";
 import { Badge } from "@/components/ui/badge";
 import { useMissionStore } from "@/store";
-import { formatRelativeTime } from "@/utils";
+import { formatRelativeTime, sanitizeMissionText } from "@/utils";
 import { useShallow } from "zustand/react/shallow";
 
 export function DialoguePanel() {
@@ -40,7 +40,7 @@ export function DialoguePanel() {
                   )}
                 </div>
                 <div className="mt-3 max-w-none whitespace-pre-wrap break-words text-sm leading-relaxed text-white/68 [&_*]:max-w-full [&_*]:break-words [&_h1]:mb-3 [&_h1]:text-lg [&_h1]:font-semibold [&_h1]:text-white [&_h2]:mb-3 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:text-white [&_h3]:mb-2 [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:text-white [&_li]:ml-5 [&_li]:list-disc [&_ol_li]:list-decimal [&_p]:mb-3 [&_p]:last:mb-0 [&_strong]:font-semibold [&_strong]:text-white">
-                  <ReactMarkdown>{entry.content}</ReactMarkdown>
+                  <ReactMarkdown>{sanitizeMissionText(entry.content)}</ReactMarkdown>
                 </div>
               </div>
             </article>

@@ -64,12 +64,15 @@ export const MISSION_STATE_ORDER: MissionState[] = [
 export interface Workstream {
   id: string;
   title: string;
+  owner?: string;
+  responsibleAgent?: string;
   description: string;
   status: "pending" | "in_progress" | "completed";
   assignedAgent: AgentRole | null;
   deliverables: string[];
   confidence?: number;
   dependencies?: string[];
+  nextStep?: string;
   output?: string;
   startedAt?: string;
   completedAt?: string;

@@ -2,6 +2,7 @@
 
 import { Badge } from "@/components/ui/badge";
 import { useMissionStore } from "@/store";
+import { sanitizeMissionText } from "@/utils";
 import { AlertTriangle, CheckCircle2, Scale } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 
@@ -33,7 +34,7 @@ export function ConflictPanel() {
                   </Badge>
                 )}
               </div>
-              <p className="mt-2 text-sm leading-6 text-white/62">{conflict.disagreementSummary ?? conflict.description}</p>
+              <p className="mt-2 text-sm leading-6 text-white/62">{sanitizeMissionText(conflict.disagreementSummary ?? conflict.description)}</p>
               <div className="mt-3 flex flex-wrap gap-2">
                 {conflict.agents.map((agent) => (
                   <span key={agent} className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-white/62">
@@ -48,7 +49,7 @@ export function ConflictPanel() {
                     <CheckCircle2 className="h-4 w-4" />
                     Final resolved action
                   </div>
-                  <p className="mt-2 text-sm leading-6 text-white/62">{conflict.finalAction ?? conflict.resolution}</p>
+                  <p className="mt-2 text-sm leading-6 text-white/62">{sanitizeMissionText(conflict.finalAction ?? conflict.resolution)}</p>
                 </div>
               )}
             </div>
@@ -62,7 +63,7 @@ export function ConflictPanel() {
             <Scale className="h-4 w-4" />
             Mediator Decision
           </div>
-          <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-7 text-white/64">{decisions}</p>
+          <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-7 text-white/64">{sanitizeMissionText(decisions)}</p>
         </div>
       )}
     </div>

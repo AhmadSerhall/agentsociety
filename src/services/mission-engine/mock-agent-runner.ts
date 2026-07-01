@@ -12,6 +12,20 @@ import {
   type MissionContext,
 } from "@/types";
 
+type MissionIntent =
+  | "business_launch"
+  | "technical_debugging"
+  | "product_strategy"
+  | "research_analysis"
+  | "financial_planning"
+  | "content_strategy"
+  | "operational_plan"
+  | "general_problem_solving";
+
+interface MockMissionClassification {
+  intent: MissionIntent;
+}
+
 const MOCK_TIMINGS: Partial<Record<MissionState, number>> = {
   [MissionState.Planning]: 2500,
   [MissionState.Researching]: 3000,
@@ -54,10 +68,10 @@ export class MockAgentRunner {
     return MOCK_TIMINGS[phase] ?? 1800;
   }
 
-  generate(phase: MissionState, ctx: MissionContext, task?: ExecutionTask): string {
+  generate(phase: MissionState, ctx: MissionContext, task?: ExecutionTask, classification?: MockMissionClassification): string {
     switch (phase) {
       case MissionState.Planning:
-        return this.planner(ctx);
+        return this.planner(ctx, classification);
       case MissionState.Researching:
         return this.research(ctx, task);
       case MissionState.ProductStrategy:
@@ -69,21 +83,115 @@ export class MockAgentRunner {
       case MissionState.FinancialAnalysis:
         return this.finance(ctx, task);
       case MissionState.RiskReview:
-        return this.risk(ctx, task);
+        return this.risk(ctx, task, classification);
       case MissionState.ConflictResolution:
-        return this.mediator(ctx);
+        return this.mediator(ctx, classification);
       case MissionState.Finalizing:
-        return this.finalizer(ctx);
+        return this.finalizer(ctx, classification);
       default:
         return "Mission phase complete.";
     }
   }
 
-  private planner(ctx: MissionContext) {
+  private planner(ctx: MissionContext, classification?: MockMissionClassification) {
     const { configuration } = ctx;
     const focus = this.extractMissionFocus(ctx.missionBrief);
     const noun = missionNoun(configuration);
-    const workstreams = [
+    const technicalWorkstreams = [
+      {
+        title: "Performance Profiling & Baseline Measurement",
+        owner: "Technical Architect",
+        confidence: 86,
+        description: `Measure current slowness, reproduction paths, Core Web Vitals, React profiler traces, and user-visible latency for ${focus.shortBrief}.`,
+        deliverables: "Performance baseline; reproduction checklist; measurement plan",
+        dependencies: "None",
+      },
+      {
+        title: "Render & Re-render Analysis",
+        owner: "Technical Architect",
+        confidence: 84,
+        description: "Identify expensive renders, unnecessary re-renders, context churn, missing memoization, and component hot paths.",
+        deliverables: "Render hot spot list; component trace notes; memoization candidates",
+        dependencies: "Workstream 1",
+      },
+      {
+        title: "Network/API/Data Fetching Audit",
+        owner: "Risk Critic",
+        confidence: 81,
+        description: "Separate React rendering cost from API latency, request waterfalls, duplicate fetching, cache misses, and backend/network bottlenecks.",
+        deliverables: "Request waterfall map; latency split; data fetching fixes",
+        dependencies: "Workstream 1",
+      },
+      {
+        title: "Bundle/Asset Optimization",
+        owner: "Technical Architect",
+        confidence: 80,
+        description: "Inspect bundle size, third-party scripts, dynamic imports, asset weight, and route-level loading behavior.",
+        deliverables: "Bundle report; code splitting plan; asset optimization list",
+        dependencies: "Workstream 1",
+      },
+      {
+        title: "State Management & Component Architecture Review",
+        owner: "Technical Architect",
+        confidence: 79,
+        description: "Review state ownership, derived state, global store subscriptions, component boundaries, and architecture changes needed for durable performance.",
+        deliverables: "State ownership map; architecture refactor candidates; risk notes",
+        dependencies: "Workstream 2",
+      },
+      {
+        title: "Prioritized Optimization Roadmap",
+        owner: "Finalizer",
+        confidence: 82,
+        description: "Sequence quick wins, deeper refactors, regression tests, monitoring, and rollout strategy.",
+        deliverables: "Prioritized roadmap; regression checklist; monitoring plan",
+        dependencies: "Workstream 2; Workstream 3; Workstream 4; Workstream 5",
+      },
+    ];
+
+    const architectureDecisionWorkstreams = [
+      {
+        title: "Current SPA Architecture Baseline",
+        owner: "Technical Architect",
+        confidence: 84,
+        description: `Assess the current React SPA architecture, constraints, routing, data fetching, performance, and maintainability for ${focus.shortBrief}.`,
+        deliverables: "Current-state architecture map; constraint list; technical debt inventory",
+        dependencies: "None",
+      },
+      {
+        title: "Next.js Migration Benefit Analysis",
+        owner: "Technical Architect",
+        confidence: 82,
+        description: "Evaluate SSR/SSG, routing, performance, deployment, SEO, and developer workflow gains from rebuilding in Next.js.",
+        deliverables: "Migration benefit matrix; implementation implications; adoption prerequisites",
+        dependencies: "Workstream 1",
+      },
+      {
+        title: "Product & User Impact Review",
+        owner: "Product Strategist",
+        confidence: 80,
+        description: "Assess whether migration improves user outcomes enough to justify disruption and roadmap delay.",
+        deliverables: "User impact notes; roadmap disruption map; decision criteria",
+        dependencies: "Workstream 1",
+      },
+      {
+        title: "Cost, Risk & Delivery Tradeoff Review",
+        owner: "Risk Critic",
+        confidence: 78,
+        description: "Compare rebuild risk, incremental improvement risk, migration cost, QA burden, and rollback options.",
+        deliverables: "Tradeoff register; risk matrix; mitigation plan",
+        dependencies: "Workstream 2; Workstream 3",
+      },
+      {
+        title: "Decision Roadmap",
+        owner: "Finalizer",
+        confidence: 83,
+        description: "Recommend rebuild, incremental modernization, or hybrid migration with concrete decision gates.",
+        deliverables: "Decision recommendation; phased roadmap; success metrics",
+        dependencies: "Workstream 2; Workstream 3; Workstream 4",
+      },
+    ];
+
+    const businessWorkstreams = [
       {
         title: `${focus.primary} Discovery & Validation`,
         owner: "Research Agent",
@@ -125,6 +233,11 @@ export class MockAgentRunner {
         dependencies: "Workstream 1; Workstream 2",
       },
     ];
+    const workstreams = classification?.intent === "technical_debugging"
+      ? technicalWorkstreams
+      : classification?.intent === "product_strategy"
+        ? architectureDecisionWorkstreams
+        : businessWorkstreams;
 
     return `## Planner Output
 
@@ -224,7 +337,47 @@ Resource plan:
 Financial concern: if the team tries to satisfy every requested feature inside ${TIME_HORIZON_LABELS[ctx.configuration.timeHorizon]}, scope creep will reduce quality. A smaller, credible Mission Control workflow is the better asset.`;
   }
 
-  private risk(ctx: MissionContext, task?: ExecutionTask) {
+  private risk(ctx: MissionContext, task?: ExecutionTask, classification?: MockMissionClassification) {
+    if (classification?.intent === "technical_debugging") {
+      return `## Risk Critic Assessment
+
+Task focus: ${task?.title ?? "Performance risk review"}.
+
+CONFLICT_DETECTED: true
+
+### Meaningful Disagreement
+The Technical Architect can deliver quick memoization and bundle fixes, but deeper render/data-flow refactors may be required if profiling shows structural bottlenecks.
+
+### Risk Level
+High
+
+### Why it matters
+Optimizing before measurement can hide the real source of slowness. React render work, network/API latency, asset weight, and state subscription churn must be separated before committing to fixes.
+
+### Suggested Fix
+Require baseline profiling first, apply quick wins only where traces prove impact, and schedule deeper architecture refactors for repeated hot paths with regression monitoring.`;
+    }
+
+    if (classification?.intent === "product_strategy") {
+      return `## Risk Critic Assessment
+
+Task focus: ${task?.title ?? "Architecture decision risk"}.
+
+CONFLICT_DETECTED: true
+
+### Meaningful Disagreement
+Rebuilding in Next.js may improve long-term architecture, but keeping the React SPA may reduce migration risk and protect current delivery speed.
+
+### Risk Level
+High
+
+### Why it matters
+A rebuild can consume roadmap capacity, introduce regressions, and delay user-facing improvements. Staying put can preserve speed but leave structural problems unresolved.
+
+### Suggested Fix
+Use a decision matrix: migration benefit, user impact, delivery cost, rollback strategy, and measurable success criteria. Prefer incremental migration unless the benefits are clearly proven.`;
+    }
+
     return `## Risk Critic Assessment
 
 Task focus: ${task?.title ?? "Risk review"}.
@@ -241,7 +394,7 @@ High
 If the team chases a faster launch and broader architecture at the same time, the product will feel shallow and brittle. The Mission Control workflow needs believable agent progression, readable outputs, conflict resolution, and professional reporting before expanding.
 
 ### Suggested Fix
-Keep the launch focused on frontend-only Mission Control, slow the mock flow enough to feel real, and use the Mediator to convert disagreement into a phased execution plan.`;
+Keep the plan focused, validate before expanding spend or scope, and use the Mediator to convert disagreement into a phased execution plan.`;
   }
 
   private extractMissionFocus(brief: string) {
@@ -258,7 +411,33 @@ Keep the launch focused on frontend-only Mission Control, slow the mock flow eno
     };
   }
 
-  private mediator(ctx: MissionContext) {
+  private mediator(ctx: MissionContext, classification?: MockMissionClassification) {
+    if (classification?.intent === "technical_debugging") {
+      return `## Mediator Decision
+
+### Conflict Resolved
+The technical path must balance quick performance fixes against deeper architecture correction.
+
+### Decision
+Start with profiling and baseline measurement. Apply quick wins only when profiler/network evidence proves impact. Schedule deeper state, component, or data-fetching refactors for bottlenecks that remain after measurement-backed fixes.
+
+### Final Resolved Action
+Separate render, network/API, bundle, and state-management causes before prioritizing the optimization roadmap.`;
+    }
+
+    if (classification?.intent === "product_strategy") {
+      return `## Mediator Decision
+
+### Conflict Resolved
+The rebuild decision must balance architecture quality, user impact, migration risk, and delivery speed.
+
+### Decision
+Do not choose a full rebuild by default. Compare Next.js migration against incremental SPA modernization using measurable criteria: performance gains, routing/data needs, SEO requirements, regression risk, and team capacity.
+
+### Final Resolved Action
+Recommend the lowest-risk path that achieves the required product and architecture outcomes, with migration gates if Next.js is selected.`;
+    }
+
     return `## Mediator Decision
 
 ### Conflict Resolved
@@ -271,7 +450,15 @@ Proceed with a polished frontend-only Mission Control MVP. Do not add backend or
 Use ${DEPTH_LABELS[ctx.configuration.depth]} to determine report depth, ${TIME_HORIZON_LABELS[ctx.configuration.timeHorizon]} to shape roadmap urgency, and ${OUTPUT_FORMAT_LABELS[ctx.configuration.outputFormat]} to shape the final deliverable.`;
   }
 
-  private finalizer(ctx: MissionContext) {
+  private finalizer(ctx: MissionContext, classification?: MockMissionClassification) {
+    if (classification?.intent === "technical_debugging") {
+      return `## Finalizer Synthesis
+
+The mission should be packaged as a technical optimization plan built from profiling, render analysis, network/API audit, bundle review, architecture review, risk objections, and mediator decisions.
+
+Recommendation: measure first, optimize second, validate third. Prioritize changes by observed user impact and regression risk.`;
+    }
+
     return `## Finalizer Synthesis
 
 The mission is ready to package as a professional ${OUTPUT_FORMAT_LABELS[ctx.configuration.outputFormat]}. The final report should explicitly include the selected mission configuration, completed workstreams, agent contributions, conflict resolution, timeline, efficiency metrics, and a single-agent versus Agent Society comparison.
