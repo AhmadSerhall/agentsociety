@@ -1,6 +1,5 @@
 "use client";
 
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { useMissionStore } from "@/store";
 import { Copy, Download } from "lucide-react";
@@ -43,16 +42,16 @@ export function ReportPanel() {
           Export Markdown
         </Button>
       </div>
-      <ScrollArea className="min-h-[320px] max-h-[72vh] pr-3">
-      <div className="space-y-5">
-        {sections.filter((section) => section.content).map((section) => (
-          <section key={section.title} className="rounded-2xl border border-white/10 bg-black/20 p-4">
-            <h4 className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-100/60">{section.title}</h4>
-            <div className="mt-3 whitespace-pre-wrap break-words text-sm leading-relaxed text-white/68">{section.content}</div>
-          </section>
-        ))}
+      <div className="min-h-[320px]">
+        <div className="space-y-5">
+          {sections.filter((section) => section.content).map((section) => (
+            <section key={section.title} className="overflow-hidden rounded-2xl border border-white/10 bg-black/20 p-4">
+              <h4 className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-100/60">{section.title}</h4>
+              <div className="mt-3 whitespace-pre-wrap break-words text-sm leading-relaxed text-white/68">{section.content}</div>
+            </section>
+          ))}
+        </div>
       </div>
-      </ScrollArea>
     </div>
   );
 }

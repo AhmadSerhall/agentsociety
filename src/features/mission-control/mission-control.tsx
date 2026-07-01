@@ -240,15 +240,15 @@ function MissionTabs() {
         <TabsTrigger value="network">Network</TabsTrigger>
       </TabsList>
 
-      <div className="mt-4 rounded-2xl border border-cyan-200/10 bg-white/[0.045] p-4 shadow-[0_24px_80px_rgba(0,0,0,0.28)] backdrop-blur-2xl md:p-6">
-        <TabsContent value="workflow"><AgentWorkflowPanel /></TabsContent>
-        <TabsContent value="workstreams"><WorkstreamsPanel /></TabsContent>
-        <TabsContent value="dialogue"><DialoguePanel /></TabsContent>
-        <TabsContent value="conflicts"><ConflictPanel /></TabsContent>
-        <TabsContent value="report"><ReportPanel /></TabsContent>
-        <TabsContent value="timeline"><TimelinePanel /></TabsContent>
-        <TabsContent value="efficiency"><EfficiencyPanel /></TabsContent>
-        <TabsContent value="network"><NetworkGraphPanel /></TabsContent>
+      <div className="mt-4 min-h-0 rounded-2xl border border-cyan-200/10 bg-white/[0.045] p-4 shadow-[0_24px_80px_rgba(0,0,0,0.28)] backdrop-blur-2xl md:p-6">
+        <TabsContent value="workflow" className="mt-0 min-h-0"><AgentWorkflowPanel /></TabsContent>
+        <TabsContent value="workstreams" className="mt-0 min-h-0"><WorkstreamsPanel /></TabsContent>
+        <TabsContent value="dialogue" className="mt-0 min-h-0"><DialoguePanel /></TabsContent>
+        <TabsContent value="conflicts" className="mt-0 min-h-0"><ConflictPanel /></TabsContent>
+        <TabsContent value="report" className="mt-0 min-h-0"><ReportPanel /></TabsContent>
+        <TabsContent value="timeline" className="mt-0 min-h-0"><TimelinePanel /></TabsContent>
+        <TabsContent value="efficiency" className="mt-0 min-h-0"><EfficiencyPanel /></TabsContent>
+        <TabsContent value="network" className="mt-0 min-h-0"><NetworkGraphPanel /></TabsContent>
       </div>
     </Tabs>
   );
