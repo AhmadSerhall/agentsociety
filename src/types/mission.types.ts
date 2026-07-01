@@ -68,12 +68,18 @@ export interface Workstream {
   status: "pending" | "in_progress" | "completed";
   assignedAgent: AgentRole | null;
   deliverables: string[];
+  confidence?: number;
 }
 
 export interface ConflictInfo {
   id: string;
+  title?: string;
   agents: string[];
   description: string;
+  riskLevel?: "low" | "moderate" | "high" | "critical";
+  disagreementSummary?: string;
+  mediatorDecision?: string;
+  finalAction?: string;
   resolution?: string;
   resolved: boolean;
 }
@@ -81,6 +87,7 @@ export interface ConflictInfo {
 export interface MissionReport {
   executiveSummary: string;
   missionObjective: string;
+  selectedMissionConfiguration?: string;
   workstreams: string;
   roleAssignments: string;
   agentContributions: string;
@@ -92,6 +99,7 @@ export interface MissionReport {
   riskAssessment: string;
   successMetrics: string;
   finalRecommendations: string;
+  singleAgentComparison?: string;
 }
 
 export interface EfficiencyMetrics {
@@ -112,6 +120,8 @@ export interface TimelineEntry {
   label: string;
   timestamp: string;
   duration?: number;
+  description?: string;
+  kind?: "system" | "agent" | "workstream" | "conflict" | "report" | "cancelled";
 }
 
 export interface MissionContext {

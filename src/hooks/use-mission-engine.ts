@@ -29,7 +29,14 @@ export function useMissionEngine() {
 
   const launch = useCallback(
     (brief: string, config?: Partial<MissionConfiguration>) => {
-      if (useMissionStore.getState().context && useMissionStore.getState().context?.status !== MissionState.Idle && useMissionStore.getState().context?.status !== MissionState.Completed && useMissionStore.getState().context?.status !== MissionState.Failed) return;
+      const currentStatus = useMissionStore.getState().context?.status;
+      if (
+        useMissionStore.getState().context &&
+        currentStatus !== MissionState.Idle &&
+        currentStatus !== MissionState.Completed &&
+        currentStatus !== MissionState.Failed &&
+        currentStatus !== MissionState.Cancelled
+      ) return;
 
       const ctx = initMission(brief, config);
       const engine = new MissionEngine();
@@ -81,6 +88,11 @@ export function useMissionEngine() {
         toast.error("Mission failed");
       });
 
+      engine.on(MissionEventType.MissionCancelled, () => {
+        useMissionStore.setState({ isRunning: false });
+        toast.info("Mission cancelled");
+      });
+
       // Start the engine
       engine.startMission(ctx, (updatedCtx: MissionContext) => {
         setContext(updatedCtx);
@@ -91,8 +103,6 @@ export function useMissionEngine() {
 
   const cancel = useCallback(() => {
     engineRef.current?.cancelMission();
-    useMissionStore.setState({ isRunning: false });
-    toast.info("Mission cancelled");
   }, []);
 
   return { context, isRunning, launch, cancel };

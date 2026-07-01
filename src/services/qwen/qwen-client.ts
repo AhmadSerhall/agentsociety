@@ -50,7 +50,7 @@ export function createQwenClient(config?: Partial<QwenClientConfig>) {
 
   async function chat(
     messages: QwenMessage[],
-    overrides?: { model?: string; temperature?: number; maxTokens?: number }
+    overrides?: { model?: string; temperature?: number; maxTokens?: number; signal?: AbortSignal }
   ): Promise<string> {
     const body: QwenChatRequest = {
       model: overrides?.model ?? cfg.defaultModel,
@@ -67,6 +67,7 @@ export function createQwenClient(config?: Partial<QwenClientConfig>) {
         Authorization: `Bearer ${cfg.apiKey}`,
       },
       body: JSON.stringify(body),
+      signal: overrides?.signal,
     });
 
     if (!res.ok) {

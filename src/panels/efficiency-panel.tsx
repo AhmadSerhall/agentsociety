@@ -1,47 +1,49 @@
 "use client";
 
+import { Progress } from "@/components/ui/progress";
 import { useMissionStore } from "@/store";
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis, ResponsiveContainer, Cell, Tooltip } from "recharts";
+import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 export function EfficiencyPanel() {
   const metrics = useMissionStore((s) => s.context?.efficiencyMetrics);
 
   if (!metrics) {
-    return <p className="text-sm text-muted-foreground italic">Efficiency comparison will appear after mission completion.</p>;
+    return <p className="text-sm italic text-white/45">Efficiency comparison will appear after mission completion.</p>;
   }
 
   const data = [
-    { name: "Quality Score", multi: metrics.qualityScore, single: metrics.singleAgentBaseline },
-    { name: "Task Coverage", multi: metrics.taskCoverage, single: 60 },
-    { name: "Confidence", multi: metrics.finalConfidenceScore, single: 50 },
-    { name: "Perspectives", multi: metrics.perspectivesConsidered, single: 1 },
+    { name: "Quality", multi: metrics.qualityScore, single: metrics.singleAgentBaseline },
+    { name: "Coverage", multi: metrics.taskCoverage, single: 60 },
+    { name: "Confidence", multi: metrics.finalConfidenceScore, single: 52 },
+    { name: "Perspectives", multi: metrics.perspectivesConsidered * 10, single: 10 },
   ];
 
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3">
-        <StatCard label="Conflicts Resolved" value={String(metrics.conflictsResolved)} accent />
-        <StatCard label="Revisions" value={String(metrics.revisionCount)} />
-        <StatCard label="Est. Time" value={metrics.estimatedCompletionTime} />
-        <StatCard label="Confidence" value={`${metrics.finalConfidenceScore}/100`} accent />
+    <div className="space-y-5">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <Metric label="Task Coverage" value={`${metrics.taskCoverage}%`} progress={metrics.taskCoverage} />
+        <Metric label="Perspectives Considered" value={String(metrics.perspectivesConsidered)} progress={100} />
+        <Metric label="Conflict Resolution" value={`${metrics.conflictsResolved} resolved`} progress={metrics.conflictsResolved > 0 ? 100 : 30} />
+        <Metric label="Estimated Completion Time" value={metrics.estimatedCompletionTime} progress={75} />
+        <Metric label="Confidence Score" value={`${metrics.finalConfidenceScore}%`} progress={metrics.finalConfidenceScore} />
+        <Metric label="Revision Count" value={String(metrics.revisionCount)} progress={Math.min(100, metrics.revisionCount * 28)} />
       </div>
 
-      <div>
-        <p className="mb-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-          Multi-Agent vs Single-Agent
-        </p>
-        <ResponsiveContainer width="100%" height={160}>
-          <BarChart data={data} barCategoryGap="20%">
+      <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <p className="text-sm font-semibold text-white">Single Agent vs Agent Society</p>
+          <p className="text-xs text-white/45">{metrics.singleAgentBaseline}% baseline to {metrics.qualityScore}% society score</p>
+        </div>
+        <ResponsiveContainer width="100%" height={190}>
+          <BarChart data={data} barCategoryGap="22%">
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-            <XAxis dataKey="name" tick={{ fontSize: 10, fill: "#888" }} />
-            <YAxis tick={{ fontSize: 10, fill: "#888" }} domain={[0, 100]} />
-            <Tooltip
-              contentStyle={{ backgroundColor: "#1a1a2e", border: "1px solid #333", borderRadius: 8, fontSize: 12, color: "#fff" }}
-            />
-            <Bar dataKey="single" fill="#374151" radius={[4, 4, 0, 0]} name="Single Agent" />
-            <Bar dataKey="multi" radius={[4, 4, 0, 0]} name="Multi-Agent">
-              {data.map((_, i) => (
-                <Cell key={i} fill={["#8b5cf6", "#3b82f6", "#10b981", "#f59e0b"][i]} />
+            <XAxis dataKey="name" tick={{ fontSize: 11, fill: "rgba(255,255,255,0.48)" }} />
+            <YAxis tick={{ fontSize: 11, fill: "rgba(255,255,255,0.48)" }} domain={[0, 100]} />
+            <Tooltip contentStyle={{ backgroundColor: "#07111f", border: "1px solid rgba(34,211,238,0.18)", borderRadius: 12, fontSize: 12, color: "#fff" }} />
+            <Bar dataKey="single" fill="#334155" radius={[6, 6, 0, 0]} name="Single Agent" />
+            <Bar dataKey="multi" radius={[6, 6, 0, 0]} name="Agent Society">
+              {data.map((_, index) => (
+                <Cell key={index} fill={["#22d3ee", "#8b5cf6", "#10b981", "#f59e0b"][index]} />
               ))}
             </Bar>
           </BarChart>
@@ -51,11 +53,12 @@ export function EfficiencyPanel() {
   );
 }
 
-function StatCard({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+function Metric({ label, value, progress }: { label: string; value: string; progress: number }) {
   return (
-    <div className="rounded-lg border p-2.5 text-center">
-      <p className={`text-lg font-bold ${accent ? "text-emerald-400" : ""}`}>{value}</p>
-      <p className="text-[10px] text-muted-foreground">{label}</p>
+    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+      <p className="text-xs uppercase tracking-[0.18em] text-white/38">{label}</p>
+      <p className="mt-2 text-lg font-bold text-white">{value}</p>
+      <Progress value={progress} className="mt-3 h-1.5 bg-white/10" />
     </div>
   );
 }

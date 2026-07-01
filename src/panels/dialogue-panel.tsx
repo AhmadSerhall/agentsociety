@@ -1,49 +1,50 @@
 "use client";
 
+import ReactMarkdown from "react-markdown";
 import { AGENT_DEFINITIONS } from "@/agents";
-import { useMissionStore } from "@/store";
-import { useShallow } from "zustand/react/shallow";
+import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { cn } from "@/lib/utils";
+import { useMissionStore } from "@/store";
 import { formatRelativeTime } from "@/utils";
+import { useShallow } from "zustand/react/shallow";
 
 export function DialoguePanel() {
   const dialogue = useMissionStore(useShallow((s) => s.context?.dialogue ?? []));
 
   if (dialogue.length === 0) {
-    return <p className="text-sm text-muted-foreground italic">Agent dialogue will stream here during the mission.</p>;
+    return <p className="text-sm italic text-white/45">Agent dialogue will stream here during the mission.</p>;
   }
 
   return (
-    <ScrollArea className="max-h-[400px] pr-2">
-      <div className="space-y-3">
-        {dialogue.map((entry, i) => {
-          const def = AGENT_DEFINITIONS.find((a) => a.id === entry.agentId);
-          const color = def?.color ?? "#888";
+    <ScrollArea className="max-h-[560px] pr-3">
+      <div className="space-y-4">
+        {dialogue.map((entry, index) => {
+          const def = AGENT_DEFINITIONS.find((agent) => agent.id === entry.agentId);
+          const color = def?.color ?? "#22d3ee";
           return (
-            <div key={i} className="flex gap-2.5">
+            <article key={`${entry.agentId}-${entry.timestamp}-${index}`} className="flex min-w-0 gap-3 rounded-2xl border border-white/10 bg-black/20 p-4">
               <div
-                className="mt-1 h-6 w-6 shrink-0 rounded-full flex items-center justify-center text-[10px] font-bold text-white"
+                className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-xs font-bold text-white shadow-[0_0_24px_rgba(255,255,255,0.08)]"
                 style={{ backgroundColor: color }}
               >
-                {def?.name.slice(0, 2).toUpperCase() ?? "??"}
+                {entry.agentName.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase()}
               </div>
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-medium" style={{ color }}>{entry.agentName}</span>
-                  <span className="text-[10px] text-muted-foreground">{formatRelativeTime(entry.timestamp)}</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-semibold" style={{ color }}>{entry.agentName}</span>
+                  <span className="text-xs text-white/38">{formatRelativeTime(entry.timestamp)}</span>
+                  <Badge variant="outline" className="border-white/10 bg-white/[0.04] text-[0.65rem] text-white/60">
+                    Complete
+                  </Badge>
                   {entry.isConflict && (
-                    <span className="text-[10px] font-medium text-amber-500">CONFLICT</span>
+                    <Badge className="bg-amber-400/15 text-amber-200 hover:bg-amber-400/15">Conflict</Badge>
                   )}
                 </div>
-                <div className={cn(
-                  "mt-1 rounded-lg p-2.5 text-xs leading-relaxed whitespace-pre-wrap",
-                  entry.isConflict ? "bg-amber-500/10 border border-amber-500/20" : "bg-card border"
-                )}>
-                  {entry.content.length > 600 ? entry.content.slice(0, 600) + "\n..." : entry.content}
+                <div className="prose prose-invert prose-sm mt-3 max-w-none overflow-hidden break-words prose-headings:text-white prose-p:text-white/68 prose-li:text-white/68 prose-strong:text-white">
+                  <ReactMarkdown>{entry.content}</ReactMarkdown>
                 </div>
               </div>
-            </div>
+            </article>
           );
         })}
       </div>
