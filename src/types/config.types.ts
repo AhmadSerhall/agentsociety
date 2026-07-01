@@ -1,0 +1,97 @@
+/**
+ * Agent Society — Mission Configuration Types
+ */
+
+export type MissionType =
+  | "startup-launch"
+  | "product-strategy"
+  | "software-architecture"
+  | "marketing-campaign"
+  | "research-plan"
+  | "business-plan"
+  | "general-mission";
+
+export type Depth = "fast" | "balanced" | "deep-analysis";
+
+export type TimeHorizon =
+  | "7-days"
+  | "30-days"
+  | "90-days"
+  | "6-months"
+  | "1-year";
+
+export type BudgetRange =
+  | "none"
+  | "low"
+  | "medium"
+  | "enterprise";
+
+export type RiskTolerance = "conservative" | "balanced" | "aggressive";
+
+export type OutputFormat =
+  | "executive-report"
+  | "execution-roadmap"
+  | "strategy-brief"
+  | "technical-plan";
+
+export interface MissionConfiguration {
+  missionType: MissionType;
+  depth: Depth;
+  timeHorizon: TimeHorizon;
+  budgetRange: BudgetRange;
+  riskTolerance: RiskTolerance;
+  outputFormat: OutputFormat;
+}
+
+export const MISSION_TYPE_LABELS: Record<MissionType, string> = {
+  "startup-launch": "Startup Launch",
+  "product-strategy": "Product Strategy",
+  "software-architecture": "Software Architecture",
+  "marketing-campaign": "Marketing Campaign",
+  "research-plan": "Research Plan",
+  "business-plan": "Business Plan",
+  "general-mission": "General Mission",
+};
+
+export const DEPTH_LABELS: Record<Depth, string> = {
+  fast: "Fast",
+  balanced: "Balanced",
+  "deep-analysis": "Deep Analysis",
+};
+
+export const TIME_HORIZON_LABELS: Record<TimeHorizon, string> = {
+  "7-days": "7 Days",
+  "30-days": "30 Days",
+  "90-days": "90 Days",
+  "6-months": "6 Months",
+  "1-year": "1 Year",
+};
+
+export const BUDGET_RANGE_LABELS: Record<BudgetRange, string> = {
+  none: "None specified",
+  low: "Low budget",
+  medium: "Medium budget",
+  enterprise: "Enterprise budget",
+};
+
+export const RISK_TOLERANCE_LABELS: Record<RiskTolerance, string> = {
+  conservative: "Conservative",
+  balanced: "Balanced",
+  aggressive: "Aggressive",
+};
+
+export const OUTPUT_FORMAT_LABELS: Record<OutputFormat, string> = {
+  "executive-report": "Executive Report",
+  "execution-roadmap": "Execution Roadmap",
+  "strategy-brief": "Strategy Brief",
+  "technical-plan": "Technical Plan",
+};
+
+export const DEFAULT_CONFIGURATION: MissionConfiguration = {
+  missionType: "general-mission",
+  depth: "balanced",
+  timeHorizon: "30-days",
+  budgetRange: "none",
+  riskTolerance: "balanced",
+  outputFormat: "execution-roadmap",
+};
