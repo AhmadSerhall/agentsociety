@@ -6,7 +6,7 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { KeyRound, Menu, Settings } from "lucide-react";
 import { useMissionEngine } from "@/hooks";
 import { useMissionStore } from "@/store";
-import { useHistoryStore, useRuntimeSettingsStore } from "@/store";
+import { useHistoryStore, useRuntimeSettingsStore, useReplayStore } from "@/store";
 import { useFadeInUp, useStaggerContainer } from "@/hooks";
 import { getQwenRuntimeInfo } from "@/services/qwen";
 import { MISSION_TYPE_LABELS, DEPTH_LABELS, TIME_HORIZON_LABELS, BUDGET_RANGE_LABELS, RISK_TOLERANCE_LABELS, OUTPUT_FORMAT_LABELS, MissionState, type MissionConfiguration, type MissionType, type Depth, type TimeHorizon, type BudgetRange, type RiskTolerance, type OutputFormat } from "@/types";
@@ -32,6 +32,7 @@ import { MissionBriefComposer } from "./components/mission-brief-composer";
 import { MissionSidebar, MissionSidebarContent, type MissionView } from "./components/mission-sidebar";
 import { MissionStatusBar } from "./components/mission-status-bar";
 import { SidebarPageView } from "./components/sidebar-pages";
+import { ReplayControlBar } from "./components/replay-control-bar";
 
 export function MissionControl() {
   const [brief, setBrief] = useState("");
@@ -41,6 +42,7 @@ export function MissionControl() {
   const [validationOpen, setValidationOpen] = useState(false);
   const [apiKeyRequiredOpen, setApiKeyRequiredOpen] = useState(false);
   const [activeView, setActiveView] = useState<MissionView>("mission-control");
+  const [activeMissionTab, setActiveMissionTab] = useState("workflow");
   const { context, isRunning, launch, cancel } = useMissionEngine();
   const loadHistory = useHistoryStore((s) => s.load);
   const loadRuntimeSettings = useRuntimeSettingsStore((s) => s.load);
@@ -48,6 +50,12 @@ export function MissionControl() {
   const progress = useMissionStore((s) => s.context?.progress ?? 0);
   const status = useMissionStore((s) => s.context?.status);
   const activeAgents = useMissionStore((s) => s.context?.currentAgent ? 1 : 0);
+  const replayMode = useReplayStore((s) => s.mode);
+  const replayEvents = useReplayStore((s) => s.replayEvents);
+  const replayTime = useReplayStore((s) => s.replayTime);
+  const autoFollow = useReplayStore((s) => s.autoFollowEnabled);
+  const tickReplay = useReplayStore((s) => s.tick);
+  const startReplay = useReplayStore((s) => s.startReplay);
   const fadeUp = useFadeInUp();
   const stagger = useStaggerContainer();
   const runtimeInfo = getQwenRuntimeInfo();
@@ -59,12 +67,36 @@ export function MissionControl() {
     loadRuntimeSettings();
   }, [loadHistory, loadRuntimeSettings]);
 
+  useEffect(() => {
+    if (replayMode !== "replay") return;
+    let last = performance.now();
+    const interval = window.setInterval(() => {
+      const current = performance.now();
+      tickReplay(current - last);
+      last = current;
+    }, 120);
+    return () => window.clearInterval(interval);
+  }, [replayMode, tickReplay]);
+
+  const autoFollowTab = useMemo(() => {
+    if (replayMode !== "replay" || !autoFollow) return;
+    const currentEvent = [...replayEvents].reverse().find((event) => event.relativeTimestamp <= replayTime);
+    if (!currentEvent) return undefined;
+    if (currentEvent.type.includes("CONFLICT") || currentEvent.type.includes("MEDIATOR")) return "conflicts";
+    if (currentEvent.type.includes("DIALOGUE") || currentEvent.type.includes("STREAM")) return "dialogue";
+    if (currentEvent.type.includes("WORKSTREAM") || currentEvent.type === "AGENT_STARTED") return "workstreams";
+    if (currentEvent.type.includes("FINALIZER") || currentEvent.type === "REPORT_GENERATED") return "report";
+    if (currentEvent.type === "MISSION_COMPLETED") return "efficiency";
+    if (currentEvent.type.includes("PLANNER")) return "workflow";
+    return undefined;
+  }, [autoFollow, replayEvents, replayMode, replayTime]);
+
   const handleLaunch = () => {
     if (brief.trim().length < 10) {
       setValidationOpen(true);
       return;
     }
-    if (!hasUsableQwenKey) {
+    if (replayMode !== "replay" && !hasUsableQwenKey) {
       setApiKeyRequiredOpen(true);
       return;
     }
@@ -194,7 +226,7 @@ export function MissionControl() {
                       animate="visible"
                       exit={{ opacity: 0 }}
                     >
-                      <MissionTabs />
+                      <MissionTabs value={autoFollowTab ?? activeMissionTab} onValueChange={setActiveMissionTab} />
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -208,8 +240,14 @@ export function MissionControl() {
                   setActiveView("mission-control");
                 }}
                 onOpenMissionControl={() => setActiveView("mission-control")}
+                onReplay={(events) => {
+                  startReplay(events);
+                  setActiveView("mission-control");
+                  setActiveMissionTab("workflow");
+                }}
               />
             )}
+            <ReplayControlBar />
           </motion.div>
         </main>
       </div>
@@ -262,9 +300,9 @@ export function MissionControl() {
 
 /* ─── Config Form ──────────────────────── */
 
-function MissionTabs() {
+function MissionTabs({ value, onValueChange }: { value?: string; onValueChange?: (value: string) => void }) {
   return (
-    <Tabs defaultValue="workflow" className="w-full">
+    <Tabs value={value} onValueChange={onValueChange} defaultValue="workflow" className="w-full">
       <TabsList className="h-auto w-full flex-wrap justify-start gap-1 overflow-x-auto border border-cyan-200/10 bg-white/[0.045] p-1 backdrop-blur-xl">
         <TabsTrigger value="workflow">Workflow</TabsTrigger>
         <TabsTrigger value="workstreams">Workstreams</TabsTrigger>

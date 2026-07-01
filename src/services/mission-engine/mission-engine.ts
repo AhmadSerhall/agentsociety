@@ -23,6 +23,8 @@ import {
   type MissionConfiguration,
   type MissionContext,
   type MissionEvent,
+  type MissionReplayEvent,
+  type MissionReplayEventType,
   type MissionReport,
   type TimelineEntry,
   type Workstream,
@@ -58,6 +60,11 @@ interface MissionClassification {
 
 function now() {
   return new Date().toISOString();
+}
+
+function relativeTo(startedAt: string | null) {
+  if (!startedAt) return 0;
+  return Math.max(0, Date.now() - new Date(startedAt).getTime());
 }
 
 function createAgentStates(state: AgentThinkingState = "waiting"): Record<AgentRole, AgentThinkingState> {
@@ -163,6 +170,7 @@ export class MissionEngine {
       timeline: [...initialContext.timeline],
       agentStates: initialContext.agentStates ?? createAgentStates(),
       executionTasks: [...(initialContext.executionTasks ?? [])],
+      replayEvents: [...(initialContext.replayEvents ?? [])],
     };
     const signal = this.abortController.signal;
     const mockMode = isMockMode();
@@ -172,8 +180,12 @@ export class MissionEngine {
     devLog("mission classification", classification);
 
     try {
+      this.recordReplayEvent(ctx, "MISSION_CREATED", { payload: { missionId: ctx.missionId, missionBrief: ctx.missionBrief, configuration: ctx.configuration } }, 0);
+      this.recordReplayEvent(ctx, "MISSION_CONFIGURATION_SELECTED", { payload: { configuration: ctx.configuration } }, 30);
+      this.recordReplayEvent(ctx, "MISSION_CLASSIFIED", { payload: { classification }, metadata: { selectedAgents: classification.selectedAgents } }, 60);
       ctx.status = MissionState.Preparing;
       ctx.startedAt = now();
+      this.recordReplayEvent(ctx, "MISSION_STARTED", { payload: { missionId: ctx.missionId } }, 100);
       this.addTimeline(ctx, AgentRole.Planner, MissionState.Preparing, "Mission started", "Mission Control accepted the brief and initialized the agent sequence.", "system");
       this.emit({ type: MissionEventType.MissionStarted, timestamp: now(), payload: {} });
       onUpdate({ ...ctx });
@@ -182,6 +194,29 @@ export class MissionEngine {
       await this.runAgentPhase(ctx, MissionState.Planning, mockMode, qwenClient, signal, onUpdate, classification);
       this.ensureRequiredWorkstreams(ctx, classification);
       ctx.executionTasks = this.createExecutionTasks(ctx.workstreams, classification);
+      for (const workstream of ctx.workstreams) {
+        const agent = getAgentByRole(workstream.assignedAgent ?? AgentRole.Planner);
+        this.recordReplayEvent(ctx, "WORKSTREAM_CREATED", {
+          agentId: agent?.id,
+          agentName: agent?.name,
+          agentRole: workstream.assignedAgent ?? AgentRole.Planner,
+          workstreamId: workstream.id,
+          workstreamTitle: workstream.title,
+          payload: { workstream },
+          confidence: workstream.confidence,
+          dependencies: workstream.dependencies,
+        });
+        this.recordReplayEvent(ctx, "WORKSTREAM_ASSIGNED", {
+          agentId: agent?.id,
+          agentName: agent?.name,
+          agentRole: workstream.assignedAgent ?? AgentRole.Planner,
+          workstreamId: workstream.id,
+          workstreamTitle: workstream.title,
+          payload: { assignedAgent: workstream.assignedAgent, owner: workstream.owner },
+          confidence: workstream.confidence,
+          dependencies: workstream.dependencies,
+        });
+      }
       devLog("selected agents", Array.from(new Set(ctx.executionTasks.map((task) => task.agent))));
       devLog("dependency graph", ctx.executionTasks.map((task) => ({ title: task.title, agent: task.agent, dependencies: task.dependencies })));
       this.addTimeline(ctx, AgentRole.Planner, MissionState.Planning, "Execution tasks created", `${ctx.executionTasks.length} tasks created from Planner output. Independent tasks will run in parallel when dependencies allow.`, "workstream");
@@ -198,6 +233,9 @@ export class MissionEngine {
       devLog("generated conflicts", ctx.conflicts);
       const shouldMediate = ctx.conflicts.length > 0;
       if (shouldMediate) {
+        for (const conflict of ctx.conflicts) {
+          this.recordReplayEvent(ctx, "CONFLICT_DETECTED", { payload: { conflict, conflictTitle: conflict.title }, metadata: { agents: conflict.agents } });
+        }
         this.emit({ type: MissionEventType.ConflictDetected, timestamp: now(), payload: {} });
         onUpdate({ ...ctx });
         await this.runAgentPhase(ctx, MissionState.ConflictResolution, mockMode, qwenClient, signal, onUpdate, classification);
@@ -208,6 +246,9 @@ export class MissionEngine {
           resolution: ctx.mediatorDecisions,
           finalAction: this.resolveConflictAction(conflict, classification),
         }));
+        for (const conflict of ctx.conflicts) {
+          this.recordReplayEvent(ctx, "CONFLICT_RESOLVED", { payload: { conflict, conflictTitle: conflict.title }, metadata: { mediatorDecision: conflict.mediatorDecision } });
+        }
         this.emit({ type: MissionEventType.ConflictResolved, timestamp: now(), payload: {} });
         ctx.progress = 0.88;
         onUpdate({ ...ctx });
@@ -217,12 +258,14 @@ export class MissionEngine {
       ctx.efficiencyMetrics = this.generateEfficiencyMetrics(ctx, shouldMediate);
       devLog("final metrics", ctx.efficiencyMetrics);
       ctx.finalReport = this.generateReport(ctx);
+      this.recordReplayEvent(ctx, "REPORT_GENERATED", { agentRole: AgentRole.Finalizer, agentName: getAgentByRole(AgentRole.Finalizer)?.name, payload: { report: ctx.finalReport, metrics: ctx.efficiencyMetrics } });
       ctx.workstreams = ctx.workstreams.map((workstream) => ({ ...workstream, status: "completed" }));
       ctx.status = MissionState.Completed;
       ctx.progress = 1;
       ctx.currentAgent = null;
       ctx.completedAt = now();
       this.addTimeline(ctx, AgentRole.Finalizer, MissionState.Completed, "Mission completed", "Final report generated from configuration, workstreams, dialogue, conflict resolution, and efficiency metrics.", "report");
+      this.recordReplayEvent(ctx, "MISSION_COMPLETED", { payload: { finalReport: ctx.finalReport, metrics: ctx.efficiencyMetrics } });
       this.emit({ type: MissionEventType.MissionCompleted, timestamp: now(), payload: {} });
       onUpdate({ ...ctx });
     } catch (error) {
@@ -258,6 +301,13 @@ export class MissionEngine {
     ctx.status = phase;
     ctx.currentAgent = agentRole;
     this.setAgentState(ctx, agentRole, "thinking");
+    this.recordReplayEvent(ctx, phase === MissionState.Finalizing ? "FINALIZER_STARTED" : phase === MissionState.ConflictResolution ? "MEDIATOR_STARTED" : phase === MissionState.Planning ? "PLANNER_STARTED" : "AGENT_STARTED", {
+      agentId: agentDef.id,
+      agentName: agentDef.name,
+      agentRole,
+      payload: { phase },
+    });
+    this.recordReplayEvent(ctx, "AGENT_THINKING", { agentId: agentDef.id, agentName: agentDef.name, agentRole, payload: { phase } });
     this.addTimeline(ctx, agentRole, phase, `${agentDef.name} activated`, this.timelineDescription(phase), "agent");
     this.emit({ type: MissionEventType.AgentStarted, timestamp: now(), payload: { agentRole, agentName: agentDef.name, phase } });
     this.emit({ type: MissionEventType.AgentThinking, timestamp: now(), payload: { agentRole, agentName: agentDef.name } });
@@ -269,9 +319,11 @@ export class MissionEngine {
     if (mockMode) {
       await this.delay(Math.floor(this.mockRunner.getDelay(phase) * 0.35), signal);
       this.setAgentState(ctx, agentRole, "analyzing");
+      this.recordReplayEvent(ctx, "AGENT_ANALYZING", { agentId: agentDef.id, agentName: agentDef.name, agentRole, payload: { phase } });
       onUpdate({ ...ctx });
       await this.delay(Math.floor(this.mockRunner.getDelay(phase) * 0.25), signal);
       this.setAgentState(ctx, agentRole, "reviewing");
+      this.recordReplayEvent(ctx, "AGENT_REVIEWING", { agentId: agentDef.id, agentName: agentDef.name, agentRole, payload: { phase } });
       onUpdate({ ...ctx });
       await this.delay(this.mockRunner.getDelay(phase), signal);
       result = this.mockRunner.generate(phase, ctx, undefined, classification);
@@ -293,6 +345,7 @@ export class MissionEngine {
       result = "No client available.";
     }
 
+    this.recordStreamEvents(ctx, phase === MissionState.Planning ? "PLANNER_STREAM" : phase === MissionState.Finalizing ? "FINALIZER_STREAM" : "AGENT_STREAM", result, agentDef.id, agentDef.name, agentRole, phaseStart);
     this.storePhaseResult(ctx, phase, result, classification ?? this.classifyMission(ctx.missionBrief));
     this.setAgentState(ctx, agentRole, "complete");
     this.addDialogue(ctx, agentDef.id, agentDef.name, agentDef.role, result, phase === MissionState.ConflictResolution, {
@@ -301,6 +354,13 @@ export class MissionEngine {
       confidence: this.averageConfidence(ctx),
     });
     this.addTimeline(ctx, agentDef.role, phase, `${agentDef.name} completed`, this.completionDescription(phase), this.timelineKind(phase), Date.now() - phaseStart);
+    this.recordReplayEvent(ctx, phase === MissionState.Planning ? "PLANNER_FINISHED" : phase === MissionState.Finalizing ? "FINALIZER_FINISHED" : phase === MissionState.ConflictResolution ? "MEDIATOR_FINISHED" : "AGENT_FINISHED", {
+      agentId: agentDef.id,
+      agentName: agentDef.name,
+      agentRole,
+      payload: { phase, output: result },
+      confidence: this.averageConfidence(ctx),
+    });
     this.emit({ type: MissionEventType.AgentFinished, timestamp: now(), payload: { agentRole, agentName: agentDef.name, phase } });
     onUpdate({ ...ctx });
   }
@@ -367,6 +427,17 @@ export class MissionEngine {
     ctx.status = phase;
     ctx.currentAgent = task.agent;
     this.setAgentState(ctx, task.agent, "thinking");
+    this.recordReplayEvent(ctx, "AGENT_STARTED", {
+      agentId: agentDef.id,
+      agentName: agentDef.name,
+      agentRole: task.agent,
+      workstreamId: task.workstreamId,
+      workstreamTitle: task.title,
+      payload: { task },
+      confidence: task.confidence,
+      dependencies: task.dependencies,
+    });
+    this.recordReplayEvent(ctx, "AGENT_THINKING", { agentId: agentDef.id, agentName: agentDef.name, agentRole: task.agent, workstreamId: task.workstreamId, workstreamTitle: task.title, confidence: task.confidence, dependencies: task.dependencies });
     this.emit({ type: MissionEventType.AgentStarted, timestamp: now(), payload: { agentRole: task.agent, agentName: agentDef.name, phase, taskId: task.id } });
     this.emit({ type: MissionEventType.AgentThinking, timestamp: now(), payload: { agentRole: task.agent, agentName: agentDef.name, taskId: task.id } });
     onUpdate({ ...ctx });
@@ -376,9 +447,11 @@ export class MissionEngine {
       const delay = this.mockRunner.getDelay(phase);
       await this.delay(Math.floor(delay * 0.35), signal);
       this.setAgentState(ctx, task.agent, "analyzing");
+      this.recordReplayEvent(ctx, "AGENT_ANALYZING", { agentId: agentDef.id, agentName: agentDef.name, agentRole: task.agent, workstreamId: task.workstreamId, workstreamTitle: task.title, confidence: task.confidence, dependencies: task.dependencies });
       onUpdate({ ...ctx });
       await this.delay(Math.floor(delay * 0.35), signal);
       this.setAgentState(ctx, task.agent, "reviewing");
+      this.recordReplayEvent(ctx, "AGENT_REVIEWING", { agentId: agentDef.id, agentName: agentDef.name, agentRole: task.agent, workstreamId: task.workstreamId, workstreamTitle: task.title, confidence: task.confidence, dependencies: task.dependencies });
       onUpdate({ ...ctx });
       await this.delay(Math.floor(delay * 0.3), signal);
       result = this.mockRunner.generate(phase, ctx, task, classification);
@@ -398,12 +471,14 @@ export class MissionEngine {
         result = `## Qwen Fallback Activated\n\nQwen request failed for ${agentDef.name}, so Agent Society used the local mock runner because mock fallback is enabled in Settings.\n\n${this.mockRunner.generate(phase, ctx, task, classification)}`;
       }
       this.setAgentState(ctx, task.agent, "reviewing");
+      this.recordReplayEvent(ctx, "AGENT_REVIEWING", { agentId: agentDef.id, agentName: agentDef.name, agentRole: task.agent, workstreamId: task.workstreamId, workstreamTitle: task.title, confidence: task.confidence, dependencies: task.dependencies });
       onUpdate({ ...ctx });
     } else {
       result = "No client available.";
     }
 
     const nextConfidence = this.evolveConfidence(task.confidence, result, ctx);
+    this.recordStreamEvents(ctx, "AGENT_STREAM", result, agentDef.id, agentDef.name, task.agent, phaseStart, task);
     this.storePhaseResult(ctx, phase, result, classification);
     this.updateTask(ctx, task.id, { status: "completed", output: result, completedAt: now(), confidence: nextConfidence });
     this.updateWorkstream(ctx, task.workstreamId, { status: "completed", output: result, completedAt: now(), confidence: nextConfidence });
@@ -415,6 +490,16 @@ export class MissionEngine {
       confidence: nextConfidence,
     });
     this.addTimeline(ctx, task.agent, phase, `${agentDef.name} completed ${task.title}`, `Confidence moved from ${task.confidence}% to ${nextConfidence}% after reviewing shared context and dependencies.`, this.timelineKind(phase), Date.now() - phaseStart);
+    this.recordReplayEvent(ctx, "AGENT_FINISHED", {
+      agentId: agentDef.id,
+      agentName: agentDef.name,
+      agentRole: task.agent,
+      workstreamId: task.workstreamId,
+      workstreamTitle: task.title,
+      payload: { task: { ...task, status: "completed", output: result, confidence: nextConfidence }, output: result },
+      confidence: nextConfidence,
+      dependencies: task.dependencies,
+    });
     this.emit({ type: MissionEventType.AgentFinished, timestamp: now(), payload: { agentRole: task.agent, agentName: agentDef.name, phase, taskId: task.id } });
     onUpdate({ ...ctx });
   }
@@ -459,6 +544,75 @@ export class MissionEngine {
       ...metadata,
     };
     ctx.dialogue = [...ctx.dialogue, entry];
+    this.recordReplayEvent(ctx, "DIALOGUE_CREATED", {
+      agentId,
+      agentName,
+      agentRole,
+      workstreamId: metadata.referencedWorkstreamIds?.[0],
+      payload: { dialogue: entry },
+      confidence: metadata.confidence,
+      dialogueReference: `${agentId}-${entry.timestamp}`,
+      metadata,
+    });
+  }
+
+  private recordReplayEvent(
+    ctx: MissionContext,
+    type: MissionReplayEventType,
+    event: Partial<MissionReplayEvent> = {},
+    relativeTimestamp = relativeTo(ctx.startedAt)
+  ) {
+    const replayEvent: MissionReplayEvent = {
+      id: generateId(),
+      type,
+      timestamp: now(),
+      relativeTimestamp,
+      ...event,
+      metadata: event.metadata ?? {},
+    };
+    ctx.replayEvents = [...ctx.replayEvents, replayEvent];
+  }
+
+  private recordStreamEvents(
+    ctx: MissionContext,
+    type: Extract<MissionReplayEventType, "PLANNER_STREAM" | "AGENT_STREAM" | "FINALIZER_STREAM">,
+    output: string,
+    agentId: string,
+    agentName: string,
+    agentRole: AgentRole,
+    phaseStart: number,
+    task?: ExecutionTask
+  ) {
+    const chunks = this.chunkText(output);
+    const baseRelative = Math.max(0, phaseStart - (ctx.startedAt ? new Date(ctx.startedAt).getTime() : phaseStart));
+    const span = Math.max(800, Date.now() - phaseStart);
+    chunks.forEach((chunk, index) => {
+      this.recordReplayEvent(ctx, type, {
+        agentId,
+        agentName,
+        agentRole,
+        workstreamId: task?.workstreamId,
+        workstreamTitle: task?.title,
+        payload: { chunk, index, totalChunks: chunks.length },
+        confidence: task?.confidence,
+        dependencies: task?.dependencies,
+      }, baseRelative + Math.round((span * (index + 1)) / Math.max(1, chunks.length + 1)));
+    });
+  }
+
+  private chunkText(text: string) {
+    const words = text.split(/(\s+)/);
+    const chunks: string[] = [];
+    let current = "";
+    for (const word of words) {
+      current += word;
+      if (current.length >= 90) {
+        chunks.push(current);
+        current = "";
+      }
+    }
+    if (current.trim()) chunks.push(current);
+    return chunks.slice(0, 80);
   }
 
   private addTimeline(

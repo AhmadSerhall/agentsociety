@@ -3,7 +3,7 @@
  */
 
 import type { MissionConfiguration } from "./config.types";
-import type { Workstream, ConflictInfo, MissionReport, EfficiencyMetrics } from "./mission.types";
+import type { Workstream, ConflictInfo, MissionReport, EfficiencyMetrics, MissionReplayEvent } from "./mission.types";
 
 export interface MissionHistoryEntry {
   id: string;
@@ -15,4 +15,5 @@ export interface MissionHistoryEntry {
   conflicts: { description: string; resolution?: string }[];
   finalReport: MissionReport | null;
   efficiencyMetrics: EfficiencyMetrics | null;
+  replayEvents?: MissionReplayEvent[];
 }

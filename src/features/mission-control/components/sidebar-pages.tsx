@@ -20,6 +20,7 @@ import {
   ShieldAlert,
   Sparkles,
   RotateCcw,
+  PlayCircle,
   Save,
   Settings,
   ShieldCheck,
@@ -49,6 +50,7 @@ import {
   type MissionConfiguration,
   type MissionContext,
   type MissionHistoryEntry,
+  type MissionReplayEvent,
 } from "@/types";
 import { downloadText, generateId, historyEntryToMarkdown } from "@/utils";
 import type { MissionView } from "./mission-sidebar";
@@ -124,6 +126,7 @@ function contextFromHistory(entry: MissionHistoryEntry): MissionContext {
     status: entry.finalReport ? MissionState.Completed : MissionState.Cancelled,
     startedAt: entry.timestamp,
     completedAt: entry.timestamp,
+    replayEvents: entry.replayEvents ?? [],
   };
 }
 
@@ -131,13 +134,15 @@ export function SidebarPageView({
   activeView,
   onDuplicate,
   onOpenMissionControl,
+  onReplay,
 }: {
   activeView: Exclude<MissionView, "mission-control">;
   onDuplicate: (brief: string, config: Partial<MissionConfiguration>) => void;
   onOpenMissionControl: () => void;
+  onReplay: (events: MissionReplayEvent[]) => void;
 }) {
   if (activeView === "agents") return <AgentsPage />;
-  if (activeView === "history") return <MissionHistoryPage onDuplicate={onDuplicate} onOpenMissionControl={onOpenMissionControl} />;
+  if (activeView === "history") return <MissionHistoryPage onDuplicate={onDuplicate} onOpenMissionControl={onOpenMissionControl} onReplay={onReplay} />;
   if (activeView === "reports") return <ReportsPage />;
   return <SettingsPage />;
 }
@@ -211,7 +216,7 @@ function AgentsPage() {
   );
 }
 
-function MissionHistoryPage({ onDuplicate, onOpenMissionControl }: { onDuplicate: (brief: string, config: Partial<MissionConfiguration>) => void; onOpenMissionControl: () => void }) {
+function MissionHistoryPage({ onDuplicate, onOpenMissionControl, onReplay }: { onDuplicate: (brief: string, config: Partial<MissionConfiguration>) => void; onOpenMissionControl: () => void; onReplay: (events: MissionReplayEvent[]) => void }) {
   const entries = useHistoryStore((state) => state.entries);
   const remove = useHistoryStore((state) => state.remove);
   const setContext = useMissionStore((state) => state.setContext);
@@ -231,6 +236,11 @@ function MissionHistoryPage({ onDuplicate, onOpenMissionControl }: { onDuplicate
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button size="sm" variant="outline" onClick={() => { setContext(contextFromHistory(entry)); onOpenMissionControl(); }} className="border-white/10 bg-white/[0.04] text-white/70">Reopen</Button>
+                  {entry.finalReport && entry.replayEvents?.length ? (
+                    <Button size="sm" onClick={() => onReplay(entry.replayEvents ?? [])} className="gap-1 bg-cyan-300 text-[#06101f] hover:bg-cyan-200"><PlayCircle className="h-3.5 w-3.5" /> Replay Mission</Button>
+                  ) : entry.finalReport ? (
+                    <Button size="sm" variant="outline" disabled className="gap-1 border-white/10 bg-white/[0.03] text-white/35"><PlayCircle className="h-3.5 w-3.5" /> Replay unavailable</Button>
+                  ) : null}
                   <Button size="sm" variant="outline" onClick={() => onDuplicate(entry.missionBrief, entry.configuration)} className="gap-1 border-white/10 bg-white/[0.04] text-white/70"><RotateCcw className="h-3.5 w-3.5" /> Duplicate</Button>
                   <Button size="sm" variant="outline" onClick={() => setDeleteTarget(entry)} className="gap-1 border-red-300/20 bg-red-400/10 text-red-100 hover:border-red-200/45 hover:bg-red-400/15"><Trash2 className="h-3.5 w-3.5" /> Delete</Button>
                 </div>

@@ -26,6 +26,7 @@ function saveMissionHistory(ctx: MissionContext, addHistory: ReturnType<typeof u
     conflicts: ctx.conflicts.map((c) => ({ description: c.description, resolution: c.resolution ?? c.mediatorDecision })),
     finalReport: ctx.finalReport,
     efficiencyMetrics: ctx.efficiencyMetrics,
+    replayEvents: ctx.replayEvents,
   });
 }
 

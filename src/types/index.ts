@@ -26,6 +26,8 @@ export type {
   EfficiencyMetrics,
   TimelineEntry,
   MissionContext,
+  MissionReplayEvent,
+  MissionReplayEventType,
 } from "./mission.types";
 
 export {

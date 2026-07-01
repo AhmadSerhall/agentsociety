@@ -144,6 +144,52 @@ export interface TimelineEntry {
   kind?: "system" | "agent" | "workstream" | "conflict" | "report" | "cancelled";
 }
 
+export type MissionReplayEventType =
+  | "MISSION_CREATED"
+  | "MISSION_STARTED"
+  | "MISSION_CONFIGURATION_SELECTED"
+  | "MISSION_CLASSIFIED"
+  | "PLANNER_STARTED"
+  | "PLANNER_STREAM"
+  | "PLANNER_FINISHED"
+  | "WORKSTREAM_CREATED"
+  | "WORKSTREAM_ASSIGNED"
+  | "AGENT_STARTED"
+  | "AGENT_WAITING"
+  | "AGENT_THINKING"
+  | "AGENT_ANALYZING"
+  | "AGENT_REVIEWING"
+  | "AGENT_STREAM"
+  | "AGENT_FINISHED"
+  | "DIALOGUE_CREATED"
+  | "CONFLICT_DETECTED"
+  | "CONFLICT_UPDATED"
+  | "CONFLICT_RESOLVED"
+  | "MEDIATOR_STARTED"
+  | "MEDIATOR_FINISHED"
+  | "FINALIZER_STARTED"
+  | "FINALIZER_STREAM"
+  | "FINALIZER_FINISHED"
+  | "REPORT_GENERATED"
+  | "MISSION_COMPLETED";
+
+export interface MissionReplayEvent {
+  id: string;
+  type: MissionReplayEventType;
+  timestamp: string;
+  relativeTimestamp: number;
+  agentId?: string;
+  agentName?: string;
+  agentRole?: AgentRole;
+  workstreamId?: string;
+  workstreamTitle?: string;
+  payload?: Record<string, unknown>;
+  confidence?: number;
+  dependencies?: string[];
+  dialogueReference?: string;
+  metadata?: Record<string, unknown>;
+}
+
 export interface MissionContext {
   missionId: MissionId;
   missionBrief: string;
@@ -168,4 +214,5 @@ export interface MissionContext {
   status: MissionState;
   startedAt: string | null;
   completedAt: string | null;
+  replayEvents: MissionReplayEvent[];
 }

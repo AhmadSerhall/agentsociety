@@ -62,6 +62,7 @@ const createEmptyContext = (brief: string, config: MissionConfiguration): Missio
   status: MissionState.Idle,
   startedAt: null,
   completedAt: null,
+  replayEvents: [],
 });
 
 export const useMissionStore = create<MissionStateSlice>((set, get) => ({

@@ -121,6 +121,11 @@ export function createQwenClient(config?: Partial<QwenClientConfig>) {
     messages: QwenMessage[],
     overrides?: { model?: string; temperature?: number; maxTokens?: number; signal?: AbortSignal }
   ): Promise<string> {
+    if (typeof window !== "undefined" && (window as unknown as { __AGENT_SOCIETY_REPLAY_ACTIVE__?: boolean }).__AGENT_SOCIETY_REPLAY_ACTIVE__) {
+      console.warn("[Agent Society Replay] Blocked Qwen chat call during replay mode.");
+      throw new QwenApiError({ code: "REPLAY_BLOCKED", message: "Replay mode never calls Qwen or any LLM." });
+    }
+
     const body: QwenChatRequest = {
       model: overrides?.model ?? cfg.defaultModel,
       messages: sanitizeMessages(messages),
