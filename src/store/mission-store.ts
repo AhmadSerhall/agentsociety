@@ -64,5 +64,9 @@ export const useMissionStore = create<MissionStateSlice>((set, get) => ({
 
   setContext: (ctx) => set({ context: ctx }),
 
+  appendDialogue: (entry) => set((state) => state.context
+    ? { context: { ...state.context, dialogue: [...state.context.dialogue, entry] } }
+    : state),
+
   reset: () => set({ context: null, isRunning: false }),
 }));

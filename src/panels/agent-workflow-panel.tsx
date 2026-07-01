@@ -6,15 +6,15 @@
 
 import { motion } from "framer-motion";
 import { AGENT_DEFINITIONS } from "@/agents";
-import { AgentStatus, MissionState, STATE_AGENT_MAP, type AgentRole } from "@/types";
+import { AgentRole, AgentStatus, MissionState, STATE_AGENT_MAP } from "@/types";
 import { CheckCircle2, Circle, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useMissionStore } from "@/store";
 import { useShallow } from "zustand/react/shallow";
 
 const PIPELINE_ORDER: AgentRole[] = [
-  "planner", "researcher", "product-strategist", "technical-architect",
-  "marketing-strategist", "finance", "risk-critic", "mediator", "finalizer",
+  AgentRole.Planner, AgentRole.Researcher, AgentRole.ProductStrategist, AgentRole.TechnicalArchitect,
+  AgentRole.MarketingStrategist, AgentRole.Finance, AgentRole.RiskCritic, AgentRole.Mediator, AgentRole.Finalizer,
 ];
 
 function getAgentState(status: AgentStatus | null): "done" | "active" | "waiting" {

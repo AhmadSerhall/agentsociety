@@ -6,6 +6,7 @@
  */
 
 import {
+  AgentRole,
   MissionState,
   MissionEventType,
   STATE_AGENT_MAP,

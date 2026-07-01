@@ -245,7 +245,7 @@ function ConfigSelect<T extends string>({ label, value, options, onChange }: { l
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          {Object.entries(options).map(([k, v]) => (
+          {(Object.entries(options) as [T, string][]).map(([k, v]) => (
             <SelectItem key={k} value={k}>{v}</SelectItem>
           ))}
         </SelectContent>
