@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { motion } from "framer-motion";
-import { Loader2, Rocket, Settings2, SlidersHorizontal, X } from "lucide-react";
+import { Loader2, Rocket, Settings2, SlidersHorizontal, Sparkles, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -95,10 +95,24 @@ export function MissionBriefComposer({
 
       <div className="relative">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <Badge className="border-cyan-300/20 bg-cyan-300/10 text-cyan-100 hover:bg-cyan-300/10">
-              Mission Brief
-            </Badge>
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+            <span className="flex items-center gap-2 rounded-full border border-cyan-300/15 bg-cyan-300/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-100/75">
+              <Sparkles className="h-3.5 w-3.5" />
+              Presets
+            </span>
+            {EXAMPLE_PROMPTS.map((example) => (
+              <motion.button
+                key={example.label}
+                type="button"
+                whileHover={{ y: -2, scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => onExampleSelect(example.prompt, example.config)}
+                disabled={isRunning}
+                className="rounded-full border border-white/10 bg-white/[0.055] px-3.5 py-2 text-xs font-medium text-white/68 transition hover:border-cyan-200/35 hover:bg-cyan-300/10 hover:text-cyan-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {example.label}
+              </motion.button>
+            ))}
             {mockMode && (
               <Badge variant="outline" className="border-amber-400/30 bg-amber-400/10 text-amber-200">
                 Mock Mode
@@ -118,11 +132,18 @@ export function MissionBriefComposer({
                 <Settings2 className="h-3.5 w-3.5 text-purple-200" />
               </Button>
             </SheetTrigger>
-            <SheetContent className="border-cyan-200/15 bg-[#07111f]/95 text-white shadow-[0_0_80px_rgba(34,211,238,0.18)] backdrop-blur-2xl">
-              <SheetHeader>
-                <SheetTitle className="text-white">Mission Configuration</SheetTitle>
+            <SheetContent className="w-full overflow-hidden border-l border-cyan-200/20 bg-[#06101d]/88 p-0 text-white shadow-[0_0_100px_rgba(34,211,238,0.25)] backdrop-blur-2xl sm:max-w-lg">
+              <SheetHeader className="sticky top-0 z-10 border-b border-cyan-200/10 bg-[#06101d]/92 p-5 backdrop-blur-2xl">
+                <SheetTitle className="flex items-center gap-3 text-white">
+                  <span className="grid h-10 w-10 place-items-center rounded-2xl border border-cyan-200/20 bg-cyan-300/10">
+                    <SlidersHorizontal className="h-5 w-5 text-cyan-100" />
+                  </span>
+                  Mission Configuration
+                </SheetTitle>
               </SheetHeader>
-              {configContent}
+              <div className="h-full overflow-y-auto px-5 pb-28 [scrollbar-color:rgba(34,211,238,0.35)_transparent]">
+                {configContent}
+              </div>
             </SheetContent>
           </Sheet>
         </div>
@@ -139,22 +160,6 @@ export function MissionBriefComposer({
           rows={8}
           className="min-h-[220px] resize-none rounded-2xl border-cyan-200/15 bg-[#08111f]/78 p-5 text-base leading-7 text-white shadow-inner shadow-black/30 placeholder:text-white/30 focus-visible:border-cyan-200/40 focus-visible:ring-cyan-300/25 md:text-lg"
         />
-
-        <div className="mt-4 flex flex-wrap gap-2">
-          {EXAMPLE_PROMPTS.map((example) => (
-            <motion.button
-              key={example.label}
-              type="button"
-              whileHover={{ y: -2, scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => onExampleSelect(example.prompt, example.config)}
-              disabled={isRunning}
-              className="rounded-full border border-white/10 bg-white/[0.055] px-3.5 py-2 text-xs font-medium text-white/68 transition hover:border-cyan-200/35 hover:bg-cyan-300/10 hover:text-cyan-50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {example.label}
-            </motion.button>
-          ))}
-        </div>
 
         <div className="mt-4 flex flex-wrap gap-2">
           <ConfigChip label="Type" value={MISSION_TYPE_LABELS[config.missionType ?? "general-mission"]} />
