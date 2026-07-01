@@ -1,7 +1,10 @@
 "use client";
 
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Button } from "@/components/ui/button";
 import { useMissionStore } from "@/store";
+import { Copy, Download } from "lucide-react";
+import { downloadText, reportToMarkdown } from "@/utils";
 
 export function ReportPanel() {
   const report = useMissionStore((s) => s.context?.finalReport);
@@ -26,17 +29,30 @@ export function ReportPanel() {
     { title: "Single-Agent vs Multi-Agent Comparison", content: report.singleAgentComparison },
     { title: "Final Recommendations", content: report.finalRecommendations },
   ];
+  const markdown = reportToMarkdown(report);
 
   return (
-    <ScrollArea className="max-h-[620px] pr-3">
+    <div className="space-y-4">
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button size="sm" variant="outline" onClick={() => void navigator.clipboard.writeText(markdown)} className="gap-1 border-white/10 bg-white/[0.04] text-white/70">
+          <Copy className="h-3.5 w-3.5" />
+          Copy Report
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => downloadText("agent-society-report.md", markdown, "text/markdown")} className="gap-1 border-white/10 bg-white/[0.04] text-white/70">
+          <Download className="h-3.5 w-3.5" />
+          Export Markdown
+        </Button>
+      </div>
+      <ScrollArea className="min-h-[320px] max-h-[72vh] pr-3">
       <div className="space-y-5">
         {sections.filter((section) => section.content).map((section) => (
           <section key={section.title} className="rounded-2xl border border-white/10 bg-black/20 p-4">
             <h4 className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-100/60">{section.title}</h4>
-            <div className="mt-3 whitespace-pre-wrap break-words text-sm leading-7 text-white/68">{section.content}</div>
+            <div className="mt-3 whitespace-pre-wrap break-words text-sm leading-relaxed text-white/68">{section.content}</div>
           </section>
         ))}
       </div>
-    </ScrollArea>
+      </ScrollArea>
+    </div>
   );
 }

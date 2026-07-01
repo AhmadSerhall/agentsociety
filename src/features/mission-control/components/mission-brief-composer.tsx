@@ -18,7 +18,7 @@ import {
 const EXAMPLE_PROMPTS = [
   {
     label: "Startup Launch",
-    prompt: "Launch an AI SaaS startup for restaurants in 30 days with an MVP, pricing, launch plan, and risk review.",
+    prompt: "Launch an AI SaaS startup for restaurants with an MVP, pricing, launch plan, and risk review.",
     config: {
       missionType: "startup-launch",
       outputFormat: "execution-roadmap",
@@ -129,7 +129,7 @@ export function MissionBriefComposer({
 
         <Textarea
           placeholder={
-            '"Launch an AI SaaS startup for restaurants in 30 days..."\n' +
+            '"Launch an AI SaaS startup for restaurants..."\n' +
             '"Plan a full MVP and go-to-market strategy for an AI support platform..."\n' +
             '"Create an execution roadmap for a modern ERP system..."'
           }

@@ -27,6 +27,7 @@ import {
 } from "@/types";
 import { AGENT_DEFINITIONS, getAgentByRole } from "@/agents";
 import { createQwenClient, isMockMode } from "@/services/qwen";
+import { useRuntimeSettingsStore } from "@/store/runtime-settings-store";
 import { generateId } from "@/utils";
 import { MockAgentRunner } from "./mock-agent-runner";
 import type { EventListener } from "./types";
@@ -218,10 +219,18 @@ export class MissionEngine {
       await this.delay(this.mockRunner.getDelay(phase), signal);
       result = this.mockRunner.generate(phase, ctx);
     } else if (qwenClient) {
-      result = await qwenClient.chat([
-        { role: "system", content: agentDef.systemPrompt },
-        { role: "user", content: buildPrompt(phase, ctx.missionBrief, ctx, ctx.configuration) },
-      ], { maxTokens: phase === MissionState.Finalizing ? 6000 : 4096, signal });
+      try {
+        result = await qwenClient.chat([
+          { role: "system", content: agentDef.systemPrompt },
+          { role: "user", content: buildPrompt(phase, ctx.missionBrief, ctx, ctx.configuration) },
+        ], { maxTokens: phase === MissionState.Finalizing ? 6000 : 4096, signal });
+      } catch (error) {
+        if (signal.aborted) throw error;
+        if (!useRuntimeSettingsStore.getState().allowMockFallback) {
+          throw new Error(`Qwen request failed during ${agentDef.name}: ${error instanceof Error ? error.message : String(error)}`);
+        }
+        result = `## Qwen Fallback Activated\n\nQwen request failed for ${agentDef.name}, so Agent Society used the local mock runner because mock fallback is enabled in Settings.\n\n${this.mockRunner.generate(phase, ctx)}`;
+      }
       if (signal.aborted) throw new DOMException("Mission cancelled", "AbortError");
     } else {
       result = "No client available.";

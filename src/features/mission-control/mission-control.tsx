@@ -6,7 +6,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
@@ -14,15 +14,13 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
-import { Bot, FileText, History, Menu, Settings } from "lucide-react";
+import { Menu } from "lucide-react";
 import { useMissionEngine } from "@/hooks";
 import { useMissionStore } from "@/store";
-import { useHistoryStore } from "@/store/history-store";
+import { useHistoryStore, useRuntimeSettingsStore } from "@/store";
 import { useFadeInUp, useStaggerContainer } from "@/hooks";
-import { isMockMode } from "@/services/qwen";
+import { getQwenRuntimeInfo } from "@/services/qwen";
 import { MISSION_TYPE_LABELS, DEPTH_LABELS, TIME_HORIZON_LABELS, BUDGET_RANGE_LABELS, RISK_TOLERANCE_LABELS, OUTPUT_FORMAT_LABELS, MissionState, type MissionConfiguration, type MissionType, type Depth, type TimeHorizon, type BudgetRange, type RiskTolerance, type OutputFormat } from "@/types";
-import { AGENT_DEFINITIONS } from "@/agents";
 import {
   AgentWorkflowPanel, WorkstreamsPanel, DialoguePanel,
   ConflictPanel, ReportPanel, TimelinePanel, EfficiencyPanel,
@@ -33,6 +31,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { MissionBriefComposer } from "./components/mission-brief-composer";
 import { MissionSidebar, MissionSidebarContent, type MissionView } from "./components/mission-sidebar";
 import { MissionStatusBar } from "./components/mission-status-bar";
+import { SidebarPageView } from "./components/sidebar-pages";
 
 export function MissionControl() {
   const [brief, setBrief] = useState("");
@@ -42,13 +41,20 @@ export function MissionControl() {
   const [validationOpen, setValidationOpen] = useState(false);
   const [activeView, setActiveView] = useState<MissionView>("mission-control");
   const { context, isRunning, launch, cancel } = useMissionEngine();
-  const historyEntries = useHistoryStore((s) => s.entries);
+  const loadHistory = useHistoryStore((s) => s.load);
+  const loadRuntimeSettings = useRuntimeSettingsStore((s) => s.load);
   const progress = useMissionStore((s) => s.context?.progress ?? 0);
   const status = useMissionStore((s) => s.context?.status);
   const activeAgents = useMissionStore((s) => s.context?.currentAgent ? 1 : 0);
   const fadeUp = useFadeInUp();
   const stagger = useStaggerContainer();
-  const mockMode = isMockMode();
+  const runtimeInfo = getQwenRuntimeInfo();
+  const mockMode = runtimeInfo.provider === "Mock";
+
+  useEffect(() => {
+    loadHistory();
+    loadRuntimeSettings();
+  }, [loadHistory, loadRuntimeSettings]);
 
   const handleLaunch = () => {
     if (brief.trim().length < 10) {
@@ -113,7 +119,7 @@ export function MissionControl() {
             <MissionStatusBar
               activeAgents={activeAgents}
               status={status}
-              mode={mockMode ? "Mock" : "Qwen"}
+              mode={runtimeInfo.provider}
             />
 
             {activeView === "mission-control" ? (
@@ -187,10 +193,14 @@ export function MissionControl() {
                 </AnimatePresence>
               </>
             ) : (
-              <SecondaryView
+              <SidebarPageView
                 activeView={activeView}
-                historyCount={historyEntries.length}
-                mockMode={mockMode}
+                onDuplicate={(nextBrief, nextConfig) => {
+                  setBrief(nextBrief);
+                  setConfig(nextConfig);
+                  setActiveView("mission-control");
+                }}
+                onOpenMissionControl={() => setActiveView("mission-control")}
               />
             )}
           </motion.div>
@@ -241,69 +251,6 @@ function MissionTabs() {
         <TabsContent value="network"><NetworkGraphPanel /></TabsContent>
       </div>
     </Tabs>
-  );
-}
-
-function SecondaryView({ activeView, historyCount, mockMode }: { activeView: MissionView; historyCount: number; mockMode: boolean }) {
-  const content = {
-    agents: {
-      icon: Bot,
-      title: "Agents",
-      description: "Nine specialist agents are ready to collaborate, challenge assumptions, and synthesize mission outputs.",
-      meta: `${AGENT_DEFINITIONS.length} configured agents`,
-    },
-    history: {
-      icon: History,
-      title: "Mission History",
-      description: "Completed missions will appear here with their final reports, conflicts, and efficiency summaries.",
-      meta: `${historyCount} saved missions`,
-    },
-    reports: {
-      icon: FileText,
-      title: "Reports",
-      description: "Final mission reports are generated from workstreams, dialogue, mediator decisions, and selected configuration.",
-      meta: "Awaiting completed mission",
-    },
-    settings: {
-      icon: Settings,
-      title: "Settings",
-      description: "Frontend-only runtime is configured through NEXT_PUBLIC Qwen variables with mock mode fallback.",
-      meta: mockMode ? "Current mode: Mock" : "Current mode: Qwen",
-    },
-    "mission-control": {
-      icon: Bot,
-      title: "Mission Control",
-      description: "Return to the main command dashboard to launch a mission.",
-      meta: "Dashboard ready",
-    },
-  }[activeView];
-  const Icon = content.icon;
-
-  return (
-    <motion.section
-      initial={{ opacity: 0, y: 18 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="rounded-[1.75rem] border border-cyan-200/15 bg-white/[0.055] p-8 shadow-[0_30px_100px_rgba(6,182,212,0.12)] backdrop-blur-2xl"
-    >
-      <div className="flex items-start gap-4">
-        <div className="grid h-14 w-14 place-items-center rounded-2xl border border-cyan-200/20 bg-cyan-300/10">
-          <Icon className="h-6 w-6 text-cyan-200" />
-        </div>
-        <div>
-          <Badge className="border-purple-300/20 bg-purple-400/10 text-purple-100 hover:bg-purple-400/10">
-            {content.meta}
-          </Badge>
-          <h2 className="mt-4 text-3xl font-bold text-white">{content.title}</h2>
-          <p className="mt-2 max-w-2xl text-sm leading-7 text-white/58">{content.description}</p>
-        </div>
-      </div>
-      <div className="mt-8 rounded-2xl border border-dashed border-white/12 bg-black/20 p-8 text-center">
-        <p className="text-sm font-medium text-white">Command module staged</p>
-        <p className="mt-2 text-sm text-white/45">
-          This panel is ready for deeper product workflows without changing the current frontend-only architecture.
-        </p>
-      </div>
-    </motion.section>
   );
 }
 

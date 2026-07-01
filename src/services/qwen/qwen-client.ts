@@ -20,6 +20,15 @@ export interface QwenClientConfig {
   defaultMaxTokens?: number;
 }
 
+export interface QwenRuntimeInfo {
+  provider: "Qwen" | "Mock";
+  hasApiKey: boolean;
+  model: string;
+  baseUrl: string;
+  baseHost: string;
+  isLocalBaseUrl: boolean;
+}
+
 export class QwenApiError extends Error {
   code: string;
   details?: unknown;
@@ -31,18 +40,55 @@ export class QwenApiError extends Error {
   }
 }
 
-export function isMockMode(): boolean {
-  return !process.env.NEXT_PUBLIC_QWEN_API_KEY;
-}
-
 function getClientConfig(): QwenClientConfig {
   return {
-    baseUrl: process.env.NEXT_PUBLIC_QWEN_BASE_URL || "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+    baseUrl: process.env.NEXT_PUBLIC_QWEN_BASE_URL || "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
     apiKey: process.env.NEXT_PUBLIC_QWEN_API_KEY || "",
     defaultModel: process.env.NEXT_PUBLIC_QWEN_MODEL || "qwen-turbo",
     defaultTemperature: 0.7,
     defaultMaxTokens: 4096,
   };
+}
+
+function getHost(baseUrl: string) {
+  try {
+    return new URL(baseUrl).host;
+  } catch {
+    return "invalid-url";
+  }
+}
+
+function isLocalHost(host: string) {
+  return host.startsWith("localhost") || host.startsWith("127.0.0.1") || host.startsWith("[::1]");
+}
+
+export function getQwenRuntimeInfo(): QwenRuntimeInfo {
+  const cfg = getClientConfig();
+  const baseHost = getHost(cfg.baseUrl);
+  const isLocalBaseUrl = isLocalHost(baseHost) || baseHost === "invalid-url";
+  const hasApiKey = Boolean(cfg.apiKey.trim());
+  return {
+    provider: hasApiKey && !isLocalBaseUrl ? "Qwen" : "Mock",
+    hasApiKey,
+    model: cfg.defaultModel,
+    baseUrl: cfg.baseUrl,
+    baseHost,
+    isLocalBaseUrl,
+  };
+}
+
+export function isMockMode(): boolean {
+  return getQwenRuntimeInfo().provider === "Mock";
+}
+
+function chatCompletionsUrl(baseUrl: string) {
+  return `${baseUrl.replace(/\/+$/, "")}/chat/completions`;
+}
+
+function sanitizeMessages(messages: QwenMessage[]): QwenMessage[] {
+  return messages
+    .filter((message) => message.role === "system" || message.role === "user" || message.role === "assistant")
+    .map((message) => ({ role: message.role, content: message.content }));
 }
 
 export function createQwenClient(config?: Partial<QwenClientConfig>) {
@@ -54,13 +100,13 @@ export function createQwenClient(config?: Partial<QwenClientConfig>) {
   ): Promise<string> {
     const body: QwenChatRequest = {
       model: overrides?.model ?? cfg.defaultModel,
-      messages,
+      messages: sanitizeMessages(messages),
       temperature: overrides?.temperature ?? cfg.defaultTemperature,
       max_tokens: overrides?.maxTokens ?? cfg.defaultMaxTokens,
       stream: false,
     };
 
-    const res = await fetch(cfg.baseUrl, {
+    const res = await fetch(chatCompletionsUrl(cfg.baseUrl), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

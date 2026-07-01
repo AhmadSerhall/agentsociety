@@ -15,6 +15,20 @@ import { MissionState, MissionEventType } from "@/types";
 import type { MissionContext, MissionConfiguration } from "@/types";
 import { toast } from "sonner";
 
+function saveMissionHistory(ctx: MissionContext, addHistory: ReturnType<typeof useHistoryStore.getState>["add"]) {
+  addHistory({
+    id: ctx.missionId,
+    missionBrief: ctx.missionBrief,
+    configuration: ctx.configuration,
+    timestamp: ctx.completedAt ?? new Date().toISOString(),
+    workstreams: ctx.workstreams,
+    dialogue: ctx.dialogue.map((d) => ({ agentName: d.agentName, content: d.content })),
+    conflicts: ctx.conflicts.map((c) => ({ description: c.description, resolution: c.resolution ?? c.mediatorDecision })),
+    finalReport: ctx.finalReport,
+    efficiencyMetrics: ctx.efficiencyMetrics,
+  });
+}
+
 export function useMissionEngine() {
   const engineRef = useRef<MissionEngine | null>(null);
   const { context, isRunning, initMission, setContext } = useMissionStore();
@@ -66,31 +80,25 @@ export function useMissionEngine() {
         useMissionStore.setState({ isRunning: false });
         toast.success("Mission completed successfully!");
 
-        // Save to history
         const finalCtx = engine.getContext();
         if (finalCtx) {
-          addHistory({
-            id: finalCtx.missionId,
-            missionBrief: finalCtx.missionBrief,
-            configuration: finalCtx.configuration,
-            timestamp: finalCtx.completedAt ?? new Date().toISOString(),
-            workstreams: finalCtx.workstreams,
-            dialogue: finalCtx.dialogue.map((d) => ({ agentName: d.agentName, content: d.content.slice(0, 200) })),
-            conflicts: finalCtx.conflicts.map((c) => ({ description: c.description, resolution: c.resolution })),
-            finalReport: finalCtx.finalReport,
-            efficiencyMetrics: finalCtx.efficiencyMetrics,
-          });
+          saveMissionHistory(finalCtx, addHistory);
         }
       });
 
       engine.on(MissionEventType.MissionFailed, (e) => {
         useMissionStore.setState({ isRunning: false });
-        toast.error("Mission failed");
+        const payload = e.payload as { error?: string };
+        toast.error(payload.error ?? "Mission failed");
       });
 
       engine.on(MissionEventType.MissionCancelled, () => {
         useMissionStore.setState({ isRunning: false });
         toast.info("Mission cancelled");
+        const partialCtx = engine.getContext();
+        if (partialCtx) {
+          saveMissionHistory(partialCtx, addHistory);
+        }
       });
 
       // Start the engine

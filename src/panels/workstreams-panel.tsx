@@ -33,7 +33,7 @@ export function WorkstreamsPanel() {
               </Badge>
             </div>
 
-            <p className="mt-3 text-sm leading-6 text-white/62">{ws.description}</p>
+            <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-relaxed text-white/62">{ws.description}</p>
 
             <div className="mt-4">
               <div className="mb-1 flex justify-between text-[0.68rem] text-white/45">
@@ -46,7 +46,7 @@ export function WorkstreamsPanel() {
             {ws.deliverables.length > 0 && (
               <ul className="mt-4 space-y-1.5">
                 {ws.deliverables.map((deliverable) => (
-                  <li key={deliverable} className="flex gap-2 text-xs leading-5 text-white/55">
+                  <li key={deliverable} className="flex gap-2 whitespace-pre-wrap break-words text-xs leading-relaxed text-white/55">
                     <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-cyan-300" />
                     {deliverable}
                   </li>

@@ -16,7 +16,7 @@ export function DialoguePanel() {
   }
 
   return (
-    <ScrollArea className="max-h-[560px] pr-3">
+    <ScrollArea className="min-h-[260px] max-h-[70vh] pr-3">
       <div className="space-y-4">
         {dialogue.map((entry, index) => {
           const def = AGENT_DEFINITIONS.find((agent) => agent.id === entry.agentId);
@@ -40,7 +40,7 @@ export function DialoguePanel() {
                     <Badge className="bg-amber-400/15 text-amber-200 hover:bg-amber-400/15">Conflict</Badge>
                   )}
                 </div>
-                <div className="prose prose-invert prose-sm mt-3 max-w-none overflow-hidden break-words prose-headings:text-white prose-p:text-white/68 prose-li:text-white/68 prose-strong:text-white">
+                <div className="prose prose-invert prose-sm mt-3 max-w-none whitespace-pre-wrap break-words leading-relaxed prose-headings:text-white prose-p:text-white/68 prose-li:text-white/68 prose-strong:text-white">
                   <ReactMarkdown>{entry.content}</ReactMarkdown>
                 </div>
               </div>

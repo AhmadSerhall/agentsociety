@@ -30,6 +30,7 @@ interface HistorySlice {
   entries: MissionHistoryEntry[];
   load: () => void;
   add: (entry: MissionHistoryEntry) => void;
+  remove: (id: string) => void;
   clear: () => void;
 }
 
@@ -40,6 +41,12 @@ export const useHistoryStore = create<HistorySlice>((set, get) => ({
 
   add: (entry) => {
     const updated = [entry, ...get().entries];
+    set({ entries: updated });
+    saveHistory(updated);
+  },
+
+  remove: (id) => {
+    const updated = get().entries.filter((entry) => entry.id !== id);
     set({ entries: updated });
     saveHistory(updated);
   },
