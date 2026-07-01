@@ -16,8 +16,10 @@ import {
   STATE_AGENT_MAP,
   TIME_HORIZON_LABELS,
   type AgentDialogueEntry,
+  type AgentThinkingState,
   type ConflictInfo,
   type EfficiencyMetrics,
+  type ExecutionTask,
   type MissionConfiguration,
   type MissionContext,
   type MissionEvent,
@@ -32,29 +34,24 @@ import { generateId } from "@/utils";
 import { MockAgentRunner } from "./mock-agent-runner";
 import type { EventListener } from "./types";
 
-const PHASES: MissionState[] = [
-  MissionState.Planning,
-  MissionState.Researching,
-  MissionState.ProductStrategy,
-  MissionState.TechnicalArchitecture,
-  MissionState.MarketingStrategy,
-  MissionState.FinancialAnalysis,
-  MissionState.RiskReview,
-];
-
-const WORKSTREAM_OWNER: Partial<Record<AgentRole, number>> = {
-  [AgentRole.Researcher]: 0,
-  [AgentRole.ProductStrategist]: 1,
-  [AgentRole.TechnicalArchitect]: 2,
-  [AgentRole.MarketingStrategist]: 3,
-  [AgentRole.Finance]: 4,
-  [AgentRole.RiskCritic]: 4,
-};
-
 const PROGRESS_PER_PHASE = 1 / 9;
 
 function now() {
   return new Date().toISOString();
+}
+
+function createAgentStates(state: AgentThinkingState = "waiting"): Record<AgentRole, AgentThinkingState> {
+  return {
+    [AgentRole.Planner]: state,
+    [AgentRole.Researcher]: state,
+    [AgentRole.ProductStrategist]: state,
+    [AgentRole.TechnicalArchitect]: state,
+    [AgentRole.MarketingStrategist]: state,
+    [AgentRole.Finance]: state,
+    [AgentRole.RiskCritic]: state,
+    [AgentRole.Mediator]: state,
+    [AgentRole.Finalizer]: state,
+  };
 }
 
 function configSummary(config: MissionConfiguration) {
@@ -68,14 +65,20 @@ function configSummary(config: MissionConfiguration) {
   ].join("\n");
 }
 
-function buildPrompt(phase: MissionState, brief: string, ctx: MissionContext, config: MissionConfiguration) {
+function buildPrompt(phase: MissionState, brief: string, ctx: MissionContext, config: MissionConfiguration, task?: ExecutionTask) {
   return `Mission Brief: ${brief}
 
 Selected Mission Configuration:
 ${configSummary(config)}
 
+Current Execution Task:
+${task ? `Title: ${task.title}
+Workstream: ${ctx.workstreams.find((workstream) => workstream.id === task.workstreamId)?.title ?? task.workstreamId}
+Dependencies: ${task.dependencies.length ? task.dependencies.join(", ") : "None"}
+Current Confidence: ${task.confidence}%` : "No specific task. Contribute to the current mission phase."}
+
 Current Workstreams:
-${ctx.workstreams.map((w) => `- ${w.title}: ${w.description}`).join("\n") || "None yet"}
+${ctx.workstreams.map((w) => `- ${w.title} [${w.status}, ${w.confidence ?? 70}% confidence]: ${w.description}`).join("\n") || "None yet"}
 
 Previous Agent Outputs:
 Research: ${ctx.researchSummary.slice(0, 500)}
@@ -86,7 +89,14 @@ Finance: ${ctx.financialPlan.slice(0, 500)}
 Risk: ${ctx.riskReview.slice(0, 500)}
 Mediator: ${ctx.mediatorDecisions.slice(0, 500)}
 
-Produce the ${phase} contribution. Make the output specific to the mission configuration and usable by downstream agents.`;
+Structured Dialogue Context:
+${ctx.dialogue.slice(-6).map((entry) => `- ${entry.agentName} (${entry.status ?? "complete"}): ${entry.content.slice(0, 220).replace(/\n/g, " ")}`).join("\n") || "No prior dialogue."}
+
+Shared Mission State:
+- Agent States: ${Object.entries(ctx.agentStates).map(([role, state]) => `${role}=${state}`).join(", ")}
+- Completed Tasks: ${ctx.executionTasks.filter((item) => item.status === "completed").map((item) => item.title).join("; ") || "None"}
+
+Produce the ${phase} contribution. Make the output specific to the mission configuration, reference previous outputs where useful, and write as if communicating to the rest of the agent society.`;
 }
 
 export class MissionEngine {
@@ -122,7 +132,12 @@ export class MissionEngine {
     onUpdate: (ctx: MissionContext) => void
   ): Promise<void> {
     this.abortController = new AbortController();
-    const ctx: MissionContext = { ...initialContext, timeline: [...initialContext.timeline] };
+    const ctx: MissionContext = {
+      ...initialContext,
+      timeline: [...initialContext.timeline],
+      agentStates: initialContext.agentStates ?? createAgentStates(),
+      executionTasks: [...(initialContext.executionTasks ?? [])],
+    };
     const signal = this.abortController.signal;
     const mockMode = isMockMode();
     const qwenClient = mockMode ? null : createQwenClient();
@@ -136,15 +151,17 @@ export class MissionEngine {
       onUpdate({ ...ctx });
       await this.delay(700, signal);
 
-      let progress = 0;
+      await this.runAgentPhase(ctx, MissionState.Planning, mockMode, qwenClient, signal, onUpdate);
+      ctx.executionTasks = this.createExecutionTasks(ctx.workstreams);
+      this.addTimeline(ctx, AgentRole.Planner, MissionState.Planning, "Execution tasks created", `${ctx.executionTasks.length} tasks created from Planner output. Independent tasks will run in parallel when dependencies allow.`, "workstream");
+      ctx.progress = 0.16;
+      this.emit({ type: MissionEventType.MissionProgress, timestamp: now(), payload: { progress: ctx.progress } });
+      onUpdate({ ...ctx });
 
-      for (const phase of PHASES) {
-        await this.runAgentPhase(ctx, phase, mockMode, qwenClient, signal, onUpdate);
-        progress += PROGRESS_PER_PHASE;
-        ctx.progress = Math.min(progress, 0.78);
-        this.emit({ type: MissionEventType.MissionProgress, timestamp: now(), payload: { progress: ctx.progress } });
-        onUpdate({ ...ctx });
-      }
+      await this.runExecutionTasks(ctx, mockMode, qwenClient, signal, onUpdate);
+      ctx.progress = 0.78;
+      this.emit({ type: MissionEventType.MissionProgress, timestamp: now(), payload: { progress: ctx.progress } });
+      onUpdate({ ...ctx });
 
       const shouldMediate = mockMode || ctx.riskReview.includes("CONFLICT_DETECTED: true");
       if (shouldMediate) {
@@ -206,7 +223,7 @@ export class MissionEngine {
 
     ctx.status = phase;
     ctx.currentAgent = agentRole;
-    this.updateWorkstreamsForAgent(ctx, agentRole);
+    this.setAgentState(ctx, agentRole, "thinking");
     this.addTimeline(ctx, agentRole, phase, `${agentDef.name} activated`, this.timelineDescription(phase), "agent");
     this.emit({ type: MissionEventType.AgentStarted, timestamp: now(), payload: { agentRole, agentName: agentDef.name, phase } });
     this.emit({ type: MissionEventType.AgentThinking, timestamp: now(), payload: { agentRole, agentName: agentDef.name } });
@@ -216,6 +233,12 @@ export class MissionEngine {
     let result: string;
 
     if (mockMode) {
+      await this.delay(Math.floor(this.mockRunner.getDelay(phase) * 0.35), signal);
+      this.setAgentState(ctx, agentRole, "analyzing");
+      onUpdate({ ...ctx });
+      await this.delay(Math.floor(this.mockRunner.getDelay(phase) * 0.25), signal);
+      this.setAgentState(ctx, agentRole, "reviewing");
+      onUpdate({ ...ctx });
       await this.delay(this.mockRunner.getDelay(phase), signal);
       result = this.mockRunner.generate(phase, ctx);
     } else if (qwenClient) {
@@ -237,9 +260,126 @@ export class MissionEngine {
     }
 
     this.storePhaseResult(ctx, phase, result);
-    this.addDialogue(ctx, agentDef.id, agentDef.name, agentDef.role, result, phase === MissionState.ConflictResolution);
+    this.setAgentState(ctx, agentRole, "complete");
+    this.addDialogue(ctx, agentDef.id, agentDef.name, agentDef.role, result, phase === MissionState.ConflictResolution, {
+      phase,
+      status: "complete",
+      confidence: this.averageConfidence(ctx),
+    });
     this.addTimeline(ctx, agentDef.role, phase, `${agentDef.name} completed`, this.completionDescription(phase), this.timelineKind(phase), Date.now() - phaseStart);
     this.emit({ type: MissionEventType.AgentFinished, timestamp: now(), payload: { agentRole, agentName: agentDef.name, phase } });
+    onUpdate({ ...ctx });
+  }
+
+  private async runExecutionTasks(
+    ctx: MissionContext,
+    mockMode: boolean,
+    qwenClient: ReturnType<typeof createQwenClient> | null,
+    signal: AbortSignal,
+    onUpdate: (ctx: MissionContext) => void
+  ) {
+    while (ctx.executionTasks.some((task) => task.status !== "completed")) {
+      if (signal.aborted) throw new DOMException("Mission cancelled", "AbortError");
+
+      const completedTaskIds = new Set(ctx.executionTasks.filter((task) => task.status === "completed").map((task) => task.id));
+      const readyTasks = ctx.executionTasks.filter((task) =>
+        task.status === "pending" && task.dependencies.every((dependency) => completedTaskIds.has(dependency))
+      );
+
+      if (readyTasks.length === 0) {
+        throw new Error("Mission execution deadlock: no workstreams are ready to run.");
+      }
+
+      ctx.executionTasks
+        .filter((task) => task.status === "pending" && !readyTasks.some((readyTask) => readyTask.id === task.id))
+        .forEach((task) => this.setAgentState(ctx, task.agent, "waiting"));
+
+      this.addTimeline(
+        ctx,
+        AgentRole.Planner,
+        MissionState.Planning,
+        readyTasks.length > 1 ? "Parallel workstreams started" : "Workstream started",
+        `${readyTasks.map((task) => task.title).join(", ")} ${readyTasks.length > 1 ? "are" : "is"} ready based on current dependencies.`,
+        "workstream"
+      );
+      onUpdate({ ...ctx });
+
+      await Promise.all(readyTasks.map((task) => this.runExecutionTask(ctx, task, mockMode, qwenClient, signal, onUpdate)));
+
+      const completedCount = ctx.executionTasks.filter((task) => task.status === "completed").length;
+      ctx.progress = Math.min(0.78, 0.16 + (completedCount / Math.max(1, ctx.executionTasks.length)) * 0.58);
+      this.emit({ type: MissionEventType.MissionProgress, timestamp: now(), payload: { progress: ctx.progress } });
+      onUpdate({ ...ctx });
+    }
+  }
+
+  private async runExecutionTask(
+    ctx: MissionContext,
+    task: ExecutionTask,
+    mockMode: boolean,
+    qwenClient: ReturnType<typeof createQwenClient> | null,
+    signal: AbortSignal,
+    onUpdate: (ctx: MissionContext) => void
+  ) {
+    const agentDef = getAgentByRole(task.agent);
+    if (!agentDef) return;
+    const phase = this.phaseForAgent(task.agent);
+    const phaseStart = Date.now();
+
+    this.updateTask(ctx, task.id, { status: "in_progress", startedAt: now() });
+    this.updateWorkstream(ctx, task.workstreamId, { status: "in_progress", startedAt: now() });
+    ctx.status = phase;
+    ctx.currentAgent = task.agent;
+    this.setAgentState(ctx, task.agent, "thinking");
+    this.emit({ type: MissionEventType.AgentStarted, timestamp: now(), payload: { agentRole: task.agent, agentName: agentDef.name, phase, taskId: task.id } });
+    this.emit({ type: MissionEventType.AgentThinking, timestamp: now(), payload: { agentRole: task.agent, agentName: agentDef.name, taskId: task.id } });
+    onUpdate({ ...ctx });
+
+    let result: string;
+    if (mockMode) {
+      const delay = this.mockRunner.getDelay(phase);
+      await this.delay(Math.floor(delay * 0.35), signal);
+      this.setAgentState(ctx, task.agent, "analyzing");
+      onUpdate({ ...ctx });
+      await this.delay(Math.floor(delay * 0.35), signal);
+      this.setAgentState(ctx, task.agent, "reviewing");
+      onUpdate({ ...ctx });
+      await this.delay(Math.floor(delay * 0.3), signal);
+      result = this.mockRunner.generate(phase, ctx, task);
+    } else if (qwenClient) {
+      this.setAgentState(ctx, task.agent, "analyzing");
+      onUpdate({ ...ctx });
+      try {
+        result = await qwenClient.chat([
+          { role: "system", content: agentDef.systemPrompt },
+          { role: "user", content: buildPrompt(phase, ctx.missionBrief, ctx, ctx.configuration, task) },
+        ], { maxTokens: 4096, signal });
+      } catch (error) {
+        if (signal.aborted) throw error;
+        if (!useRuntimeSettingsStore.getState().allowMockFallback) {
+          throw new Error(`Qwen request failed during ${agentDef.name}: ${error instanceof Error ? error.message : String(error)}`);
+        }
+        result = `## Qwen Fallback Activated\n\nQwen request failed for ${agentDef.name}, so Agent Society used the local mock runner because mock fallback is enabled in Settings.\n\n${this.mockRunner.generate(phase, ctx, task)}`;
+      }
+      this.setAgentState(ctx, task.agent, "reviewing");
+      onUpdate({ ...ctx });
+    } else {
+      result = "No client available.";
+    }
+
+    const nextConfidence = this.evolveConfidence(task.confidence, result, ctx);
+    this.storePhaseResult(ctx, phase, result);
+    this.updateTask(ctx, task.id, { status: "completed", output: result, completedAt: now(), confidence: nextConfidence });
+    this.updateWorkstream(ctx, task.workstreamId, { status: "completed", output: result, completedAt: now(), confidence: nextConfidence });
+    this.setAgentState(ctx, task.agent, "complete");
+    this.addDialogue(ctx, agentDef.id, agentDef.name, agentDef.role, result, phase === MissionState.RiskReview, {
+      phase,
+      status: "complete",
+      referencedWorkstreamIds: [task.workstreamId],
+      confidence: nextConfidence,
+    });
+    this.addTimeline(ctx, task.agent, phase, `${agentDef.name} completed ${task.title}`, `Confidence moved from ${task.confidence}% to ${nextConfidence}% after reviewing shared context and dependencies.`, this.timelineKind(phase), Date.now() - phaseStart);
+    this.emit({ type: MissionEventType.AgentFinished, timestamp: now(), payload: { agentRole: task.agent, agentName: agentDef.name, phase, taskId: task.id } });
     onUpdate({ ...ctx });
   }
 
@@ -264,7 +404,15 @@ export class MissionEngine {
     this.addTimeline(ctx, AgentRole.RiskCritic, MissionState.Cancelled, "Mission cancelled", "Sequence stopped by the operator. Partial work remains visible for review.", "cancelled");
   }
 
-  private addDialogue(ctx: MissionContext, agentId: string, agentName: string, agentRole: AgentRole, content: string, isConflict = false) {
+  private addDialogue(
+    ctx: MissionContext,
+    agentId: string,
+    agentName: string,
+    agentRole: AgentRole,
+    content: string,
+    isConflict = false,
+    metadata: Partial<AgentDialogueEntry> = {}
+  ) {
     const entry: AgentDialogueEntry = {
       agentId,
       agentName,
@@ -272,6 +420,7 @@ export class MissionEngine {
       content,
       timestamp: now(),
       isConflict,
+      ...metadata,
     };
     ctx.dialogue = [...ctx.dialogue, entry];
   }
@@ -295,27 +444,31 @@ export class MissionEngine {
         this.addTimeline(ctx, AgentRole.Planner, phase, "Workstreams created", `${ctx.workstreams.length} workstreams created and assigned to specialist agents.`, "workstream");
         break;
       case MissionState.Researching:
-        ctx.researchSummary = result;
+        ctx.researchSummary = this.appendOutput(ctx.researchSummary, result);
         break;
       case MissionState.ProductStrategy:
-        ctx.productStrategy = result;
+        ctx.productStrategy = this.appendOutput(ctx.productStrategy, result);
         break;
       case MissionState.TechnicalArchitecture:
-        ctx.technicalArchitecture = result;
+        ctx.technicalArchitecture = this.appendOutput(ctx.technicalArchitecture, result);
         break;
       case MissionState.MarketingStrategy:
-        ctx.marketingStrategy = result;
+        ctx.marketingStrategy = this.appendOutput(ctx.marketingStrategy, result);
         break;
       case MissionState.FinancialAnalysis:
-        ctx.financialPlan = result;
+        ctx.financialPlan = this.appendOutput(ctx.financialPlan, result);
         break;
       case MissionState.RiskReview:
-        ctx.riskReview = result;
+        ctx.riskReview = this.appendOutput(ctx.riskReview, result);
         break;
       case MissionState.ConflictResolution:
-        ctx.mediatorDecisions = result;
+        ctx.mediatorDecisions = this.appendOutput(ctx.mediatorDecisions, result);
         break;
     }
+  }
+
+  private appendOutput(existing: string, next: string) {
+    return existing ? `${existing}\n\n---\n\n${next}` : next;
   }
 
   private parseWorkstreams(text: string): Workstream[] {
@@ -331,16 +484,27 @@ export class MissionEngine {
       const confidence = Number(body.match(/Confidence:\s*(\d+)/)?.[1] ?? 78);
       const description = body.match(/Description:\s*([^\n]+)/)?.[1]?.trim() ?? body.slice(0, 160);
       const deliverables = body.match(/Deliverables:\s*([^\n]+)/)?.[1]?.split(";").map((item) => item.trim()).filter(Boolean) ?? [];
+      const dependencyIndexes = body.match(/Dependencies:\s*([^\n]+)/)?.[1]
+        ?.split(/[;,]/)
+        .map((item) => Number(item.match(/\d+/)?.[0]))
+        .filter((item) => Number.isFinite(item) && item > 0) ?? [];
       return {
         id: generateId(),
         title: rawTitle.trim() || `Workstream ${index + 1}`,
         description,
-        status: "pending",
+        status: "pending" as const,
         assignedAgent: this.agentFromOwner(ownerLabel),
         confidence,
+        dependencies: dependencyIndexes.map((dependencyIndex) => `workstream-${dependencyIndex}`),
         deliverables,
       };
-    });
+    }).map((workstream, _index, workstreams) => ({
+      ...workstream,
+      dependencies: workstream.dependencies?.map((dependencyKey) => {
+        const dependencyIndex = Number(dependencyKey.replace("workstream-", "")) - 1;
+        return workstreams[dependencyIndex]?.id;
+      }).filter((id): id is string => Boolean(id)) ?? [],
+    }));
   }
 
   private defaultWorkstreams(): Workstream[] {
@@ -352,6 +516,7 @@ export class MissionEngine {
       status: "pending",
       assignedAgent: owner,
       confidence: 80 - index,
+      dependencies: index === 0 ? [] : [],
       deliverables: ["Decision brief", "Execution checklist", "Quality gate"],
     }));
   }
@@ -361,14 +526,84 @@ export class MissionEngine {
     return match?.role ?? null;
   }
 
-  private updateWorkstreamsForAgent(ctx: MissionContext, role: AgentRole) {
-    const activeIndex = WORKSTREAM_OWNER[role];
-    if (activeIndex == null) return;
-    ctx.workstreams = ctx.workstreams.map((workstream, index) => {
-      if (index < activeIndex) return { ...workstream, status: "completed" };
-      if (index === activeIndex) return { ...workstream, status: "in_progress" };
-      return workstream;
+  private createExecutionTasks(workstreams: Workstream[]): ExecutionTask[] {
+    const tasks = workstreams.map((workstream, index) => ({
+      id: generateId(),
+      workstreamId: workstream.id,
+      title: workstream.title,
+      agent: workstream.assignedAgent ?? this.agentForWorkstreamIndex(index),
+      dependencies: [] as string[],
+      status: "pending" as const,
+      confidence: workstream.confidence ?? Math.max(68, 86 - index * 3),
+    }));
+
+    return tasks.map((task, index) => {
+      const workstream = workstreams.find((item) => item.id === task.workstreamId);
+      const explicitDependencies = workstream?.dependencies
+        ?.map((dependencyId) => tasks.find((candidate) => candidate.workstreamId === dependencyId)?.id)
+        .filter((dependencyId): dependencyId is string => Boolean(dependencyId)) ?? [];
+
+      if (explicitDependencies.length) return { ...task, dependencies: explicitDependencies };
+      if (task.agent === AgentRole.Researcher || index === 0) return task;
+
+      const researchTask = tasks.find((candidate) => candidate.agent === AgentRole.Researcher);
+      const productTask = tasks.find((candidate) => candidate.agent === AgentRole.ProductStrategist);
+
+      if (task.agent === AgentRole.ProductStrategist) {
+        return { ...task, dependencies: researchTask ? [researchTask.id] : [] };
+      }
+      if (task.agent === AgentRole.TechnicalArchitect || task.agent === AgentRole.MarketingStrategist) {
+        return { ...task, dependencies: productTask ? [productTask.id] : researchTask ? [researchTask.id] : [] };
+      }
+      if (task.agent === AgentRole.RiskCritic) {
+        return { ...task, dependencies: tasks.filter((candidate) => candidate.id !== task.id).map((candidate) => candidate.id) };
+      }
+      return { ...task, dependencies: researchTask ? [researchTask.id] : [] };
     });
+  }
+
+  private agentForWorkstreamIndex(index: number): AgentRole {
+    return [AgentRole.Researcher, AgentRole.ProductStrategist, AgentRole.TechnicalArchitect, AgentRole.MarketingStrategist, AgentRole.Finance][index] ?? AgentRole.RiskCritic;
+  }
+
+  private phaseForAgent(agent: AgentRole): MissionState {
+    const mapping: Record<AgentRole, MissionState> = {
+      [AgentRole.Planner]: MissionState.Planning,
+      [AgentRole.Researcher]: MissionState.Researching,
+      [AgentRole.ProductStrategist]: MissionState.ProductStrategy,
+      [AgentRole.TechnicalArchitect]: MissionState.TechnicalArchitecture,
+      [AgentRole.MarketingStrategist]: MissionState.MarketingStrategy,
+      [AgentRole.Finance]: MissionState.FinancialAnalysis,
+      [AgentRole.RiskCritic]: MissionState.RiskReview,
+      [AgentRole.Mediator]: MissionState.ConflictResolution,
+      [AgentRole.Finalizer]: MissionState.Finalizing,
+    };
+    return mapping[agent];
+  }
+
+  private setAgentState(ctx: MissionContext, role: AgentRole, state: AgentThinkingState) {
+    ctx.agentStates = { ...ctx.agentStates, [role]: state };
+  }
+
+  private updateTask(ctx: MissionContext, taskId: string, patch: Partial<ExecutionTask>) {
+    ctx.executionTasks = ctx.executionTasks.map((task) => task.id === taskId ? { ...task, ...patch } : task);
+  }
+
+  private updateWorkstream(ctx: MissionContext, workstreamId: string, patch: Partial<Workstream>) {
+    ctx.workstreams = ctx.workstreams.map((workstream) => workstream.id === workstreamId ? { ...workstream, ...patch } : workstream);
+  }
+
+  private averageConfidence(ctx: MissionContext) {
+    const confidenceValues = ctx.workstreams.map((workstream) => workstream.confidence ?? 75);
+    if (confidenceValues.length === 0) return 75;
+    return Math.round(confidenceValues.reduce((sum, value) => sum + value, 0) / confidenceValues.length);
+  }
+
+  private evolveConfidence(current: number, output: string, ctx: MissionContext) {
+    const depthBoost = ctx.configuration.depth === "deep-analysis" ? 4 : ctx.configuration.depth === "fast" ? -1 : 2;
+    const evidenceBoost = Math.min(5, Math.floor(output.length / 900));
+    const conflictPenalty = output.includes("CONFLICT_DETECTED") ? -4 : 0;
+    return Math.max(50, Math.min(97, current + depthBoost + evidenceBoost + conflictPenalty));
   }
 
   private createConflict(ctx: MissionContext) {

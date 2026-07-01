@@ -2,7 +2,7 @@
  * Agent Society — Mission Type Definitions
  */
 
-import type { AgentDialogueEntry } from "./agent.types";
+import type { AgentDialogueEntry, AgentThinkingState } from "./agent.types";
 import type { MissionConfiguration } from "./config.types";
 
 // Import AgentRole as a type-only to avoid circular initialization.
@@ -69,6 +69,23 @@ export interface Workstream {
   assignedAgent: AgentRole | null;
   deliverables: string[];
   confidence?: number;
+  dependencies?: string[];
+  output?: string;
+  startedAt?: string;
+  completedAt?: string;
+}
+
+export interface ExecutionTask {
+  id: string;
+  workstreamId: string;
+  title: string;
+  agent: AgentRole;
+  dependencies: string[];
+  status: "pending" | "in_progress" | "completed";
+  confidence: number;
+  output?: string;
+  startedAt?: string;
+  completedAt?: string;
 }
 
 export interface ConflictInfo {
@@ -142,6 +159,8 @@ export interface MissionContext {
   timeline: TimelineEntry[];
   efficiencyMetrics: EfficiencyMetrics | null;
   currentAgent: AgentRole | null;
+  agentStates: Record<AgentRole, AgentThinkingState>;
+  executionTasks: ExecutionTask[];
   progress: number;
   status: MissionState;
   startedAt: string | null;

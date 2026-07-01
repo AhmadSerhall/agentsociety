@@ -7,6 +7,7 @@ import {
   OUTPUT_FORMAT_LABELS,
   RISK_TOLERANCE_LABELS,
   TIME_HORIZON_LABELS,
+  type ExecutionTask,
   type MissionConfiguration,
   type MissionContext,
 } from "@/types";
@@ -53,22 +54,22 @@ export class MockAgentRunner {
     return MOCK_TIMINGS[phase] ?? 1800;
   }
 
-  generate(phase: MissionState, ctx: MissionContext): string {
+  generate(phase: MissionState, ctx: MissionContext, task?: ExecutionTask): string {
     switch (phase) {
       case MissionState.Planning:
         return this.planner(ctx);
       case MissionState.Researching:
-        return this.research(ctx);
+        return this.research(ctx, task);
       case MissionState.ProductStrategy:
-        return this.product(ctx);
+        return this.product(ctx, task);
       case MissionState.TechnicalArchitecture:
-        return this.technical(ctx);
+        return this.technical(ctx, task);
       case MissionState.MarketingStrategy:
-        return this.marketing(ctx);
+        return this.marketing(ctx, task);
       case MissionState.FinancialAnalysis:
-        return this.finance(ctx);
+        return this.finance(ctx, task);
       case MissionState.RiskReview:
-        return this.risk(ctx);
+        return this.risk(ctx, task);
       case MissionState.ConflictResolution:
         return this.mediator(ctx);
       case MissionState.Finalizing:
@@ -80,45 +81,71 @@ export class MockAgentRunner {
 
   private planner(ctx: MissionContext) {
     const { configuration } = ctx;
+    const focus = this.extractMissionFocus(ctx.missionBrief);
+    const noun = missionNoun(configuration);
+    const workstreams = [
+      {
+        title: `${focus.primary} Discovery & Validation`,
+        owner: "Research Agent",
+        confidence: 84,
+        description: `Validate audience, constraints, current alternatives, and adoption friction for ${focus.shortBrief}.`,
+        deliverables: "Assumption map; evidence checklist; stakeholder profile",
+        dependencies: "None",
+      },
+      {
+        title: `${focus.primary} Offer & Experience Design`,
+        owner: "Product Strategist",
+        confidence: 86,
+        description: `Turn validated findings into a focused ${noun} scope, user journey, priorities, and success criteria.`,
+        deliverables: "Scope brief; priority matrix; success metrics",
+        dependencies: "Workstream 1",
+      },
+      {
+        title: `${focus.primary} Execution Architecture`,
+        owner: "Technical Architect",
+        confidence: 82,
+        description: `Define implementation sequence, constraints, integration points, and delivery risks for the selected roadmap.`,
+        deliverables: "Architecture plan; dependency register; delivery sequence",
+        dependencies: "Workstream 2",
+      },
+      {
+        title: `${focus.primary} Market Activation`,
+        owner: "Marketing Strategist",
+        confidence: 81,
+        description: `Shape positioning, launch narrative, channels, and campaign milestones around the mission objective.`,
+        deliverables: "Positioning brief; launch calendar; message map",
+        dependencies: "Workstream 2",
+      },
+      {
+        title: `${focus.primary} Resource & Risk Governance`,
+        owner: configuration.riskTolerance === "conservative" ? "Risk Critic" : "Finance Agent",
+        confidence: 79,
+        description: `Model budget, operating constraints, risk controls, and go/no-go checkpoints for ${TIME_HORIZON_LABELS[configuration.timeHorizon]}.`,
+        deliverables: "Budget model; risk register; governance checkpoints",
+        dependencies: "Workstream 1; Workstream 2",
+      },
+    ];
+
     return `## Planner Output
 
 ${configLine(configuration)}
 
 ${depthQualifier(configuration)}
 
-**Workstream 1: Strategic Discovery**
-- Owner: Research Agent
-- Confidence: 86
-- Description: Validate the mission assumptions, target users, market context, constraints, and success criteria for this ${missionNoun(configuration)}.
-- Deliverables: Assumption map; stakeholder profile; validation checklist
+Mission interpretation: ${focus.shortBrief}
 
-**Workstream 2: Solution & MVP Definition**
-- Owner: Product Strategist
-- Confidence: 88
-- Description: Convert the brief into a prioritized offer, scope, user journey, and phased roadmap.
-- Deliverables: MVP scope; feature priority matrix; success metrics
-
-**Workstream 3: Technical Execution Plan**
-- Owner: Technical Architect
-- Confidence: 84
-- Description: Define the implementation architecture, dependencies, integration risks, and delivery sequence.
-- Deliverables: Architecture blueprint; build phases; dependency register
-
-**Workstream 4: Market Activation**
-- Owner: Marketing Strategist
-- Confidence: 82
-- Description: Shape positioning, channels, launch narrative, and demand-generation milestones.
-- Deliverables: GTM plan; campaign calendar; launch messaging
-
-**Workstream 5: Risk, Budget & Governance**
-- Owner: Finance Agent
-- Confidence: 80
-- Description: Estimate resourcing, budget range, operating constraints, and risk controls.
-- Deliverables: Budget model; risk register; governance checkpoints`;
+${workstreams.map((workstream, index) => `**Workstream ${index + 1}: ${workstream.title}**
+- Owner: ${workstream.owner}
+- Confidence: ${workstream.confidence}
+- Description: ${workstream.description}
+- Dependencies: ${workstream.dependencies}
+- Deliverables: ${workstream.deliverables}`).join("\n\n")}`;
   }
 
-  private research(ctx: MissionContext) {
+  private research(ctx: MissionContext, task?: ExecutionTask) {
     return `## Research Agent Findings
+
+Task focus: ${task?.title ?? "Strategic research"}.
 
 The mission brief points to a ${missionNoun(ctx.configuration)} requiring clarity on users, constraints, and adoption friction.
 
@@ -130,8 +157,10 @@ The mission brief points to a ${missionNoun(ctx.configuration)} requiring clarit
 Research recommendation: run a validation sprint before heavy execution, document objection patterns, and use those findings to prioritize the final scope.`;
   }
 
-  private product(ctx: MissionContext) {
+  private product(ctx: MissionContext, task?: ExecutionTask) {
     return `## Product Strategist Output
+
+Task focus: ${task?.title ?? "Product strategy"}.
 
 The product direction should be framed as a focused ${MISSION_TYPE_LABELS[ctx.configuration.missionType]} system, not a generic plan.
 
@@ -148,8 +177,10 @@ Success metrics:
 - Number of risks discovered before execution`;
   }
 
-  private technical(ctx: MissionContext) {
+  private technical(ctx: MissionContext, task?: ExecutionTask) {
     return `## Technical Architect Output
+
+Task focus: ${task?.title ?? "Technical architecture"}.
 
 Architecture stance: frontend-only Mission Control remains valid for this stage. Qwen calls should stay in the browser via NEXT_PUBLIC configuration, with mock mode as the reliable fallback.
 
@@ -162,8 +193,10 @@ Implementation priorities:
 Concern: the ${TIME_HORIZON_LABELS[ctx.configuration.timeHorizon]} timeline is aggressive if the scope grows beyond the current frontend-only cockpit. The MVP should avoid backend, auth, database, or persistence expansion until the core workflow feels excellent.`;
   }
 
-  private marketing(ctx: MissionContext) {
+  private marketing(ctx: MissionContext, task?: ExecutionTask) {
     return `## Marketing Strategist Output
+
+Task focus: ${task?.title ?? "Market activation"}.
 
 The launch narrative should emphasize a premium AI Mission Control experience where specialists collaborate, disagree, and synthesize a professional plan.
 
@@ -176,8 +209,10 @@ Campaign plan:
 Launch recommendation: ship a polished demo workflow before adding more product surface area.`;
   }
 
-  private finance(ctx: MissionContext) {
+  private finance(ctx: MissionContext, task?: ExecutionTask) {
     return `## Finance Agent Output
+
+Task focus: ${task?.title ?? "Financial analysis"}.
 
 Budget posture: ${BUDGET_RANGE_LABELS[ctx.configuration.budgetRange]}.
 
@@ -189,8 +224,10 @@ Resource plan:
 Financial concern: if the team tries to satisfy every requested feature inside ${TIME_HORIZON_LABELS[ctx.configuration.timeHorizon]}, scope creep will reduce quality. A smaller, credible Mission Control workflow is the better asset.`;
   }
 
-  private risk(ctx: MissionContext) {
+  private risk(ctx: MissionContext, task?: ExecutionTask) {
     return `## Risk Critic Assessment
+
+Task focus: ${task?.title ?? "Risk review"}.
 
 CONFLICT_DETECTED: true
 
@@ -205,6 +242,20 @@ If the team chases a faster launch and broader architecture at the same time, th
 
 ### Suggested Fix
 Keep the launch focused on frontend-only Mission Control, slow the mock flow enough to feel real, and use the Mediator to convert disagreement into a phased execution plan.`;
+  }
+
+  private extractMissionFocus(brief: string) {
+    const cleaned = brief.replace(/\s+/g, " ").trim();
+    const words = cleaned
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .split(/\s+/)
+      .filter((word) => word.length > 3 && !["with", "from", "that", "this", "into", "plan", "launch", "mission", "using", "today"].includes(word));
+    const primary = words.slice(0, 3).map((word) => word[0].toUpperCase() + word.slice(1)).join(" ") || "Mission";
+    return {
+      primary,
+      shortBrief: cleaned.length > 140 ? `${cleaned.slice(0, 137)}...` : cleaned,
+    };
   }
 
   private mediator(ctx: MissionContext) {

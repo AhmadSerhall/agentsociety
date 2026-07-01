@@ -22,6 +22,8 @@ export enum AgentStatus {
   Error = "error",
 }
 
+export type AgentThinkingState = "waiting" | "thinking" | "analyzing" | "reviewing" | "complete";
+
 export interface AgentDefinition {
   id: string;
   name: string;
@@ -40,4 +42,9 @@ export interface AgentDialogueEntry {
   content: string;
   timestamp: string;
   isConflict?: boolean;
+  phase?: string;
+  status?: AgentThinkingState;
+  targetAgentRole?: AgentRole;
+  referencedWorkstreamIds?: string[];
+  confidence?: number;
 }

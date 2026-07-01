@@ -4,6 +4,7 @@
 
 import { create } from "zustand";
 import {
+  AgentRole,
   MissionState,
   type MissionContext,
   type MissionConfiguration,
@@ -45,6 +46,18 @@ const createEmptyContext = (brief: string, config: MissionConfiguration): Missio
   timeline: [],
   efficiencyMetrics: null,
   currentAgent: null,
+  agentStates: {
+    [AgentRole.Planner]: "waiting",
+    [AgentRole.Researcher]: "waiting",
+    [AgentRole.ProductStrategist]: "waiting",
+    [AgentRole.TechnicalArchitect]: "waiting",
+    [AgentRole.MarketingStrategist]: "waiting",
+    [AgentRole.Finance]: "waiting",
+    [AgentRole.RiskCritic]: "waiting",
+    [AgentRole.Mediator]: "waiting",
+    [AgentRole.Finalizer]: "waiting",
+  },
+  executionTasks: [],
   progress: 0,
   status: MissionState.Idle,
   startedAt: null,

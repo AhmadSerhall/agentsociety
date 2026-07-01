@@ -9,6 +9,7 @@ export {
 export type {
   AgentDefinition,
   AgentDialogueEntry,
+  AgentThinkingState,
 } from "./agent.types";
 
 export {
@@ -19,6 +20,7 @@ export {
 export type {
   MissionId,
   Workstream,
+  ExecutionTask,
   ConflictInfo,
   MissionReport,
   EfficiencyMetrics,
