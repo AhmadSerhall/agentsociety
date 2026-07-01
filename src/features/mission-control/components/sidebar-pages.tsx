@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
+  BrainCircuit,
   Bot,
   CheckCircle2,
   Copy,
@@ -9,10 +10,29 @@ import {
   FileJson,
   FileText,
   History,
+  Lightbulb,
+  Megaphone,
+  Network,
+  PackageCheck,
+  Scale,
+  Search,
+  ShieldAlert,
+  Sparkles,
   RotateCcw,
   Settings,
   Trash2,
+  WalletCards,
 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { AGENT_DEFINITIONS } from "@/agents";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -31,6 +51,18 @@ import type { MissionView } from "./mission-sidebar";
 function cardClass() {
   return "rounded-2xl border border-cyan-200/10 bg-black/20 p-4 shadow-[0_18px_60px_rgba(0,0,0,0.22)]";
 }
+
+const agentIconMap = {
+  planner: BrainCircuit,
+  research: Search,
+  product: Lightbulb,
+  technical: Network,
+  marketing: Megaphone,
+  finance: WalletCards,
+  risk: ShieldAlert,
+  mediator: Scale,
+  finalizer: PackageCheck,
+};
 
 function copyText(text: string) {
   void navigator.clipboard.writeText(text);
@@ -115,12 +147,24 @@ function AgentsPage() {
         {AGENT_DEFINITIONS.map((agent) => {
           const active = context?.currentAgent === agent.role;
           const complete = completedRoles.has(agent.role);
+          const AgentIcon = agentIconMap[agent.id as keyof typeof agentIconMap] ?? Bot;
           return (
-            <article key={agent.id} className={cardClass()}>
+            <article
+              key={agent.id}
+              className="group relative overflow-hidden rounded-2xl border border-cyan-200/10 bg-black/20 p-4 shadow-[0_18px_60px_rgba(0,0,0,0.22)] transition-all duration-300 hover:-translate-y-1 hover:border-cyan-200/35 hover:shadow-[0_24px_90px_rgba(34,211,238,0.18)]"
+            >
+              <div className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+                <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-300/80 to-transparent" />
+                <div className="absolute -right-12 -top-12 h-32 w-32 rounded-full blur-3xl" style={{ backgroundColor: `${agent.color}33` }} />
+              </div>
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3">
-                  <div className="grid h-11 w-11 place-items-center rounded-xl text-sm font-bold text-white" style={{ backgroundColor: agent.color }}>
-                    {agent.name.split(" ").map((part) => part[0]).join("").slice(0, 2)}
+                  <div
+                    className="relative grid h-12 w-12 place-items-center rounded-2xl border text-white shadow-[0_0_30px_rgba(255,255,255,0.06)] transition-transform duration-300 group-hover:scale-105"
+                    style={{ borderColor: `${agent.color}88`, backgroundColor: `${agent.color}22` }}
+                  >
+                    <AgentIcon className="h-5 w-5" style={{ color: agent.color }} />
+                    <Sparkles className="absolute -right-1 -top-1 h-3.5 w-3.5 text-cyan-100/50 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
                   </div>
                   <div>
                     <h3 className="text-sm font-semibold text-white">{agent.name}</h3>
@@ -154,6 +198,7 @@ function MissionHistoryPage({ onDuplicate, onOpenMissionControl }: { onDuplicate
   const entries = useHistoryStore((state) => state.entries);
   const remove = useHistoryStore((state) => state.remove);
   const setContext = useMissionStore((state) => state.setContext);
+  const [deleteTarget, setDeleteTarget] = useState<MissionHistoryEntry | null>(null);
 
   return (
     <section className="space-y-5">
@@ -170,13 +215,39 @@ function MissionHistoryPage({ onDuplicate, onOpenMissionControl }: { onDuplicate
                 <div className="flex flex-wrap gap-2">
                   <Button size="sm" variant="outline" onClick={() => { setContext(contextFromHistory(entry)); onOpenMissionControl(); }} className="border-white/10 bg-white/[0.04] text-white/70">Reopen</Button>
                   <Button size="sm" variant="outline" onClick={() => onDuplicate(entry.missionBrief, entry.configuration)} className="gap-1 border-white/10 bg-white/[0.04] text-white/70"><RotateCcw className="h-3.5 w-3.5" /> Duplicate</Button>
-                  <Button size="sm" variant="outline" onClick={() => remove(entry.id)} className="gap-1 border-red-300/20 bg-red-400/10 text-red-100"><Trash2 className="h-3.5 w-3.5" /> Delete</Button>
+                  <Button size="sm" variant="outline" onClick={() => setDeleteTarget(entry)} className="gap-1 border-red-300/20 bg-red-400/10 text-red-100 hover:border-red-200/45 hover:bg-red-400/15"><Trash2 className="h-3.5 w-3.5" /> Delete</Button>
                 </div>
               </div>
             </article>
           ))}
         </div>
       )}
+      <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent className="border-red-200/15 bg-[#08111d]/95 text-white shadow-[0_30px_120px_rgba(239,68,68,0.18)] backdrop-blur-2xl">
+          <AlertDialogHeader>
+            <div className="mb-2 grid h-12 w-12 place-items-center rounded-2xl border border-red-300/25 bg-red-400/10">
+              <Trash2 className="h-5 w-5 text-red-200" />
+            </div>
+            <AlertDialogTitle className="text-xl text-white">Delete this mission?</AlertDialogTitle>
+            <AlertDialogDescription className="break-words leading-relaxed text-white/58">
+              Are you sure you want to delete this mission? This removes it from local mission history and cannot be undone.
+              {deleteTarget ? <span className="mt-3 block rounded-xl border border-white/10 bg-white/[0.04] p-3 text-white/75">{deleteTarget.missionBrief}</span> : null}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="border-white/10 bg-white/[0.04] text-white/75 hover:bg-white/[0.08] hover:text-white">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (deleteTarget) remove(deleteTarget.id);
+                setDeleteTarget(null);
+              }}
+              className="bg-gradient-to-r from-red-500 to-rose-500 text-white shadow-[0_0_30px_rgba(244,63,94,0.25)] hover:from-red-400 hover:to-rose-400"
+            >
+              Delete Mission
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
   );
 }

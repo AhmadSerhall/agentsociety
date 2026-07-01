@@ -3,6 +3,8 @@
 import { Progress } from "@/components/ui/progress";
 import { useMissionStore } from "@/store";
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import type { TooltipProps } from "recharts";
+import type { NameType, ValueType } from "recharts/types/component/DefaultTooltipContent";
 
 export function EfficiencyPanel() {
   const metrics = useMissionStore((s) => s.context?.efficiencyMetrics);
@@ -39,7 +41,7 @@ export function EfficiencyPanel() {
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
             <XAxis dataKey="name" tick={{ fontSize: 11, fill: "rgba(255,255,255,0.48)" }} />
             <YAxis tick={{ fontSize: 11, fill: "rgba(255,255,255,0.48)" }} domain={[0, 100]} />
-            <Tooltip contentStyle={{ backgroundColor: "#07111f", border: "1px solid rgba(34,211,238,0.18)", borderRadius: 12, fontSize: 12, color: "#fff" }} />
+            <Tooltip cursor={{ fill: "rgba(34,211,238,0.06)" }} content={<EfficiencyTooltip />} />
             <Bar dataKey="single" fill="#334155" radius={[6, 6, 0, 0]} name="Single Agent" />
             <Bar dataKey="multi" radius={[6, 6, 0, 0]} name="Agent Society">
               {data.map((_, index) => (
@@ -48,6 +50,27 @@ export function EfficiencyPanel() {
             </Bar>
           </BarChart>
         </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
+function EfficiencyTooltip({ active, payload, label }: TooltipProps<ValueType, NameType>) {
+  if (!active || !payload?.length) return null;
+
+  return (
+    <div className="rounded-2xl border border-cyan-200/20 bg-[#07111f]/95 px-4 py-3 text-xs text-white shadow-[0_20px_70px_rgba(0,0,0,0.45)] backdrop-blur-xl">
+      <p className="mb-2 font-semibold text-cyan-100">{label}</p>
+      <div className="space-y-1.5">
+        {payload.map((item) => (
+          <div key={String(item.dataKey)} className="flex items-center justify-between gap-5">
+            <span className="flex items-center gap-2 text-white/60">
+              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: item.color }} />
+              {item.name}
+            </span>
+            <span className="font-semibold text-white">{item.value}</span>
+          </div>
+        ))}
       </div>
     </div>
   );

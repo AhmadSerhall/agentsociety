@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { AGENT_DEFINITIONS } from "@/agents";
 import { useMissionStore } from "@/store";
 
@@ -17,7 +18,8 @@ const POSITIONS = [
 
 export function NetworkGraphPanel() {
   const currentAgent = useMissionStore((s) => s.context?.currentAgent);
-  const completedRoles = useMissionStore((s) => new Set(s.context?.dialogue.map((entry) => entry.agentRole) ?? []));
+  const dialogue = useMissionStore((s) => s.context?.dialogue);
+  const completedRoles = useMemo(() => new Set(dialogue?.map((entry) => entry.agentRole) ?? []), [dialogue]);
   const hasConflict = useMissionStore((s) => (s.context?.conflicts.length ?? 0) > 0);
 
   return (

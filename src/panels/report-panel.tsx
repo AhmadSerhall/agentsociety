@@ -1,8 +1,9 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { toast } from "@/hooks/use-toast";
 import { useMissionStore } from "@/store";
-import { Copy, Download } from "lucide-react";
+import { CheckCircle2, Copy, Download } from "lucide-react";
 import { downloadText, reportToMarkdown } from "@/utils";
 
 export function ReportPanel() {
@@ -33,7 +34,18 @@ export function ReportPanel() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap justify-end gap-2">
-        <Button size="sm" variant="outline" onClick={() => void navigator.clipboard.writeText(markdown)} className="gap-1 border-white/10 bg-white/[0.04] text-white/70">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => {
+            void navigator.clipboard.writeText(markdown);
+            toast({
+              title: "Copied to clipboard",
+              description: "The final mission report markdown is ready to paste.",
+            });
+          }}
+          className="gap-1 border-white/10 bg-white/[0.04] text-white/70 hover:border-cyan-200/30 hover:bg-cyan-300/10 hover:text-cyan-50"
+        >
           <Copy className="h-3.5 w-3.5" />
           Copy Report
         </Button>
@@ -46,7 +58,10 @@ export function ReportPanel() {
         <div className="space-y-5">
           {sections.filter((section) => section.content).map((section) => (
             <section key={section.title} className="overflow-hidden rounded-2xl border border-white/10 bg-black/20 p-4">
-              <h4 className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-100/60">{section.title}</h4>
+              <h4 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.22em] text-cyan-100/60">
+                <CheckCircle2 className="h-3.5 w-3.5 text-cyan-200/60" />
+                {section.title}
+              </h4>
               <div className="mt-3 whitespace-pre-wrap break-words text-sm leading-relaxed text-white/68">{section.content}</div>
             </section>
           ))}
