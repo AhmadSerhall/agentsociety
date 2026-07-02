@@ -355,13 +355,17 @@ function MissionHistoryPage({ onOpenMissionControl, onReplay }: { onOpenMissionC
   const remove = useHistoryStore((state) => state.remove);
   const setContext = useMissionStore((state) => state.setContext);
   const [deleteTarget, setDeleteTarget] = useState<MissionHistoryEntry | null>(null);
+  const savedEntries = useMemo(() => entries.filter((entry) => entry.savedAt), [entries]);
+  const recentEntries = useMemo(() => entries.filter((entry) => !entry.savedAt), [entries]);
 
   return (
     <section className="space-y-5">
       <PageHeader icon={History} title="Mission History" meta={`${entries.length} saved missions`} description="Completed and cancelled missions are stored locally in your browser." />
       {entries.length === 0 ? <EmptyState title="No mission history yet" body="Complete or cancel a mission and it will appear here for review." /> : (
         <div className="space-y-3">
-          {entries.map((entry) => (
+          {savedEntries.length > 0 && <HistoryGroup title="Saved Missions" entries={savedEntries} setContext={setContext} onOpenMissionControl={onOpenMissionControl} onReplay={onReplay} onDelete={setDeleteTarget} />}
+          {recentEntries.length > 0 && <div className="flex items-center gap-2 pt-2"><History className="h-4 w-4 text-cyan-100/75" /><h3 className="text-sm font-semibold text-white">Recent Mission History</h3><Badge className="bg-white/10 text-white/55 hover:bg-white/10">{recentEntries.length}</Badge></div>}
+          {recentEntries.map((entry) => (
             <article key={entry.id} className={cardClass()}>
               <div>
                 <div>
@@ -408,6 +412,51 @@ function MissionHistoryPage({ onOpenMissionControl, onReplay }: { onOpenMissionC
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </section>
+  );
+}
+
+function HistoryGroup({
+  title,
+  entries,
+  setContext,
+  onOpenMissionControl,
+  onReplay,
+  onDelete,
+}: {
+  title: string;
+  entries: MissionHistoryEntry[];
+  setContext: (context: MissionContext) => void;
+  onOpenMissionControl: () => void;
+  onReplay: (events: MissionReplayEvent[]) => void;
+  onDelete: (entry: MissionHistoryEntry) => void;
+}) {
+  return (
+    <section className="space-y-3">
+      <div className="flex items-center gap-2">
+        <Save className="h-4 w-4 text-cyan-100/75" />
+        <h3 className="text-sm font-semibold text-white">{title}</h3>
+        <Badge className="bg-white/10 text-white/55 hover:bg-white/10">{entries.length}</Badge>
+      </div>
+      {entries.map((entry) => (
+        <article key={entry.id} className={cardClass()}>
+          <div>
+            <div>
+              <h3 className="break-words text-base font-semibold leading-relaxed text-white">{entry.missionBrief}</h3>
+              <p className="mt-1 text-sm text-white/45">{new Date(entry.savedAt ?? entry.timestamp).toLocaleString()} - Saved</p>
+            </div>
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <Button size="sm" variant="outline" onClick={() => { setContext(contextFromHistory(entry)); onOpenMissionControl(); }} className="border-white/10 bg-white/[0.04] text-white/70">Reopen</Button>
+              {entry.finalReport && entry.replayEvents?.length ? (
+                <Button size="sm" onClick={() => onReplay(entry.replayEvents ?? [])} className="gap-1 bg-cyan-300 text-[#06101f] hover:bg-cyan-200"><PlayCircle className="h-3.5 w-3.5" /> Replay Mission</Button>
+              ) : entry.finalReport ? (
+                <Button size="sm" variant="outline" disabled className="gap-1 border-white/10 bg-white/[0.03] text-white/35"><PlayCircle className="h-3.5 w-3.5" /> Replay unavailable</Button>
+              ) : null}
+              <Button size="sm" variant="outline" onClick={() => onDelete(entry)} className="gap-1 border-red-300/20 bg-red-400/10 text-red-100 hover:border-red-200/45 hover:bg-red-400/15"><Trash2 className="h-3.5 w-3.5" /> Delete</Button>
+            </div>
+          </div>
+        </article>
+      ))}
     </section>
   );
 }

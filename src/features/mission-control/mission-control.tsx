@@ -440,6 +440,7 @@ function MissionOutcomeCard({
       missionBrief: context.missionBrief,
       configuration: context.configuration,
       timestamp: new Date().toISOString(),
+      savedAt: new Date().toISOString(),
       workstreams: context.workstreams,
       dialogue: context.dialogue.map((entry) => ({ agentName: entry.agentName, content: entry.content })),
       conflicts: context.conflicts.map((conflict) => ({ description: conflict.description, resolution: conflict.resolution ?? conflict.mediatorDecision })),

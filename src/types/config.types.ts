@@ -14,6 +14,7 @@ export type MissionType =
 export type Depth = "fast" | "balanced" | "deep-analysis";
 
 export type TimeHorizon =
+  | "none"
   | "7-days"
   | "30-days"
   | "90-days"
@@ -26,7 +27,7 @@ export type BudgetRange =
   | "medium"
   | "enterprise";
 
-export type RiskTolerance = "conservative" | "balanced" | "aggressive";
+export type RiskTolerance = "none" | "conservative" | "balanced" | "aggressive";
 
 export type OutputFormat =
   | "executive-report"
@@ -60,6 +61,7 @@ export const DEPTH_LABELS: Record<Depth, string> = {
 };
 
 export const TIME_HORIZON_LABELS: Record<TimeHorizon, string> = {
+  none: "None specified",
   "7-days": "7 Days",
   "30-days": "30 Days",
   "90-days": "90 Days",
@@ -75,6 +77,7 @@ export const BUDGET_RANGE_LABELS: Record<BudgetRange, string> = {
 };
 
 export const RISK_TOLERANCE_LABELS: Record<RiskTolerance, string> = {
+  none: "None specified",
   conservative: "Conservative",
   balanced: "Balanced",
   aggressive: "Aggressive",

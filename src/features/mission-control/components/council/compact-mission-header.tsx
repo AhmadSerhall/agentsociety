@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { PauseCircle, RotateCcw, ShieldCheck, Timer, UsersRound } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -9,9 +10,9 @@ import { Progress } from "@/components/ui/progress";
 import { useMissionStore } from "@/store";
 import { MissionState } from "@/types";
 
-function elapsed(startedAt?: string | null) {
+function elapsed(startedAt?: string | null, currentTime = Date.now()) {
   if (!startedAt) return "00:00";
-  const seconds = Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000));
+  const seconds = Math.max(0, Math.floor((currentTime - new Date(startedAt).getTime()) / 1000));
   const minutes = Math.floor(seconds / 60).toString().padStart(2, "0");
   const rest = (seconds % 60).toString().padStart(2, "0");
   return `${minutes}:${rest}`;
@@ -19,9 +20,16 @@ function elapsed(startedAt?: string | null) {
 
 export function CompactMissionHeader({ activeAgents, onCancel, onStartNew }: { activeAgents: number; onCancel: () => void; onStartNew: () => void }) {
   const context = useMissionStore((s) => s.context);
+  const [nowTick, setNowTick] = useState(() => Date.now());
   const status = context?.status ?? MissionState.Idle;
   const progress = Math.round((context?.progress ?? 0) * 100);
   const completed = status === MissionState.Completed;
+
+  useEffect(() => {
+    if (!context?.startedAt || completed) return;
+    const interval = window.setInterval(() => setNowTick(Date.now()), 1000);
+    return () => window.clearInterval(interval);
+  }, [completed, context?.startedAt]);
 
   if (!context) return null;
 
@@ -47,7 +55,7 @@ export function CompactMissionHeader({ activeAgents, onCancel, onStartNew }: { a
 
         <div className="grid gap-3 sm:grid-cols-3 xl:w-[430px]">
           <Metric icon={<UsersRound className="h-4 w-4" />} label="Active agents" value={String(activeAgents)} />
-          <Metric icon={<Timer className="h-4 w-4" />} label="Elapsed" value={elapsed(context.startedAt)} />
+          <Metric icon={<Timer className="h-4 w-4" />} label="Elapsed" value={elapsed(context.startedAt, nowTick)} />
           <Metric icon={<ShieldCheck className="h-4 w-4" />} label="Progress" value={`${progress}%`} />
         </div>
 

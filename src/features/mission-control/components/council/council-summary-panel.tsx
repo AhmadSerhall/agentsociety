@@ -3,14 +3,15 @@
 import { CheckCircle2, GitMerge, ShieldCheck, Sparkles } from "lucide-react";
 import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
-import type { MissionContext } from "@/types";
+import { AgentRole, type MissionContext } from "@/types";
 import { sanitizeUserFacingText } from "@/utils";
+import { normalizeAgentOutputForDisplay } from "./agent-output-formatter";
 
 export function CouncilSummaryPanel({ context }: { context: MissionContext }) {
   const report = context.finalReport;
   const confidence = context.efficiencyMetrics?.finalConfidenceScore ?? Math.round(context.executionTasks.reduce((sum, task) => sum + task.confidence, 0) / Math.max(1, context.executionTasks.length));
   const resolvedConflicts = context.conflicts.filter((conflict) => conflict.resolved || conflict.status === "resolved").length;
-  const keyDecision = context.mediatorDecisions || context.conflicts.find((conflict) => conflict.resolution || conflict.mediatorDecision)?.resolution || "The council completed synchronization without a pending mediator decision.";
+  const keyDecision = formatKeyDecision(context);
 
   return (
     <section className="relative overflow-hidden rounded-[1.6rem] border border-emerald-300/20 bg-[radial-gradient(circle_at_50%_0%,rgba(16,185,129,0.15),transparent_38%),linear-gradient(135deg,rgba(3,7,18,0.9),rgba(15,23,42,0.72))] p-6 shadow-[0_26px_100px_rgba(16,185,129,0.12)] backdrop-blur-xl">
@@ -36,6 +37,16 @@ export function CouncilSummaryPanel({ context }: { context: MissionContext }) {
       </div>
     </section>
   );
+}
+
+function formatKeyDecision(context: MissionContext) {
+  const conflictDecision = context.conflicts.find((conflict) => conflict.finalAction || conflict.resolvedAction || conflict.mediatorDecision || conflict.resolution);
+  const raw = conflictDecision?.finalAction ?? conflictDecision?.resolvedAction ?? conflictDecision?.mediatorDecision ?? conflictDecision?.resolution ?? context.mediatorDecisions;
+  if (!raw) return "The mission completed without a pending mediator decision.";
+
+  const normalized = normalizeAgentOutputForDisplay(raw, { agentRole: AgentRole.Mediator, maxLength: 220 });
+  const usefulBullet = normalized.bullets.find((bullet) => /use|reduce|keep|reserve|choose|start|measure|validate|schedule|review/i.test(bullet));
+  return sanitizeUserFacingText(usefulBullet ?? normalized.summary);
 }
 
 function SummaryMetric({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {

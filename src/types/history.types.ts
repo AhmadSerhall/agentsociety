@@ -10,6 +10,7 @@ export interface MissionHistoryEntry {
   missionBrief: string;
   configuration: MissionConfiguration;
   timestamp: string;
+  savedAt?: string;
   workstreams: Workstream[];
   dialogue: { agentName: string; content: string }[];
   conflicts: { description: string; resolution?: string }[];

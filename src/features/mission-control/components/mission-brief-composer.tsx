@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import type { ReactNode } from "react";
 import { motion } from "framer-motion";
 import { Loader2, Rocket, Settings2, SlidersHorizontal, Sparkles, X } from "lucide-react";
@@ -7,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
+import { useHistoryStore } from "@/store";
 import {
   DEPTH_LABELS,
   MISSION_TYPE_LABELS,
@@ -15,7 +17,15 @@ import {
   type MissionConfiguration,
 } from "@/types";
 
-const EXAMPLE_PROMPTS = [
+type PromptSuggestion = {
+  label: string;
+  prompt: string;
+  config: Partial<MissionConfiguration>;
+};
+
+type MatchedPromptSuggestion = PromptSuggestion & { match: RegExp };
+
+const EXAMPLE_PROMPTS: PromptSuggestion[] = [
   {
     label: "Startup Launch",
     prompt: "Launch an AI SaaS startup for restaurants with an MVP, pricing, launch plan, and risk review.",
@@ -49,11 +59,7 @@ const EXAMPLE_PROMPTS = [
       outputFormat: "executive-report",
     },
   },
-] satisfies Array<{
-  label: string;
-  prompt: string;
-  config: Partial<MissionConfiguration>;
-}>;
+];
 
 export function MissionBriefComposer({
   brief,
@@ -82,6 +88,11 @@ export function MissionBriefComposer({
   onLaunch: () => void;
   onCancel: () => void;
 }) {
+  const historyEntries = useHistoryStore((state) => state.entries);
+  const recommendedPrompts = useMemo(() => buildRecommendedPrompts(historyEntries), [historyEntries]);
+  const hasHistoryRecommendations = historyEntries.length > 0 && recommendedPrompts.length > 0;
+  const configNeedsAttention = brief.trim().length > 0 && !showConfig && !isRunning;
+
   return (
     <motion.section
       initial={{ opacity: 0, y: 24, scale: 0.985 }}
@@ -98,9 +109,9 @@ export function MissionBriefComposer({
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
             <span className="flex items-center gap-2 rounded-full border border-cyan-300/15 bg-cyan-300/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-100/75">
               <Sparkles className="h-3.5 w-3.5" />
-              Presets
+              {hasHistoryRecommendations ? "Recommended" : "Presets"}
             </span>
-            {EXAMPLE_PROMPTS.map((example) => (
+            {recommendedPrompts.map((example) => (
               <motion.button
                 key={example.label}
                 type="button"
@@ -125,7 +136,9 @@ export function MissionBriefComposer({
               <Button
                 variant="outline"
                 size="sm"
-                className="gap-2 rounded-full border-cyan-200/20 bg-white/[0.06] px-4 text-cyan-50 shadow-[0_0_24px_rgba(34,211,238,0.10)] hover:border-cyan-200/40 hover:bg-cyan-300/10 hover:text-white"
+                className={`gap-2 rounded-full border-cyan-200/20 bg-white/[0.06] px-4 text-cyan-50 shadow-[0_0_24px_rgba(34,211,238,0.10)] hover:border-cyan-200/40 hover:bg-cyan-300/10 hover:text-white ${
+                  configNeedsAttention ? "animate-pulse border-cyan-200/55 shadow-[0_0_28px_rgba(34,211,238,0.40),0_0_54px_rgba(168,85,247,0.24)]" : ""
+                }`}
               >
                 <SlidersHorizontal className="h-3.5 w-3.5 text-cyan-200" />
                 Mission Config
@@ -210,6 +223,61 @@ export function MissionBriefComposer({
       </div>
     </motion.section>
   );
+}
+
+function buildRecommendedPrompts(entries: ReturnType<typeof useHistoryStore.getState>["entries"]) {
+  if (entries.length === 0) return EXAMPLE_PROMPTS;
+
+  const templates: MatchedPromptSuggestion[] = [
+    {
+      label: "TOEFL Study Plan",
+      match: /toefl|exam|study|learn|course|practice/i,
+      prompt: "Create a focused 30-day study plan with diagnostic assessment, daily practice, mock tests, and risk review.",
+      config: { missionType: "research-plan", outputFormat: "execution-roadmap", timeHorizon: "30-days" },
+    },
+    {
+      label: "React Optimization",
+      match: /react|slow|performance|debug|frontend|latency|bundle/i,
+      prompt: "Analyze why my React app is slow and propose a prioritized optimization plan with measurements and risks.",
+      config: { missionType: "software-architecture", outputFormat: "technical-plan", riskTolerance: "balanced" },
+    },
+    {
+      label: "Startup Launch",
+      match: /startup|launch|saas|school|restaurant|business|customer|sales/i,
+      prompt: "Create a launch strategy for a focused AI SaaS startup with positioning, roadmap, budget, and risk review.",
+      config: { missionType: "startup-launch", outputFormat: "execution-roadmap", timeHorizon: "90-days" },
+    },
+    {
+      label: "Software Architecture",
+      match: /architecture|software|system|platform|api|database|scalable/i,
+      prompt: "Design a scalable software architecture with tradeoffs, dependencies, implementation phases, and risk controls.",
+      config: { missionType: "software-architecture", outputFormat: "technical-plan" },
+    },
+    {
+      label: "Research Analysis",
+      match: /research|analyze|compare|market|validation|report/i,
+      prompt: "Build a research analysis plan with key questions, evidence standards, synthesis, risks, and final recommendations.",
+      config: { missionType: "research-plan", outputFormat: "executive-report" },
+    },
+    {
+      label: "Business Plan",
+      match: /pricing|budget|finance|revenue|business plan|cost/i,
+      prompt: "Create a practical business plan with pricing, resource assumptions, execution roadmap, and risk controls.",
+      config: { missionType: "business-plan", outputFormat: "strategy-brief" },
+    },
+  ];
+
+  const historyText = entries.map((entry) => `${entry.missionBrief} ${entry.configuration.missionType}`).join("\n");
+  const matched = templates.filter((template) => template.match.test(historyText));
+  const recentMission = entries[0];
+  const recentPrompt = recentMission ? [{
+    label: "Build on Last Mission",
+    prompt: `Create the next-step plan for: ${recentMission.missionBrief}`,
+    config: recentMission.configuration,
+  }] : [];
+
+  const unique = [...recentPrompt, ...matched, ...EXAMPLE_PROMPTS].filter((item, index, list) => list.findIndex((candidate) => candidate.label === item.label) === index);
+  return unique.slice(0, 4);
 }
 
 function ConfigChip({ label, value }: { label: string; value: string }) {
