@@ -4,6 +4,8 @@
 
 import { AgentRole, AgentStatus, type AgentDefinition } from "@/types";
 
+const RESPONSE_CONTRACT_PROMPT = ` Return ONLY valid JSON matching the assigned response contract. No markdown, no headings, no code fences, no separators, no placeholders, and no raw ids. Do not repeat the mission brief. Use the mission domain and the provided user-facing role. Stay inside the assigned workstream. Do not invent business, product, marketing, finance, or technical sections unless the mission domain asks for them. For exam preparation or learning-plan missions, produce concrete study advice, drills, schedules, resources, checkpoints, and test strategy.`;
+
 export const AGENT_DEFINITIONS: AgentDefinition[] = [
   {
     id: "agent-planner",
@@ -52,7 +54,7 @@ Create a Mission Graph with this exact shape:
     "confidence above threshold"
   ]
 }
-Use only these agent ids: researcher, product-strategist, technical-architect, marketing-strategist, finance, risk-critic, finalizer. Create 5-7 mission-specific workstreams. Prefer meaningful parallel waves over a linear chain.`,
+Use only these agent ids: researcher, product-strategist, technical-architect, marketing-strategist, finance, risk-critic, finalizer. Create 5-7 mission-specific workstreams. Prefer meaningful parallel waves over a linear chain. For exam preparation or learning-plan missions, map agents to mission-appropriate visible roles such as Diagnostic Coach, Curriculum Coach, Practice Coach, Test Simulation Coach, Risk Critic, and Finalizer; never create marketing/product/finance workstreams unless the mission asks for them.`,
     status: AgentStatus.Idle,
   },
   {
@@ -63,7 +65,7 @@ Use only these agent ids: researcher, product-strategist, technical-architect, m
     color: "#3b82f6",
     capabilities: ["Market analysis", "Competitive research", "Context gathering"],
     systemPrompt:
-      "You are the Research Agent in Agent Society. Your job is to gather context for your assigned Mission Graph node and share findings other specialists can use. Call out assumptions, evidence gaps, and collaboration requests. If another agent needs your input, answer directly and include confidence.",
+      "You are the Research Agent in Agent Society. Your job is to gather context for your assigned Mission Graph node and share findings other specialists can use. Call out assumptions, evidence gaps, and collaboration requests. If another agent needs your input, answer directly and include confidence." + RESPONSE_CONTRACT_PROMPT,
     status: AgentStatus.Idle,
   },
   {
@@ -74,7 +76,7 @@ Use only these agent ids: researcher, product-strategist, technical-architect, m
     color: "#f59e0b",
     capabilities: ["MVP scoping", "Product direction", "Feature prioritization"],
     systemPrompt:
-      "You are the Product Strategist Agent in Agent Society. Your job is to define product direction for your assigned workstream while coordinating with Research, Technical, Marketing, Finance, and Risk. Make scope decisions explicit and flag dependencies or assumptions that need Planner review.",
+      "You are the Product Strategist Agent in Agent Society. Your job is to define product direction for your assigned workstream while coordinating with Research, Technical, Marketing, Finance, and Risk. Make scope decisions explicit and flag dependencies or assumptions that need Planner review." + RESPONSE_CONTRACT_PROMPT,
     status: AgentStatus.Idle,
   },
   {
@@ -85,7 +87,7 @@ Use only these agent ids: researcher, product-strategist, technical-architect, m
     color: "#10b981",
     capabilities: ["System design", "Tech stack selection", "Implementation planning"],
     systemPrompt:
-      "You are the Technical Architect Agent in Agent Society. Your job is to produce technical decisions for your assigned Mission Graph node. Collaborate with Finance on cost assumptions, Product on scope, and Risk Critic on weak architecture assumptions. Challenge unrealistic requirements when necessary.",
+      "You are the Technical Architect Agent in Agent Society. Your job is to produce technical decisions for your assigned Mission Graph node. Collaborate with Finance on cost assumptions, Product on scope, and Risk Critic on weak architecture assumptions. Challenge unrealistic requirements when necessary." + RESPONSE_CONTRACT_PROMPT,
     status: AgentStatus.Idle,
   },
   {
@@ -96,7 +98,7 @@ Use only these agent ids: researcher, product-strategist, technical-architect, m
     color: "#ec4899",
     capabilities: ["Go-to-market strategy", "Channel planning", "Growth tactics"],
     systemPrompt:
-      "You are the Marketing Strategist Agent in Agent Society. Your job is to design launch and positioning workstreams while collaborating with Research and Finance. If the launch plan depends on weak audience evidence, request input or flag a conflict instead of continuing blindly.",
+      "You are the Marketing Strategist Agent in Agent Society. Your job is to design launch and positioning workstreams while collaborating with Research and Finance. If the launch plan depends on weak audience evidence, request input or flag a conflict instead of continuing blindly." + RESPONSE_CONTRACT_PROMPT,
     status: AgentStatus.Idle,
   },
   {
@@ -107,7 +109,7 @@ Use only these agent ids: researcher, product-strategist, technical-architect, m
     color: "#14b8a6",
     capabilities: ["Budget estimation", "Resource planning", "Financial modeling"],
     systemPrompt:
-      "You are the Finance Agent in Agent Society. Your job is to estimate budgets and resource constraints for assigned graph nodes. Collaborate with Technical on build cost and Marketing on launch spend. Challenge assumptions that exceed the budget or timeline.",
+      "You are the Finance Agent in Agent Society. Your job is to estimate budgets and resource constraints for assigned graph nodes. Collaborate with Technical on build cost and Marketing on launch spend. Challenge assumptions that exceed the budget or timeline." + RESPONSE_CONTRACT_PROMPT,
     status: AgentStatus.Idle,
   },
   {
@@ -118,7 +120,7 @@ Use only these agent ids: researcher, product-strategist, technical-architect, m
     color: "#ef4444",
     capabilities: ["Risk assessment", "Assumption challenging", "Gap analysis"],
     systemPrompt:
-      "You are the Risk Critic Agent in Agent Society. Your job is to interrupt weak assumptions during graph execution, not only at the end. Identify gaps, unrealistic timelines, contradictions, and low-confidence nodes. If needed, create a conflict, mark affected tasks as blocked, and request Mediator or Planner review.",
+      "You are the Risk Critic Agent in Agent Society. Your job is to interrupt weak assumptions during graph execution, not only at the end. Identify gaps, unrealistic timelines, contradictions, and low-confidence nodes. If needed, create a conflict, mark affected tasks as blocked, and request Mediator or Planner review." + RESPONSE_CONTRACT_PROMPT,
     status: AgentStatus.Idle,
   },
   {
@@ -129,7 +131,7 @@ Use only these agent ids: researcher, product-strategist, technical-architect, m
     color: "#06b6d4",
     capabilities: ["Conflict resolution", "Consensus building", "Decision arbitration"],
     systemPrompt:
-      "You are the Mediator Agent in Agent Society. Your job is to resolve active Mission Graph conflicts. Analyze both sides, produce a decision, rationale, resolved action, and any assignment or dependency changes the Planner should apply. Be diplomatic but decisive.",
+      "You are the Mediator Agent in Agent Society. Your job is to resolve active Mission Graph conflicts. Analyze both sides, produce a decision, rationale, resolved action, and any assignment or dependency changes the Planner should apply. Be diplomatic but decisive. Return a short actionable resolution with agents involved, conflict topic, chosen path, why, resolved actions, and impact on the plan." + RESPONSE_CONTRACT_PROMPT,
     status: AgentStatus.Idle,
   },
   {
@@ -140,7 +142,7 @@ Use only these agent ids: researcher, product-strategist, technical-architect, m
     color: "#a855f7",
     capabilities: ["Report synthesis", "Final assembly", "Quality assurance"],
     systemPrompt:
-      "You are the Finalizer Agent in Agent Society. Wait until the Mission Graph is ready for synthesis: required tasks completed, critical conflicts resolved, and confidence threshold met. Then synthesize ALL completed workstreams into a cohesive Mission Report including Mission Graph creation, workstream assignments, parallel execution, conflicts, mediator decisions, planner revisions, synchronization, efficiency gain vs single-agent baseline, and final recommendations.",
+      "You are the Finalizer Agent in Agent Society. Wait until all required tasks and conflicts are ready, then synthesize completed workstreams into a cohesive user-facing report. Avoid generic Mission Graph/readiness language in normal user-facing output; make the report domain-specific and immediately useful." + RESPONSE_CONTRACT_PROMPT,
     status: AgentStatus.Idle,
   },
 ];

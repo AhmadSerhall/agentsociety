@@ -4,7 +4,7 @@ import { GitFork, Lock, RadioTower, Sparkles } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import type { ExecutionTask } from "@/types";
-import { displayWorkstreamTitle } from "./agent-output-formatter";
+import { displayRoleForTask, displayWorkstreamTitle } from "./agent-output-formatter";
 
 export function WorkstreamStrip({ tasks, selectedId, onSelect }: { tasks: ExecutionTask[]; selectedId?: string; onSelect: (task: ExecutionTask) => void }) {
   if (tasks.length === 0) {
@@ -42,7 +42,7 @@ export function WorkstreamStrip({ tasks, selectedId, onSelect }: { tasks: Execut
                   {blocked ? <Lock className="h-4 w-4 shrink-0 text-amber-200" /> : active ? <RadioTower className="h-4 w-4 shrink-0 animate-pulse text-purple-200" /> : <Sparkles className="h-4 w-4 shrink-0 text-cyan-200/70" />}
                 </div>
                 <div className="mt-3 flex flex-wrap gap-1.5">
-                  <Chip>{task.agent.replace(/-/g, " ")}</Chip>
+                  <Chip>{displayRoleForTask(task)}</Chip>
                   {task.dependencies.length > 0 && <Chip><GitFork className="mr-1 h-3 w-3" /> {task.dependencies.length} deps</Chip>}
                   <Chip>{task.confidence}%</Chip>
                   <Chip>{task.status}</Chip>

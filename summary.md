@@ -1,647 +1,490 @@
 # Agent Society - Current Project Summary
 
-## Project Overview
+## Short Brief
 
-Agent Society is now a full-stack AI Mission Control project.
+Agent Society is a futuristic AI Mission Control application built with Next.js, React, TypeScript, Tailwind, Zustand, Framer Motion, shadcn/Radix UI, and a frontend Mission Engine.
 
-The product is a dark futuristic Mission Control dashboard where a user can enter a video generation mission, configure generation parameters, upload assets, launch a multi-agent workflow, and watch multiple AI agents collaborate in real time.
+The product lets a user enter a complex mission brief, launch a multi-agent collaboration, and watch an AI society plan, divide work, collaborate, challenge assumptions, resolve conflicts, and synthesize a final report.
 
-The project has moved beyond a static frontend demo. It now includes:
+The project is no longer a simple linear pipeline. It now behaves like a Mission Graph driven agent society:
 
-- A Next.js frontend.
-- A Node.js/Express backend.
-- Socket.IO real-time mission events.
-- A simulated live multi-agent workflow.
-- A Qwen-ready agent integration layer.
-- Mock fallback mode when no Qwen API key is configured.
+- The Planner creates dynamic workstreams.
+- Specialist agents work on assigned tasks.
+- Some workstreams can run in parallel.
+- Risk and specialist agents can challenge assumptions.
+- Conflicts can pause affected workstreams.
+- The Mediator resolves disagreements.
+- The Planner can revise the Mission Graph.
+- The Finalizer waits for synchronization before producing the final report.
+- Mission events are recorded and can be replayed through a floating replay control system.
 
-The current goal of the app is to feel like a premium AI operating system where agents plan, research, create, critique, mediate, and finalize a video generation blueprint.
+## Current App Type
 
-## Current Architecture
+The current workspace is a frontend-first Next.js application.
 
-The intended full-stack structure is:
+Important:
 
-```txt
-root/
-  frontend/
-    Next.js frontend app
+- There is no active backend/database in this current workspace.
+- Missions run through the frontend Mission Engine.
+- The app supports mock mode and Qwen mode.
+- Qwen calls are guarded during replay so replay does not regenerate missions.
+- Local browser state is used for runtime settings and mission history.
 
-  backend/
-    Node.js / Express backend
-```
+## Main Technologies
 
-The backend is responsible for:
+- Next.js 16
+- React 19
+- TypeScript
+- Tailwind CSS
+- Framer Motion
+- Zustand
+- shadcn/Radix UI components
+- Lucide icons
+- Qwen-compatible client integration
+- Local replay/event reconstruction engine
 
-- Mission creation.
-- Mission validation.
-- Agent orchestration.
-- Mock/Qwen agent execution.
-- Socket.IO live events.
-- Uploaded asset metadata handling.
+## Main Product Areas
 
-The frontend is responsible for:
+### Mission Control
 
-- Mission Control UI.
-- Prompt entry.
-- Asset selection and preview.
-- Generation parameter drawer.
-- Launching missions.
-- Listening to Socket.IO events.
-- Rendering live mission progress.
+Mission Control is the main experience. It includes:
 
-## Frontend Summary
+- Dark futuristic UI.
+- Space/mission-control visual style.
+- Sticky desktop sidebar.
+- Mobile navigation drawer.
+- Mission brief composer.
+- Mission configuration controls.
+- Runtime status bar.
+- Compact mission header during execution.
+- Agent Council Room during running/completed missions.
+- Detailed inspection tabs after completion.
 
-The frontend includes a polished Mission Control page with:
+### Mission Brief Composer
 
-- Dark futuristic neon design.
-- Animated hero panel.
-- Animated planet and space particles.
-- Large mission prompt textarea.
-- Add Assets button with file picker.
-- Uploaded asset preview cards.
-- Asset hover preview.
-- Asset preview modal.
-- Advanced Generation Parameters drawer.
-- Launch Generation button.
-- Empty prompt validation modal.
-- Mission status bar.
-- Agent Workflow panel.
-- Generated Subtasks panel.
-- Agent Dialogue panel.
-- Conflict Resolution panel.
-- Mission Output Preview panel.
-- Mission History section.
+Before launch, the user sees a large mission composer where they can:
 
-The frontend originally used static mock timers, but it has now been connected to the backend.
+- Enter the mission brief.
+- Choose or adjust mission configuration.
+- Launch the mission.
+- Cancel a running mission if needed.
+- Use example prompts/configurations.
 
-## Frontend Backend Connection
+After launch, the composer collapses into a compact mission header so the live Council Room appears immediately.
 
-The Launch Generation button now calls:
+## Agent Society Model
 
-```txt
-POST /api/missions
-```
+The system currently uses these agent identities:
 
-The frontend sends:
+- Planner
+- Research Agent
+- Product Strategist
+- Technical Architect
+- Marketing Strategist
+- Finance Agent
+- Risk Critic
+- Mediator
+- Finalizer
 
-- `prompt`
-- `negativePrompt`
-- `stylePreset`
-- `cameraMotion`
-- `resolution`
-- `duration`
-- `aspectRatio`
-- `assets`
+### How The Agents Work
 
-After the backend returns a `missionId`, the frontend joins the mission Socket.IO room and listens for mission events.
+The agents are not meant to be a fixed linear chain anymore. They form a dynamic society around the Mission Graph.
 
-The frontend listens for:
+The Planner:
 
-- `mission:started`
-- `agent:started`
-- `agent:message`
-- `step:completed`
-- `conflict:detected`
-- `conflict:resolved`
-- `mission:completed`
-- `mission:error`
+- Reads the mission brief.
+- Creates a Mission Graph.
+- Defines workstreams.
+- Assigns primary and supporting agents.
+- Defines dependencies and parallel waves.
+- Identifies possible conflict zones.
+- Can revise the graph after conflicts.
 
-The UI updates in real time from backend events:
+Specialist agents:
 
-- Active agent.
-- Generated subtasks.
-- Agent dialogue messages.
-- Conflict state.
-- Mediator resolution.
-- Render progress.
+- Work on assigned workstreams.
+- Produce task-specific outputs.
+- Collaborate with supporting agents.
+- Can challenge weak assumptions.
+- Can create conflicts when assumptions, scope, costs, strategy, or risks do not align.
+
+The Risk Critic:
+
+- Monitors assumptions throughout execution.
+- Flags weak logic, unrealistic plans, missing constraints, and contradictions.
+- Can trigger conflicts before final synthesis.
+
+The Mediator:
+
+- Receives conflict context.
+- Compares both sides of the disagreement.
+- Produces a decision, rationale, and resolved action.
+- Can cause graph revisions or unblock tasks.
+
+The Finalizer:
+
+- Waits until workstreams are complete enough.
+- Waits until important conflicts are resolved.
+- Synthesizes all agent outputs into a final report.
+- Explains workstreams, collaboration, conflicts, mediator decisions, planner revisions, and efficiency gain versus a single-agent approach.
+
+## Mission Graph
+
+The Mission Graph is the core execution model.
+
+It contains:
+
+- missionId
+- workstreams
+- agents
+- task nodes
+- dependencies
+- assignments
+- statuses
+- outputs
+- conflicts
+- synchronization points
+- finalization readiness
+- parallel groups
+- conflict zones
+- synthesis readiness criteria
+
+Each workstream/task can include:
+
+- id
+- title
+- description
+- assigned primary agent
+- supporting agents
+- dependencies
+- status
+- output
+- confidence
+- started/completed timestamps
+
+Supported task statuses include:
+
+- pending
+- ready
+- running
+- blocked
+- completed
+- revised
+- cancelled
+
+## Planner JSON Reliability
+
+The Planner prompt now requires strict JSON output.
+
+The system also includes robust parsing and repair logic:
+
+- Attempts normal JSON parsing.
+- Extracts JSON from markdown/code fences if needed.
+- Extracts the first valid object when possible.
+- Attempts to repair planner output.
+- Falls back to mission-specific fallback workstreams only if repair fails.
+
+Fallback workstreams are now more mission-specific and no longer collapse into a tiny generic 3-step pipeline.
+
+For example, business/money/website-selling prompts create workstreams like:
+
+- Niche Research and Business Targeting
+- Offer and Website Package Design
+- Website Production Workflow
+- Lead Generation and Outreach
+- Pricing, Payments and Revenue Model
+- Sales Risk and Client Objection Review
+- Final Execution Roadmap
+
+## Agent Council Room
+
+The old log-heavy War Room has been transformed into a premium Agent Council Room.
+
+During running missions it shows:
+
+- Agent roster.
+- Circular council discussion area.
+- Mission Engine center node.
+- Active speaking agents with glow/pulse.
+- Latest 3-5 speech bubbles only.
+- Full Transcript drawer for older messages.
+- Mission Intelligence panel.
+- Workstream Strip.
+- Workstream Inspector drawer.
+
+This makes the mission feel like watching agents collaborate instead of reading a giant log.
+
+## Completed Mission UX
+
+The completed state was cleaned up to avoid clutter and overlapping cards.
+
+After completion, the Council Room switches to a calmer 3-column summary layout:
+
+- Left: Agent roster summary.
+- Center: Council Summary / Final Synthesis Preview.
+- Right: Mission Intelligence summary.
+
+The completed summary includes:
+
+- Mission Report Ready / Council Synchronized state.
+- Saved to history badge.
+- Final report objective/title.
+- Executive summary.
+- Key decision.
+- Workstream count.
+- Resolved conflict count.
+- Confidence score.
+- CTA buttons:
+  - View Full Report
+  - Export Markdown
+  - Replay Mission
+  - Start New Mission
+
+## Detailed Tabs
+
+Detailed tabs remain available after completion for inspection:
+
+- Workflow
+- Workstreams
+- Dialogue
+- Conflicts
+- Final Report
+- Timeline
+- Efficiency
+- Network
+
+The View Full Report button now:
+
+- Selects the Final Report tab.
+- Smooth-scrolls to the tabs section.
+- Briefly highlights the detailed tabs.
+- Does not open transcript.
+- Does not trigger replay.
+
+## Transcript And Contribution Drawers
+
+### Full Transcript Drawer
+
+The Full Transcript button opens only the transcript drawer.
+
+It supports:
+
+- All agent messages.
+- Filter by agent.
+- Filter by message type.
+- Search.
+- Timestamps.
+- Clean formatted summaries.
+- Optional raw output only when Developer Debug Mode is enabled.
+
+### Agent Contribution Drawer
+
+Expanding a message opens a specific agent contribution drawer instead of the full transcript.
+
+It shows:
+
+- Selected agent contribution.
+- Related workstreams.
+- Agent-specific messages.
+- Confidence/context where available.
+- For Risk Critic: challenged assumptions/conflicts.
+- For Mediator: decisions and resolved actions.
+- Raw output only in Developer Debug Mode.
+
+## Agent Output Formatting
+
+The UI now uses an Agent Output Formatter layer.
+
+It:
+
+- Detects JSON strings.
+- Safely parses output.
+- Converts JSON into readable summaries.
+- Converts arrays into bullet lists.
+- Converts planner workstreams into cards.
+- Hides internal ids like workstream ids and agent ids.
+- Removes visible markdown markers such as `**bold**`.
+- Prevents raw JSON from appearing in normal user-facing cards.
+- Allows raw output only in Developer Debug Mode.
+
+## Mission Intelligence Panel
+
+Mission Intelligence summarizes the current mission state.
+
+It shows:
+
+- Current Decision.
+- Active Conflict.
+- Confidence Trend / confidence score.
+- Next Up.
+- Blocked Tasks.
+- Mediator Notes.
+
+If there is no conflict, it shows a calm monitoring state instead of pretending something is wrong.
+
+## Workstream Strip And Inspector
+
+The Workstream Strip is a compact horizontal set of task cards.
+
+Each workstream card shows:
+
+- Title.
+- Primary agent.
+- Supporting/dependency info.
+- Status.
+- Confidence.
+- Why it can run now or why it is waiting.
+
+Clicking a workstream opens a Workstream Inspector drawer with:
+
+- Description.
+- Primary agent.
+- Supporting agents.
+- Dependencies.
+- Current output.
+- Related conflicts.
+
+## Replay System
+
+Replay has been transformed from a page/end-section control into a floating global replay overlay.
+
+Replay now has three UI states:
+
+- Mini Dock.
+- Expanded Timeline.
+- Inspector mode.
+
+It floats above the application and can be controlled from anywhere.
+
+### Replay Features
+
+The replay system supports:
+
+- Play/pause.
+- Step backward/forward.
+- Restart.
+- Exit replay.
+- Speed controls.
+- Adaptive speed toggle.
+- Auto-follow toggle.
+- Raw event inspector toggle.
+- Click-to-seek timeline markers.
+- Colored event markers.
+- Agent-colored markers.
+- Conflict/mediator/finalizer/workstream event coloring.
+- Picture-in-picture mode.
+- Draggable overlay in mini, expanded, and inspector states.
+- Dragging from any non-control area.
+- Smooth dragging without selecting/highlighting page text.
+- Overlay can be moved beyond top/left/right/bottom screen edges.
+- Mini dock has a single colored seek slider that can move forward/backward.
+
+### Replay Keyboard Shortcuts
+
+- Space: play/pause.
+- Left/Right: seek 1 second.
+- Shift + Left/Right: previous/next event.
+- Plus/Minus: speed up/down.
+- R: restart.
+- I: inspector mode.
+- T: expanded timeline.
+- P: picture-in-picture.
+- Escape: exit replay.
+
+### Replay Behavior
+
+Replay uses recorded Mission Engine events.
+
+It does not call Qwen again.
+It does not regenerate missions.
+It reconstructs mission state from saved replay events.
+
+Adaptive replay compresses idle gaps while preserving important moments like:
+
+- Conflicts.
+- Mediator interventions.
+- Finalizer events.
+- Synchronization.
 - Mission completion.
-- Final blueprint output.
 
-The frontend styling was not redesigned during backend integration. The existing Mission Control UI was preserved.
+Auto-follow can scroll/focus relevant UI sections while replaying:
 
-## Backend Summary
+- Mission tabs.
+- Mission Intelligence.
+- Workstream Strip.
 
-The backend is a Node.js/Express server with Socket.IO.
+## Settings
 
-Installed backend dependencies:
+Settings currently include:
 
-- `express`
-- `cors`
-- `dotenv`
-- `socket.io`
-- `multer`
-- `zod`
-- `uuid`
-- `nodemon`
+- Qwen API Key.
+- Qwen Base URL.
+- Qwen Model.
+- Allow mock fallback on Qwen failure.
+- Developer Debug Mode.
 
-Backend scripts:
+Developer Debug Mode is off by default.
 
-```json
-{
-  "dev": "nodemon src/server.js",
-  "start": "node src/server.js"
-}
-```
+When enabled, debug drawers can show raw model/replay output.
 
-The backend currently supports:
+## Mock Mode And Qwen Mode
 
-- REST API mission creation.
-- REST API mission lookup.
-- REST API mission steps lookup.
-- REST API asset upload metadata.
-- Socket.IO mission rooms.
-- Sequential multi-agent orchestration.
-- Mock agent mode.
-- Qwen agent mode.
-- Mock fallback when Qwen is unavailable.
+The app supports:
 
-## Backend API
+- Mock mode for demos and development.
+- Qwen mode for real agent responses.
+- Mock fallback behavior when allowed.
 
-### Health
+Qwen mode is expected to return structured content, especially from the Planner. The parser/repair layer protects the app if the model returns malformed JSON or markdown.
 
-```txt
-GET /health
-```
+## Mission History
 
-Returns basic backend health.
+Completed or saved missions can be stored locally.
 
-```txt
-GET /api/health
-```
+Mission history entries can include:
 
-Returns Qwen/agent mode status:
+- Mission brief.
+- Configuration.
+- Workstreams.
+- Dialogue.
+- Conflicts.
+- Final report.
+- Efficiency metrics.
+- Replay events.
 
-```json
-{
-  "status": "ok",
-  "agentMode": "mock"
-}
-```
+Replay can be started from saved missions if replay events exist.
 
-### Create Mission
+## Important UX Fixes Completed In This Session
 
-```txt
-POST /api/missions
-```
+- Sidebar is sticky/fixed during main page scroll.
+- Main content scrolls independently.
+- Completed Council Room no longer shows crowded overlapping speech bubbles.
+- View Full Report now selects and scrolls to Final Report tab.
+- Replay Mission no longer opens Full Transcript.
+- Full Transcript and per-message expand actions are separate.
+- Agent expand opens Agent Contribution Drawer.
+- Replay is now floating and draggable.
+- Replay mini dock has one colored seek slider.
+- Replay drag no longer highlights/selects screen text.
+- Agent messages no longer show raw JSON in normal UI.
+- Markdown markers are cleaned from visible message summaries.
 
-Accepts:
+## Verification
 
-```json
-{
-  "prompt": "Neon city flythrough with autonomous agents coordinating a launch.",
-  "negativePrompt": "",
-  "stylePreset": "Cinematic",
-  "cameraMotion": "Orbit",
-  "resolution": "1080p",
-  "duration": 8,
-  "aspectRatio": "16:9",
-  "assets": []
-}
-```
-
-Behavior:
-
-- Validates request with Zod.
-- Rejects empty prompts with a clean `400` error.
-- Creates an in-memory mission object.
-- Starts the multi-agent workflow asynchronously.
-- Returns a `missionId` immediately.
-
-Example response:
-
-```json
-{
-  "missionId": "uuid-here",
-  "status": "queued"
-}
-```
-
-### Get Mission
+The project has been verified with:
 
 ```txt
-GET /api/missions/:id
-```
-
-Returns mission details.
-
-### Get Mission Steps
-
-```txt
-GET /api/missions/:id/steps
-```
-
-Returns all recorded mission steps.
-
-### Upload Mission Assets
-
-```txt
-POST /api/missions/:id/assets
-```
-
-Uses Multer and accepts uploaded files.
-
-Current behavior:
-
-- Stores mock file metadata in memory.
-- Does not connect to cloud storage yet.
-
-## Socket.IO Events
-
-The backend emits:
-
-- `mission:started`
-- `agent:started`
-- `agent:message`
-- `step:completed`
-- `conflict:detected`
-- `conflict:resolved`
-- `mission:completed`
-- `mission:error`
-
-The frontend joins a mission room using:
-
-```txt
-mission:join
-```
-
-And can leave with:
-
-```txt
-mission:leave
-```
-
-## Mock Multi-Agent Workflow
-
-The backend currently runs this sequential workflow:
-
-1. Planner Agent starts.
-2. Planner decomposes the user prompt into subtasks.
-3. Generated subtasks are emitted one by one.
-4. Research Agent starts.
-5. Creative Agent starts.
-6. Technical Agent starts.
-7. Critic Agent reviews previous outputs.
-8. Conflict is detected between Creative Agent and Critic Agent.
-9. Mediator Agent starts.
-10. Mediator resolves the conflict.
-11. Finalizer Agent creates a final video generation blueprint.
-12. Render/preview steps are simulated.
-13. Mission completes.
-
-The workflow intentionally runs mostly sequentially so the frontend feels like a real mission dashboard.
-
-## Backend Terminal Logs
-
-The backend now logs the workflow clearly so it is easy to confirm the system is working.
-
-Example logs:
-
-```txt
-[mission:id] queued -> "Neon city flythrough..."
-[mission:id] mission:started
-[mission:id] agent:started -> Planner Agent
-[mission:id] agent:message -> Planner Agent (mock)
-[mission:id] subtask:completed -> Analyze mission intent
-[mission:id] agent:started -> Research Agent
-[mission:id] agent:message -> Research Agent (mock)
-[mission:id] conflict:detected -> Creative Agent vs Critic Agent
-[mission:id] conflict:resolved -> ...
-[mission:id] agent:started -> Finalizer Agent
-[mission:id] mission:completed -> 100%
-```
-
-This confirms the mock multi-agent workflow is working live.
-
-## Qwen Integration
-
-Phase 5 added a Qwen-ready backend integration.
-
-The backend now supports:
-
-- `AGENT_MODE=mock`
-- `AGENT_MODE=qwen`
-- Qwen API key from environment variables.
-- Qwen base URL from environment variables.
-- Qwen model from environment variables.
-- Mock fallback when Qwen is unavailable.
-
-Environment example:
-
-```env
-PORT=5000
-FRONTEND_URL=http://localhost:3000
-QWEN_API_KEY=
-QWEN_BASE_URL=https://dashscope-intl.aliyuncs.com/compatible-mode/v1
-QWEN_MODEL=qwen-plus
-AGENT_MODE=mock
-```
-
-To enable Qwen mode:
-
-```env
-AGENT_MODE=qwen
-QWEN_API_KEY=your_qwen_key_here
-QWEN_BASE_URL=https://dashscope-intl.aliyuncs.com/compatible-mode/v1
-QWEN_MODEL=qwen-plus
-```
-
-If `AGENT_MODE=mock` or the API key is missing, the backend returns mock agent outputs.
-
-If `AGENT_MODE=qwen`, the backend calls a Qwen OpenAI-compatible chat completions endpoint.
-
-If a Qwen call fails:
-
-- The error is logged clearly.
-- The mission does not crash.
-- That agent falls back to mock output.
-- The workflow continues.
-
-## Qwen Service
-
-The Qwen service exposes:
-
-```js
-generateAgentResponse({
-  agentName,
-  systemPrompt,
-  userPrompt,
-  context,
-  temperature,
-  jsonMode
-})
-```
-
-Responsibilities:
-
-- Reads `AGENT_MODE`.
-- Reads `QWEN_API_KEY`.
-- Reads `QWEN_BASE_URL`.
-- Reads `QWEN_MODEL`.
-- Calls Qwen when enabled.
-- Returns mock output when in mock mode.
-- Returns mock fallback on failure.
-- Normalizes all responses.
-- Attempts JSON parsing when `jsonMode` is enabled.
-- Prevents one failed agent from crashing the whole mission.
-
-## Agent Modules
-
-Each agent module now exports:
-
-- `name`
-- `role`
-- `color`
-- `systemPrompt`
-- `run(input)`
-
-Agents:
-
-- `planner.agent.js`
-- `research.agent.js`
-- `creative.agent.js`
-- `technical.agent.js`
-- `critic.agent.js`
-- `mediator.agent.js`
-- `finalizer.agent.js`
-
-### Planner Agent
-
-Planner decomposes the user prompt into subtasks.
-
-Expected JSON shape:
-
-```json
-{
-  "summary": "",
-  "subtasks": [
-    {
-      "id": 1,
-      "title": "",
-      "description": "",
-      "assignedAgent": ""
-    }
-  ]
-}
-```
-
-### Research Agent
-
-Research extracts:
-
-- Production requirements.
-- Uploaded asset references.
-- Useful constraints.
-
-### Creative Agent
-
-Creative generates:
-
-- Creative direction.
-- Visual style.
-- Mood.
-- Scene ideas.
-- Pacing.
-
-### Technical Agent
-
-Technical converts creative direction into:
-
-- Video generation instructions.
-- Aspect ratio usage.
-- Duration usage.
-- Resolution usage.
-- Camera motion plan.
-- Asset usage plan.
-
-### Critic Agent
-
-Critic reviews:
-
-- Missing details.
-- Contradictions.
-- Quality risks.
-- Weak creative or technical decisions.
-
-### Mediator Agent
-
-Mediator resolves the conflict between Creative and Critic.
-
-It produces a final decision that keeps the creative ambition but reduces risk.
-
-### Finalizer Agent
-
-Finalizer combines all previous outputs into a final Video Generation Blueprint.
-
-Expected JSON fields:
-
-- `title`
-- `concept`
-- `sceneBreakdown`
-- `assetUsagePlan`
-- `cameraPlan`
-- `stylePrompt`
-- `negativePrompt`
-- `generationSettings`
-- `qualityChecklist`
-- `finalVideoPrompt`
-
-The frontend can display structured finalizer output in the existing Mission Output Preview panel.
-
-## Safe JSON Parsing
-
-The backend includes a safe JSON helper.
-
-If Qwen returns invalid JSON:
-
-- It first tries normal `JSON.parse`.
-- It attempts to extract JSON from fenced code blocks.
-- It attempts to extract JSON from surrounding text.
-- If parsing still fails, it falls back to text output.
-- The mission continues.
-
-## Frontend Compatibility With Qwen Output
-
-The frontend was not redesigned.
-
-Only compatibility was added so that:
-
-- `mission:completed` can include final structured output.
-- The existing Mission Output Preview panel can show the final blueprint title.
-- The panel can show concept text.
-- The panel can show final video prompt.
-- The panel can show part of the quality checklist.
-
-Existing styling remains unchanged.
-
-## Environment Files
-
-Backend example:
-
-```txt
-backend/.env.example
-```
-
-Includes:
-
-```env
-PORT=5000
-FRONTEND_URL=http://localhost:3000
-QWEN_API_KEY=
-QWEN_BASE_URL=https://dashscope-intl.aliyuncs.com/compatible-mode/v1
-QWEN_MODEL=qwen-plus
-AGENT_MODE=mock
-```
-
-Frontend example:
-
-```txt
-frontend/.env.local.example
-```
-
-Includes:
-
-```env
-NEXT_PUBLIC_API_URL=http://localhost:5000
-NEXT_PUBLIC_SOCKET_URL=http://localhost:5000
-```
-
-## How To Run
-
-Backend:
-
-```bash
-cd backend
-npm install
-npm run dev
-```
-
-Frontend:
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-Expected URLs:
-
-```txt
-Frontend: http://localhost:3000
-Backend:  http://localhost:5000
-```
-
-## How To Test The Live Workflow
-
-1. Start the backend.
-2. Start the frontend.
-3. Open `http://localhost:3000`.
-4. Enter a mission prompt in Mission Control.
-5. Click `Launch Generation`.
-6. Watch the frontend panels update live.
-7. Watch the backend terminal logs.
-
-Expected frontend behavior:
-
-- Launch button changes to generating state.
-- Agent workflow progresses agent by agent.
-- Subtasks appear progressively.
-- Agent dialogue appears step by step.
-- Conflict appears.
-- Mediator resolves conflict.
-- Output preview renders progress.
-- Mission completes with a final blueprint.
-
-Expected backend behavior:
-
-- Terminal logs show each mission step.
-- `/api/health` returns `agentMode`.
-- `/api/missions/:id` returns mission details.
-- `/api/missions/:id/steps` returns all mission steps.
-
-## Verification Completed
-
-The project was verified with:
-
-```bash
+npx tsc --noEmit
 npm run lint
 npm run build
-node --check src/server.js
-node --check src/services/qwen.service.js
-node --check src/services/missionOrchestrator.service.js
 ```
 
-A backend smoke test was also run:
+All checks passed after the latest replay and Council Room updates.
 
-- `/api/health` returned `agentMode: mock`.
-- `POST /api/missions` returned a `missionId`.
-- The full workflow ran through Planner, Research, Creative, Technical, Critic, Mediator, and Finalizer.
-- Backend logs confirmed the new agent runner path was working.
+## High-Level Product Pitch
 
-## Important Current Notes
+Agent Society is an AI mission operating system.
 
-- Mock mode must remain available.
-- Qwen mode is opt-in.
-- Qwen failures should never crash the mission.
-- The backend currently stores missions in memory only.
-- Uploaded assets currently store metadata only.
-- No cloud storage is connected yet.
-- No database is connected yet.
-- The frontend UI should not be redesigned during backend/Qwen work.
-- Socket.IO event names should remain stable for frontend compatibility.
+Instead of asking one model to produce one answer, the app creates a society of specialized agents. The Planner turns a user brief into a Mission Graph. Specialists take ownership of workstreams, collaborate in parallel, challenge weak assumptions, resolve disagreements through a Mediator, and synchronize before the Finalizer creates the final report.
 
-## Final Current State
-
-Agent Society now has a working full-stack foundation:
-
-- Premium Mission Control frontend.
-- Express backend.
-- Live Socket.IO mission execution.
-- Multi-agent workflow.
-- Mock mode.
-- Qwen-ready mode.
-- Agent-specific prompts.
-- Safe JSON parsing.
-- Final structured blueprint output.
-- Clear backend logs for testing.
-
-The project is ready for the next phase: improving persistence, adding real asset storage, refining Qwen prompts, and eventually connecting the final blueprint to an actual video generation provider.
+The Council Room makes the collaboration visible. The Replay system lets users inspect how the mission unfolded over time. The result feels less like a chatbot response and more like watching an AI organization think, negotiate, and execute.

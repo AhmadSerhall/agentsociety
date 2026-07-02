@@ -229,7 +229,7 @@ export function MissionControl() {
                         <h1 className="mt-5 bg-gradient-to-r from-white via-cyan-100 to-purple-200 bg-clip-text text-4xl font-bold tracking-tight text-transparent md:text-6xl">
                           Hello, Mission Operator
                         </h1>
-                        <p className="mt-4 text-lg text-white/62 md:text-xl">
+                        <p className="mt-4 mb-4 text-lg text-white/62 md:text-xl">
                           What complex objective are we solving today?
                         </p>
                       </div>

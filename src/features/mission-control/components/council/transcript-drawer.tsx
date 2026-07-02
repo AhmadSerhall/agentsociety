@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useRuntimeSettingsStore } from "@/store";
 import type { AgentDialogueEntry } from "@/types";
+import { sanitizeUserFacingText } from "@/utils";
 import { normalizeDialogueEntry } from "./agent-output-formatter";
 
 export function TranscriptDrawer({ dialogue, open, onOpenChange, focusEntry }: { dialogue: AgentDialogueEntry[]; open: boolean; onOpenChange: (open: boolean) => void; focusEntry?: AgentDialogueEntry | null }) {
@@ -22,7 +23,7 @@ export function TranscriptDrawer({ dialogue, open, onOpenChange, focusEntry }: {
       .filter(({ entry, output }) => agent === "all" || entry.agentRole === agent)
       .filter(({ output }) => type === "all" || output.type === type)
       .filter(({ entry, output }) => {
-        const haystack = `${entry.agentName} ${entry.agentRole} ${output.summary} ${output.bullets.join(" ")}`.toLowerCase();
+        const haystack = `${entry.displayRole ?? entry.agentName} ${entry.agentRole} ${output.summary} ${output.bullets.join(" ")}`.toLowerCase();
         return haystack.includes(query.toLowerCase());
       });
   }, [agent, dialogue, query, type]);
@@ -43,7 +44,7 @@ export function TranscriptDrawer({ dialogue, open, onOpenChange, focusEntry }: {
               <SelectTrigger className="h-10 border-white/10 bg-black/25 text-white"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All agents</SelectItem>
-                {[...new Set(dialogue.map((entry) => entry.agentRole))].map((role) => <SelectItem key={role} value={role}>{role.replace(/-/g, " ")}</SelectItem>)}
+                {[...new Map(dialogue.map((entry) => [entry.agentRole, entry.displayRole ?? entry.agentRole.replace(/-/g, " ")])).entries()].map(([role, label]) => <SelectItem key={role} value={role}>{sanitizeUserFacingText(label)}</SelectItem>)}
               </SelectContent>
             </Select>
             <Select value={type} onValueChange={setType}>
@@ -60,7 +61,7 @@ export function TranscriptDrawer({ dialogue, open, onOpenChange, focusEntry }: {
             return (
               <article key={`${entry.agentId}-${entry.timestamp}`} className={`rounded-2xl border p-4 ${highlighted ? "border-cyan-200/45 bg-cyan-300/[0.08]" : "border-white/10 bg-white/[0.035]"}`}>
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-semibold text-white">{entry.agentName}</span>
+                  <span className="text-sm font-semibold text-white">{sanitizeUserFacingText(entry.displayRole || entry.agentName)}</span>
                   <span className="text-xs capitalize text-cyan-100/70">{output.type}</span>
                   <span className="text-xs text-white/35">{new Date(entry.timestamp).toLocaleTimeString()}</span>
                 </div>

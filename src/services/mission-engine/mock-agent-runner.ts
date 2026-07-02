@@ -13,13 +13,15 @@ import {
 } from "@/types";
 
 type MissionIntent =
+  | "exam_preparation"
   | "business_launch"
   | "technical_debugging"
   | "product_strategy"
+  | "learning_plan"
   | "research_analysis"
   | "financial_planning"
   | "content_strategy"
-  | "operational_plan"
+  | "personal_planning"
   | "general_problem_solving";
 
 interface MockMissionClassification {
@@ -97,6 +99,29 @@ export class MockAgentRunner {
     const { configuration } = ctx;
     const focus = this.extractMissionFocus(ctx.missionBrief);
     const noun = missionNoun(configuration);
+    if (classification?.intent === "exam_preparation" || classification?.intent === "learning_plan") {
+      return JSON.stringify({
+        summary: "Create a practical study plan with diagnostic testing, daily section practice, resources, mock tests, risk controls, and final synthesis.",
+        workstreams: [
+          { id: "diagnostic", title: "Diagnostic Assessment", description: "Estimate current level across Reading, Listening, Speaking, and Writing with a baseline practice test and weak-area review.", primaryAgentId: "researcher", supportingAgentIds: [], dependencies: [], parallelGroup: 1, expectedDeliverables: ["baseline test plan", "section score tracker", "weak-area list"], riskAreas: ["unclear starting score"], confidence: 86 },
+          { id: "calendar", title: "30-Day Study Calendar", description: "Build a week-by-week calendar with daily routine, section rotation, review days, and mock exam days.", primaryAgentId: "product-strategist", supportingAgentIds: ["researcher"], dependencies: ["diagnostic"], parallelGroup: 2, expectedDeliverables: ["30-day calendar", "daily routine", "weekly goals"], riskAreas: ["unrealistic daily workload"], confidence: 84 },
+          { id: "practice", title: "TOEFL Section Practice", description: "Create Reading drills, Listening drills, Speaking templates, Writing templates, vocabulary routine, and grammar review.", primaryAgentId: "technical-architect", supportingAgentIds: [], dependencies: ["diagnostic"], parallelGroup: 2, expectedDeliverables: ["section drills", "speaking routine", "writing feedback loop"], riskAreas: ["ignoring speaking practice"], confidence: 83 },
+          { id: "resources", title: "Resources and Tools", description: "Choose official ETS resources, practice tests, vocabulary tools, speaking recording method, and writing feedback method.", primaryAgentId: "researcher", supportingAgentIds: [], dependencies: ["diagnostic"], parallelGroup: 2, expectedDeliverables: ["resource list", "practice test sources", "feedback tools"], riskAreas: ["low-quality practice materials"], confidence: 82 },
+          { id: "mock-tests", title: "Mock Test and Score Improvement Plan", description: "Schedule full simulations, timing strategy, scoring review, weak-area loops, and final week plan.", primaryAgentId: "technical-architect", supportingAgentIds: ["risk-critic"], dependencies: ["calendar", "practice"], parallelGroup: 3, expectedDeliverables: ["mock test schedule", "timing strategy", "score review loop"], riskAreas: ["too many mocks without review"], confidence: 81 },
+          { id: "risk-review", title: "Risk Review", description: "Identify burnout, ignored speaking, template memorization, poor time management, and unrealistic score target risks.", primaryAgentId: "risk-critic", supportingAgentIds: [], dependencies: ["calendar", "practice", "mock-tests"], parallelGroup: 4, expectedDeliverables: ["risk register", "mitigation checklist", "plan adjustments"], riskAreas: ["burnout"], confidence: 79 },
+          { id: "final-plan", title: "Final Study Plan", description: "Produce a clean 30-day actionable study plan with daily tasks, weekly goals, mock tests, resources, and success metrics.", primaryAgentId: "finalizer", supportingAgentIds: ["planner"], dependencies: ["calendar", "practice", "resources", "mock-tests", "risk-review"], parallelGroup: 5, expectedDeliverables: ["final study plan", "daily tasks", "success metrics"], riskAreas: [], confidence: 84 }
+        ],
+        parallelGroups: [
+          { id: "group-1", title: "Diagnostic", description: "Find the learner's starting point.", taskIds: ["diagnostic"] },
+          { id: "group-2", title: "Plan and Practice Design", description: "Create schedule, drills, and resources.", taskIds: ["calendar", "practice", "resources"] },
+          { id: "group-3", title: "Simulation Planning", description: "Set mock tests and review loop.", taskIds: ["mock-tests"] },
+          { id: "group-4", title: "Risk Review", description: "Balance intensity with sustainability.", taskIds: ["risk-review"] },
+          { id: "group-5", title: "Final Synthesis", description: "Assemble the final plan.", taskIds: ["final-plan"] }
+        ],
+        conflictZones: [{ title: "Mock test volume vs review time", agentsInvolved: ["technical-architect", "risk-critic"], reason: "More full mocks build stamina, but too many reduce review time for weak speaking and writing areas." }],
+        synthesisReadinessCriteria: ["baseline captured", "calendar completed", "section drills defined", "risk review complete", "mock test plan balanced"]
+      });
+    }
     const technicalWorkstreams = [
       {
         title: "Performance Profiling & Baseline Measurement",

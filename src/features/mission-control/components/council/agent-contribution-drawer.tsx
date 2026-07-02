@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useRuntimeSettingsStore } from "@/store";
 import type { AgentDialogueEntry, AgentRole, MissionContext } from "@/types";
+import { sanitizeUserFacingText } from "@/utils";
 import { normalizeDialogueEntry } from "./agent-output-formatter";
 
 export function AgentContributionDrawer({
@@ -59,8 +60,8 @@ export function AgentContributionDrawer({
                     <Sparkles className="h-5 w-5" style={{ color: definition?.color ?? "#22d3ee" }} />
                   </div>
                   <div>
-                    <Badge className="mb-2 bg-cyan-300/10 text-cyan-100 hover:bg-cyan-300/10">{entry.agentRole.replace(/-/g, " ")}</Badge>
-                    <h3 className="text-xl font-semibold text-white">{entry.agentName}</h3>
+                    <Badge className="mb-2 bg-cyan-300/10 text-cyan-100 hover:bg-cyan-300/10">{sanitizeUserFacingText(entry.displayRole || entry.agentRole.replace(/-/g, " "))}</Badge>
+                    <h3 className="text-xl font-semibold text-white">{sanitizeUserFacingText(entry.displayRole || entry.agentName)}</h3>
                     <p className="mt-1 text-sm leading-relaxed text-white/58">{definition?.capabilities.join(" - ")}</p>
                   </div>
                 </div>
@@ -74,7 +75,7 @@ export function AgentContributionDrawer({
                 {agentTasks.length ? agentTasks.map((task) => (
                   <div key={task.id} className="rounded-xl border border-white/10 bg-white/[0.035] p-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-sm font-medium text-white">{task.title}</p>
+                      <p className="text-sm font-medium text-white">{sanitizeUserFacingText(task.title)}</p>
                       <Badge className="bg-white/10 text-white/60 hover:bg-white/10">{task.confidence}%</Badge>
                     </div>
                     <p className="mt-1 text-xs capitalize text-white/42">{task.status.replace(/-/g, " ")} - {task.dependencies.length ? `${task.dependencies.length} dependencies` : "no dependencies"}</p>
@@ -126,12 +127,18 @@ function ContributionMessage({ message, debugMode }: { message: AgentDialogueEnt
   return (
     <article className="rounded-xl border border-white/10 bg-black/20 p-3">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm font-medium text-white">{message.agentName}</span>
+        <span className="text-sm font-medium text-white">{sanitizeUserFacingText(message.displayRole || message.agentName)}</span>
         <Badge variant="outline" className="border-white/10 bg-white/[0.04] text-[0.65rem] capitalize text-white/58">{output.type}</Badge>
         <span className="text-xs text-white/35">{new Date(message.timestamp).toLocaleTimeString()}</span>
       </div>
-      <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-white/64">{output.summary}</p>
-      {output.bullets.length > 0 && <ul className="mt-2 space-y-1 text-sm text-white/54">{output.bullets.map((bullet) => <li key={bullet}>- {bullet}</li>)}</ul>}
+      <SectionLabel>Summary</SectionLabel>
+      <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-white/64">{output.summary}</p>
+      {output.bullets.length > 0 && (
+        <>
+          <SectionLabel>Key Findings and Actions</SectionLabel>
+          <ul className="mt-1 space-y-1 text-sm text-white/54">{output.bullets.map((bullet) => <li key={bullet}>- {bullet}</li>)}</ul>
+        </>
+      )}
       {debugMode && (
         <details className="mt-3 rounded-xl border border-purple-200/10 bg-purple-300/[0.045] p-3">
           <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.16em] text-purple-100">Raw Output</summary>
@@ -145,10 +152,14 @@ function ContributionMessage({ message, debugMode }: { message: AgentDialogueEnt
 function ConflictCard({ title, body }: { title: string; body: string }) {
   return (
     <div className="rounded-xl border border-amber-200/15 bg-amber-300/[0.055] p-3">
-      <p className="text-sm font-medium text-amber-100">{title}</p>
-      <p className="mt-1 text-sm leading-relaxed text-white/58">{body}</p>
+      <p className="text-sm font-medium text-amber-100">{sanitizeUserFacingText(title)}</p>
+      <p className="mt-1 text-sm leading-relaxed text-white/58">{sanitizeUserFacingText(body)}</p>
     </div>
   );
+}
+
+function SectionLabel({ children }: { children: ReactNode }) {
+  return <p className="mt-3 text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-cyan-100/70 first:mt-0">{children}</p>;
 }
 
 function EmptyCopy({ children }: { children: ReactNode }) {

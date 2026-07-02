@@ -1,6 +1,7 @@
 "use client";
 
 import type { AgentDialogueEntry, AgentRole, ExecutionTask, Workstream } from "@/types";
+import { sanitizeMissionList, sanitizeUserFacingText } from "@/utils";
 
 export type DisplayMessageType =
   | "planning"
@@ -63,7 +64,7 @@ function tryParseJson(value: string): unknown | null {
 
 function cleanText(value: unknown): string {
   if (typeof value !== "string") return "";
-  return value
+  return sanitizeUserFacingText(value
     .replace(/```[\s\S]*?```/g, "")
     .replace(/^#{1,6}\s+/gm, "")
     .replace(/\*\*(.*?)\*\*/g, "$1")
@@ -73,7 +74,7 @@ function cleanText(value: unknown): string {
     .replace(/\b(ws|agent)-[a-z0-9-]+\b/gi, "")
     .replace(/\b(primaryAgentId|supportingAgentIds|assignedAgentId|taskIds|workstreamId)\b:?/gi, "")
     .replace(/\n{3,}/g, "\n\n")
-    .trim();
+    .trim());
 }
 
 function stringifyReadable(value: unknown): string {
@@ -149,11 +150,12 @@ export function normalizeAgentOutputForDisplay(output: unknown, options?: { agen
     if (Array.isArray(object.workstreams)) return fromPlannerObject(object, raw, type);
 
     const title = typeof object.title === "string" ? cleanText(object.title) : undefined;
-    const summaryCandidate = object.summary ?? object.decision ?? object.rationale ?? object.finalVideoPrompt ?? object.concept ?? object.output;
+    const usefulOutput = object.usefulOutput && typeof object.usefulOutput === "object" ? object.usefulOutput as Record<string, unknown> : {};
+    const summaryCandidate = object.summary ?? object.decisionSummary ?? object.decision ?? object.rationale ?? object.finalVideoPrompt ?? object.concept ?? object.output;
     const summary = stringifyReadable(summaryCandidate) || stringifyReadable(object) || "The agent completed its assigned analysis.";
-    const bulletKeys = ["keyFindings", "recommendations", "qualityChecklist", "risks", "constraints", "deliverables", "sceneBreakdown", "resolvedAction"];
+    const bulletKeys = ["keyFindings", "recommendations", "actionItems", "scheduleItems", "risks", "dependencies", "qualityChecklist", "constraints", "deliverables", "resolvedActions", "resolvedAction"];
     const bullets = bulletKeys.flatMap((key) => {
-      const value = object[key];
+      const value = usefulOutput[key] ?? object[key];
       if (!value) return [];
       return Array.isArray(value) ? value.map(stringifyReadable) : [stringifyReadable(value)];
     }).filter(Boolean).slice(0, 6);
@@ -161,7 +163,7 @@ export function normalizeAgentOutputForDisplay(output: unknown, options?: { agen
     return {
       title,
       summary: trimmed.text,
-      bullets,
+      bullets: sanitizeMissionList(bullets),
       workstreams: [],
       type,
       raw,
@@ -198,6 +200,10 @@ export function normalizeDialogueEntry(entry: AgentDialogueEntry) {
 
 export function displayWorkstreamTitle(task: ExecutionTask | Workstream) {
   return cleanText(task.title || "Untitled workstream");
+}
+
+export function displayRoleForTask(task: ExecutionTask | Workstream) {
+  return cleanText(task.displayRole || ("owner" in task ? task.owner : "") || ("agent" in task ? task.agent.replace(/-/g, " ") : "") || "Mission specialist");
 }
 
 export function displayTaskOutput(output?: string) {

@@ -38,6 +38,7 @@ export interface AgentDefinition {
 export interface AgentDialogueEntry {
   agentId: string;
   agentName: string;
+  displayRole?: string;
   agentRole: AgentRole;
   content: string;
   timestamp: string;

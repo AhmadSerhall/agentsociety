@@ -33,20 +33,22 @@ import {
 import { AGENT_DEFINITIONS, getAgentByRole } from "@/agents";
 import { createQwenClient, isMockMode } from "@/services/qwen";
 import { useRuntimeSettingsStore } from "@/store/runtime-settings-store";
-import { extractActionItemsFromText, generateId, sanitizeMissionList, sanitizeMissionText } from "@/utils";
+import { dedupeAgentOutputSections, extractActionItemsFromText, generateId, sanitizeMissionList, sanitizeMissionText, sanitizeUserFacingText } from "@/utils";
 import { MockAgentRunner } from "./mock-agent-runner";
 import type { EventListener } from "./types";
 
 const PROGRESS_PER_PHASE = 1 / 9;
 
 type MissionIntent =
+  | "exam_preparation"
   | "business_launch"
   | "technical_debugging"
   | "product_strategy"
+  | "learning_plan"
   | "research_analysis"
   | "financial_planning"
   | "content_strategy"
-  | "operational_plan"
+  | "personal_planning"
   | "general_problem_solving";
 
 interface MissionClassification {
@@ -57,6 +59,7 @@ interface MissionClassification {
   needsProduct: boolean;
   isLaunch: boolean;
   isTechnical: boolean;
+  isLearning: boolean;
 }
 
 interface PlannerGraphJson {
@@ -85,6 +88,30 @@ interface PlannerGraphJson {
     reason?: string;
   }>;
   synthesisReadinessCriteria?: string[];
+}
+
+interface AgentStructuredOutput {
+  agentName: string;
+  displayRole: string;
+  workstreamTitle: string;
+  status: "planning" | "working" | "reviewing" | "complete" | "blocked";
+  summary: string;
+  usefulOutput: {
+    keyFindings: string[];
+    recommendations: string[];
+    actionItems: string[];
+    scheduleItems: string[];
+    risks: string[];
+    dependencies: string[];
+  };
+  handoffToNextAgent: string;
+  confidence: number;
+  conflictSignals: Array<{
+    withAgent: string;
+    topic: string;
+    disagreement: string;
+    severity: "low" | "moderate" | "high";
+  }>;
 }
 
 function now() {
@@ -132,10 +159,15 @@ function clampConfidence(value: number) {
 }
 
 function buildPrompt(phase: MissionState, brief: string, ctx: MissionContext, config: MissionConfiguration, task?: ExecutionTask) {
+  const domain = ctx.replayEvents.find((event) => event.type === "MISSION_CLASSIFIED")?.payload?.classification as MissionClassification | undefined;
+  const displayRole = task?.displayRole ?? (domain ? missionDisplayRole(domain, STATE_AGENT_MAP[phase] ?? AgentRole.Planner) : undefined);
   return `Mission Brief: ${brief}
 
 Selected Mission Configuration:
 ${configSummary(config)}
+
+Mission Domain: ${domain?.intent ?? "general_problem_solving"}
+Your User-Facing Role: ${displayRole ?? "Mission Specialist"}
 
 Current Execution Task:
 ${task ? `Title: ${task.title}
@@ -165,7 +197,59 @@ Shared Mission State:
 - Task Nodes: ${ctx.executionTasks.map((item) => `${item.title} (${item.status}, agent=${item.agent}, dependencies=${item.dependencies.length})`).join("; ") || "None"}
 - Open Conflicts: ${ctx.conflicts.filter((conflict) => !conflict.resolved).map((conflict) => conflict.title ?? conflict.description).join("; ") || "None"}
 
-Produce the ${phase} contribution. Make the output specific to the mission configuration, reference previous outputs where useful, and write as if communicating to the rest of the agent society.`;
+Produce the ${phase} contribution.
+Rules:
+- Return ONLY valid JSON matching the response contract below. No markdown, headings, code fences, tables, separators, or prose outside JSON.
+- Do not repeat the mission brief except when a single short reference is necessary.
+- Do not write generic contribution titles. Produce direct useful content inside your assigned workstream.
+- Use the mission domain and your user-facing role. Stay inside the assigned workstream.
+- Do not invent business, product, marketing, technical, or finance sections unless the mission domain calls for them.
+- If this is an exam preparation or learning plan mission, produce actual study advice, drills, schedules, resources, checkpoints, and test strategy.
+
+Response contract:
+{
+  "agentName": "string",
+  "displayRole": "string",
+  "workstreamTitle": "string",
+  "status": "planning | working | reviewing | complete | blocked",
+  "summary": "one clean user-facing sentence",
+  "usefulOutput": {
+    "keyFindings": ["string"],
+    "recommendations": ["string"],
+    "actionItems": ["string"],
+    "scheduleItems": ["string"],
+    "risks": ["string"],
+    "dependencies": ["string"]
+  },
+  "handoffToNextAgent": "string",
+  "confidence": 0,
+  "conflictSignals": [
+    {
+      "withAgent": "string",
+      "topic": "string",
+      "disagreement": "string",
+      "severity": "low | moderate | high"
+    }
+  ]
+}`;
+}
+
+function missionDisplayRole(classification: MissionClassification, role: AgentRole): string {
+  if (classification.intent === "exam_preparation" || classification.intent === "learning_plan") {
+    const map: Record<AgentRole, string> = {
+      [AgentRole.Planner]: "Planner",
+      [AgentRole.Researcher]: "Diagnostic Coach",
+      [AgentRole.ProductStrategist]: "Curriculum Coach",
+      [AgentRole.TechnicalArchitect]: "Practice Coach",
+      [AgentRole.MarketingStrategist]: "Resource Coach",
+      [AgentRole.Finance]: "Time Budget Coach",
+      [AgentRole.RiskCritic]: "Risk Critic",
+      [AgentRole.Mediator]: "Mediator",
+      [AgentRole.Finalizer]: "Finalizer",
+    };
+    return map[role];
+  }
+  return getAgentByRole(role)?.name ?? role.replace(/-/g, " ");
 }
 
 export class MissionEngine {
@@ -393,6 +477,7 @@ export class MissionEngine {
       result = "No client available.";
     }
 
+    result = this.normalizeAgentResult(ctx, phase, agentRole, result, classification ?? this.classifyMission(ctx.missionBrief));
     this.recordStreamEvents(ctx, phase === MissionState.Planning ? "PLANNER_STREAM" : phase === MissionState.Finalizing ? "FINALIZER_STREAM" : "AGENT_STREAM", result, agentDef.id, agentDef.name, agentRole, phaseStart);
     this.storePhaseResult(ctx, phase, result, classification ?? this.classifyMission(ctx.missionBrief));
     this.setAgentState(ctx, agentRole, "complete");
@@ -400,6 +485,7 @@ export class MissionEngine {
       phase,
       status: "complete",
       confidence: this.averageConfidence(ctx),
+      displayRole: missionDisplayRole(classification ?? this.classifyMission(ctx.missionBrief), agentRole),
     });
     this.addTimeline(ctx, agentDef.role, phase, `${agentDef.name} completed`, this.completionDescription(phase), this.timelineKind(phase), Date.now() - phaseStart);
     this.recordReplayEvent(ctx, phase === MissionState.Planning ? "PLANNER_FINISHED" : phase === MissionState.Finalizing ? "FINALIZER_FINISHED" : phase === MissionState.ConflictResolution ? "MEDIATOR_FINISHED" : "AGENT_FINISHED", {
@@ -563,6 +649,7 @@ export class MissionEngine {
       result = "No client available.";
     }
 
+    result = this.normalizeAgentResult(ctx, phase, task.agent, result, classification, task);
     const nextConfidence = this.evolveConfidence(task.confidence, result, ctx);
     this.recordStreamEvents(ctx, "AGENT_STREAM", result, agentDef.id, agentDef.name, task.agent, phaseStart, task);
     this.storePhaseResult(ctx, phase, result, classification);
@@ -574,6 +661,7 @@ export class MissionEngine {
       status: "complete",
       referencedWorkstreamIds: [task.workstreamId],
       confidence: nextConfidence,
+      displayRole: missionDisplayRole(classification, task.agent),
     });
     this.addTimeline(ctx, task.agent, phase, `${agentDef.name} completed ${task.title}`, `Confidence moved from ${task.confidence}% to ${nextConfidence}% after reviewing shared context and dependencies.`, this.timelineKind(phase), Date.now() - phaseStart);
     this.recordReplayEvent(ctx, "AGENT_FINISHED", {
@@ -589,6 +677,169 @@ export class MissionEngine {
     this.emit({ type: MissionEventType.AgentFinished, timestamp: now(), payload: { agentRole: task.agent, agentName: agentDef.name, phase, taskId: task.id } });
     this.updateMissionGraph(ctx);
     onUpdate({ ...ctx });
+  }
+
+  private normalizeAgentResult(ctx: MissionContext, phase: MissionState, agentRole: AgentRole, rawResult: string, classification: MissionClassification, task?: ExecutionTask): string {
+    if (phase === MissionState.Planning) return rawResult;
+
+    const parsed = this.tryParseAgentOutput(rawResult);
+    const workstreamTitle = task?.title ?? this.phaseTitle(phase);
+    const base = parsed ?? this.buildStructuredFallback(ctx, phase, agentRole, classification, workstreamTitle, rawResult);
+    const sanitized: AgentStructuredOutput = {
+      agentName: missionDisplayRole(classification, agentRole),
+      displayRole: missionDisplayRole(classification, agentRole),
+      workstreamTitle: sanitizeUserFacingText(base.workstreamTitle || workstreamTitle),
+      status: base.status ?? "complete",
+      summary: sanitizeUserFacingText(base.summary),
+      usefulOutput: {
+        keyFindings: sanitizeMissionList(base.usefulOutput?.keyFindings ?? []),
+        recommendations: sanitizeMissionList(base.usefulOutput?.recommendations ?? []),
+        actionItems: sanitizeMissionList(base.usefulOutput?.actionItems ?? []),
+        scheduleItems: sanitizeMissionList(base.usefulOutput?.scheduleItems ?? []),
+        risks: sanitizeMissionList(base.usefulOutput?.risks ?? []),
+        dependencies: sanitizeMissionList(base.usefulOutput?.dependencies ?? []),
+      },
+      handoffToNextAgent: sanitizeUserFacingText(base.handoffToNextAgent),
+      confidence: clampConfidence(Number(base.confidence || task?.confidence || this.averageConfidence(ctx))),
+      conflictSignals: (base.conflictSignals ?? []).map((signal) => ({
+        withAgent: sanitizeUserFacingText(signal.withAgent),
+        topic: sanitizeUserFacingText(signal.topic),
+        disagreement: sanitizeUserFacingText(signal.disagreement),
+        severity: signal.severity ?? "moderate",
+      })).filter((signal) => signal.withAgent && signal.topic && signal.disagreement),
+    };
+
+    if (!this.isUsefulAgentOutput(sanitized, classification, ctx.missionBrief)) {
+      const repaired = this.buildStructuredFallback(ctx, phase, agentRole, classification, workstreamTitle, rawResult);
+      console.warn("[MissionEngine] Agent output failed usefulness validation; using domain fallback.", {
+        phase,
+        agentRole,
+        domain: classification.intent,
+      });
+      return JSON.stringify(repaired);
+    }
+
+    return JSON.stringify(sanitized);
+  }
+
+  private tryParseAgentOutput(value: string): AgentStructuredOutput | null {
+    const candidates = [value, this.extractJsonObject(value)].filter(Boolean);
+    for (const candidate of candidates) {
+      try {
+        const parsed = JSON.parse(candidate) as Partial<AgentStructuredOutput>;
+        if (parsed && typeof parsed === "object" && typeof parsed.summary === "string") {
+          return {
+            agentName: String(parsed.agentName ?? ""),
+            displayRole: String(parsed.displayRole ?? ""),
+            workstreamTitle: String(parsed.workstreamTitle ?? ""),
+            status: parsed.status ?? "complete",
+            summary: parsed.summary,
+            usefulOutput: {
+              keyFindings: parsed.usefulOutput?.keyFindings ?? [],
+              recommendations: parsed.usefulOutput?.recommendations ?? [],
+              actionItems: parsed.usefulOutput?.actionItems ?? [],
+              scheduleItems: parsed.usefulOutput?.scheduleItems ?? [],
+              risks: parsed.usefulOutput?.risks ?? [],
+              dependencies: parsed.usefulOutput?.dependencies ?? [],
+            },
+            handoffToNextAgent: String(parsed.handoffToNextAgent ?? ""),
+            confidence: Number(parsed.confidence ?? 78),
+            conflictSignals: parsed.conflictSignals ?? [],
+          };
+        }
+      } catch {
+        // Try next candidate.
+      }
+    }
+    return null;
+  }
+
+  private isUsefulAgentOutput(output: AgentStructuredOutput, classification: MissionClassification, missionBrief: string) {
+    const concreteItems = [
+      ...output.usefulOutput.recommendations,
+      ...output.usefulOutput.actionItems,
+      ...output.usefulOutput.scheduleItems,
+      ...output.usefulOutput.keyFindings,
+    ].filter((item) => item.length > 18);
+    const allText = sanitizeUserFacingText(`${output.summary}\n${concreteItems.join("\n")}`).toLowerCase();
+    const brief = sanitizeUserFacingText(missionBrief).toLowerCase();
+    const forbidden = /(^|\n)\s*#{1,6}\s|```|\*\*|^-{3,}\s*$/m.test(JSON.stringify(output));
+    const repeatsBrief = brief.length > 20 && allText.split(brief).length > 2;
+    const domainRelevant = classification.isLearning
+      ? /(study|practice|exam|test|toefl|reading|listening|speaking|writing|mock|vocabulary|score|drill)/.test(allText)
+      : true;
+    return concreteItems.length >= 3 && !forbidden && !repeatsBrief && domainRelevant;
+  }
+
+  private buildStructuredFallback(ctx: MissionContext, phase: MissionState, agentRole: AgentRole, classification: MissionClassification, workstreamTitle: string, rawResult: string): AgentStructuredOutput {
+    const displayRole = missionDisplayRole(classification, agentRole);
+    const extracted = extractActionItemsFromText(rawResult, 6);
+    if (classification.isLearning) {
+      return this.learningFallbackOutput(ctx, displayRole, workstreamTitle, agentRole, phase);
+    }
+    return {
+      agentName: displayRole,
+      displayRole,
+      workstreamTitle: sanitizeUserFacingText(workstreamTitle),
+      status: "complete",
+      summary: sanitizeUserFacingText(extracted[0] ?? `${displayRole} completed ${workstreamTitle} with practical next steps.`),
+      usefulOutput: {
+        keyFindings: extracted.slice(0, 2),
+        recommendations: extracted.slice(2, 5).length ? extracted.slice(2, 5) : ["Prioritize the highest-impact work first.", "Validate assumptions before committing major resources.", "Keep risk checks attached to each milestone."],
+        actionItems: ["Convert the workstream into concrete next actions.", "Assign an owner and review checkpoint.", "Track confidence as evidence improves."],
+        scheduleItems: [],
+        risks: agentRole === AgentRole.RiskCritic ? ["Unvalidated assumptions can make the plan feel confident but brittle."] : [],
+        dependencies: [],
+      },
+      handoffToNextAgent: "Share this clean output with the next specialist for synthesis.",
+      confidence: this.averageConfidence(ctx),
+      conflictSignals: [],
+    };
+  }
+
+  private learningFallbackOutput(ctx: MissionContext, displayRole: string, workstreamTitle: string, agentRole: AgentRole, phase: MissionState): AgentStructuredOutput {
+    const title = sanitizeUserFacingText(workstreamTitle || this.phaseTitle(phase));
+    const common = {
+      agentName: displayRole,
+      displayRole,
+      workstreamTitle: title,
+      status: "complete" as const,
+      confidence: this.averageConfidence(ctx),
+      conflictSignals: [] as AgentStructuredOutput["conflictSignals"],
+    };
+    if (agentRole === AgentRole.RiskCritic) {
+      return {
+        ...common,
+        summary: "The plan needs enough TOEFL practice to improve scores without creating burnout or ignoring weaker sections.",
+        usefulOutput: {
+          keyFindings: ["Speaking and writing often need daily repetition because feedback loops are slower.", "Full mock tests are useful only when review time is protected."],
+          recommendations: ["Limit full mock tests to two or three across 30 days unless the learner already has high stamina.", "Keep daily speaking practice short but non-negotiable.", "Review every missed question and weak response before adding more practice volume."],
+          actionItems: ["Set a target score and test date.", "Mark one weekly lighter review day.", "Track section scores after each mock test."],
+          scheduleItems: ["Week 1 baseline and fundamentals.", "Weeks 2-3 section rotation and targeted drills.", "Final 10 days mock tests plus weak-area review."],
+          risks: ["Burnout from too many full tests.", "Ignoring speaking because it feels uncomfortable.", "Memorizing templates without timed practice."],
+          dependencies: ["Needs baseline score and available daily study time."],
+        },
+        handoffToNextAgent: "Mediator should balance practice volume against review time.",
+        conflictSignals: [{ withAgent: "Test Simulation Coach", topic: "Mock test frequency", disagreement: "More full mocks can build stamina, but too many reduce time for speaking and writing review.", severity: "moderate" }],
+      };
+    }
+    return {
+      ...common,
+      summary: `${displayRole} added concrete TOEFL study actions for ${title}.`,
+      usefulOutput: {
+        keyFindings: ["A baseline TOEFL practice test should guide the first week.", "Reading, Listening, Speaking, and Writing need rotating daily practice.", "Score improvement depends on reviewing mistakes, not only doing more questions."],
+        recommendations: ["Use official ETS TOEFL materials as the main benchmark.", "Record speaking answers and compare them to timing and structure targets.", "Write at least three timed integrated or academic-discussion essays per week."],
+        actionItems: ["Take a baseline test and record section scores.", "Study 2-3 focused hours daily if available.", "Keep an error log with vocabulary, grammar, timing, and question-type notes."],
+        scheduleItems: ["Days 1-2 diagnostic and setup.", "Days 3-20 rotate section drills with vocabulary review.", "Days 21-30 complete two full mock tests and final weak-area review."],
+        risks: [],
+        dependencies: ["Needs current score estimate, target score, daily availability, and exam date."],
+      },
+      handoffToNextAgent: "Use these study actions in the final 30-day calendar.",
+    };
+  }
+
+  private phaseTitle(phase: MissionState) {
+    return phase.replace(/-/g, " ");
   }
 
   private delay(ms: number, signal: AbortSignal) {
@@ -754,6 +1005,9 @@ export class MissionEngine {
     }
 
     const completedAgents = new Set(ctx.executionTasks.filter((task) => task.status === "completed").map((task) => task.agent));
+    if (classification.isLearning) {
+      return completedAgents.has(AgentRole.ProductStrategist) && completedAgents.has(AgentRole.TechnicalArchitect);
+    }
     if (classification.intent === "technical_debugging") {
       return completedAgents.has(AgentRole.TechnicalArchitect);
     }
@@ -959,6 +1213,7 @@ export class MissionEngine {
     const entry: AgentDialogueEntry = {
       agentId,
       agentName,
+      displayRole: metadata.displayRole ?? agentName,
       agentRole,
       content,
       timestamp: now(),
@@ -1129,8 +1384,9 @@ export class MissionEngine {
       return {
         id: generateId(),
         title: title || `Workstream ${index + 1}`,
-        owner: sanitizeMissionText(owner) || getAgentByRole(assignedAgent)?.name,
-        responsibleAgent: sanitizeMissionText(owner) || getAgentByRole(assignedAgent)?.name,
+        owner: sanitizeMissionText(owner) || missionDisplayRole(classification, assignedAgent),
+        responsibleAgent: sanitizeMissionText(owner) || missionDisplayRole(classification, assignedAgent),
+        displayRole: missionDisplayRole(classification, assignedAgent),
         description: sanitizeMissionText(description),
         status: "pending" as const,
         assignedAgent,
@@ -1242,8 +1498,9 @@ export class MissionEngine {
       return {
         id,
         title: sanitizeMissionText(item.title || `Workstream ${index + 1}`),
-        owner: getAgentByRole(assignedAgent)?.name,
-        responsibleAgent: getAgentByRole(assignedAgent)?.name,
+        owner: missionDisplayRole(classification, assignedAgent),
+        responsibleAgent: missionDisplayRole(classification, assignedAgent),
+        displayRole: missionDisplayRole(classification, assignedAgent),
         description: sanitizeMissionText(item.description || item.title || "Mission Graph workstream"),
         status: "pending" as const,
         assignedAgent,
@@ -1298,8 +1555,9 @@ export class MissionEngine {
       return {
         id: generateId(),
         title,
-        owner: getAgentByRole(assignedAgent)?.name,
-        responsibleAgent: getAgentByRole(assignedAgent)?.name,
+        owner: missionDisplayRole(classification, assignedAgent),
+        responsibleAgent: missionDisplayRole(classification, assignedAgent),
+        displayRole: missionDisplayRole(classification, assignedAgent),
         description: sanitizeMissionText(cells[descriptionIndex] || title),
         status: "pending" as const,
         assignedAgent,
@@ -1338,6 +1596,22 @@ export class MissionEngine {
   private fallbackWorkstreams(classification: MissionClassification, brief: string): Workstream[] {
     const focus = brief.replace(/\s+/g, " ").trim();
     const templates: Record<MissionIntent, Array<{ title: string; agent: AgentRole; supporting?: AgentRole[]; description: string; deliverables: string[]; dependencies?: number[] }>> = {
+      exam_preparation: [
+        { title: "Diagnostic Assessment", agent: AgentRole.Researcher, description: "Estimate current TOEFL level across Reading, Listening, Speaking, and Writing, then identify weak areas with a baseline practice test.", deliverables: ["baseline test plan", "section score tracker", "weak-area list"] },
+        { title: "30-Day Study Calendar", agent: AgentRole.ProductStrategist, description: "Create a week-by-week TOEFL calendar with daily routine, section rotation, review days, and mock exam days.", deliverables: ["30-day calendar", "daily routine", "weekly goals"], dependencies: [1] },
+        { title: "TOEFL Section Practice", agent: AgentRole.TechnicalArchitect, description: "Design Reading drills, Listening drills, Speaking templates, Writing templates, vocabulary review, and grammar practice.", deliverables: ["section drills", "speaking routine", "writing practice loop", "vocabulary routine"], dependencies: [1] },
+        { title: "Resources and Tools", agent: AgentRole.Researcher, description: "Choose official ETS resources, practice test sources, vocabulary tools, speaking recording methods, and writing feedback methods.", deliverables: ["ETS resource list", "practice tools", "feedback methods"], dependencies: [1] },
+        { title: "Mock Test and Score Improvement Plan", agent: AgentRole.TechnicalArchitect, description: "Schedule full TOEFL simulations, timing strategy, scoring review, weak-area loops, and final week adjustments.", deliverables: ["mock test schedule", "timing strategy", "score review loop"], dependencies: [2, 3] },
+        { title: "Risk Review", agent: AgentRole.RiskCritic, description: "Identify burnout risk, ignored speaking practice, template memorization, poor time management, and unrealistic score targets.", deliverables: ["risk register", "mitigation checklist", "plan adjustments"], dependencies: [2, 3, 5] },
+        { title: "Final Study Plan", agent: AgentRole.Finalizer, description: "Synthesize a clean 30-day TOEFL study plan with daily tasks, weekly goals, mock tests, resources, and success metrics.", deliverables: ["final TOEFL plan", "daily tasks", "success metrics"], dependencies: [2, 3, 4, 5, 6] },
+      ],
+      learning_plan: [
+        { title: "Diagnostic Assessment", agent: AgentRole.Researcher, description: `Clarify current level, goals, available time, and weak skills for: ${focus}.`, deliverables: ["baseline assessment", "skill gap list", "goal definition"] },
+        { title: "Learning Calendar", agent: AgentRole.ProductStrategist, description: "Create a practical week-by-week learning schedule with review days and checkpoints.", deliverables: ["study calendar", "weekly goals", "review cadence"], dependencies: [1] },
+        { title: "Practice Drills", agent: AgentRole.TechnicalArchitect, description: "Design deliberate practice exercises, feedback loops, and measurable repetitions.", deliverables: ["practice drills", "feedback loop", "progress tracker"], dependencies: [1] },
+        { title: "Risk Review", agent: AgentRole.RiskCritic, description: "Identify burnout, unrealistic pace, skipped fundamentals, and weak feedback mechanisms.", deliverables: ["risk list", "mitigations", "adjustments"], dependencies: [2, 3] },
+        { title: "Final Learning Plan", agent: AgentRole.Finalizer, description: "Synthesize the schedule, drills, checkpoints, resources, and success metrics.", deliverables: ["final plan", "daily actions", "success metrics"], dependencies: [2, 3, 4] },
+      ],
       technical_debugging: [
         { title: "Performance Profiling & Baseline Measurement", agent: AgentRole.TechnicalArchitect, description: `Measure current performance symptoms, reproduction paths, bottlenecks, and user-visible latency for: ${focus}.`, deliverables: ["Performance baseline", "Reproduction checklist", "Measurement plan"] },
         { title: "Render & Re-render Analysis", agent: AgentRole.TechnicalArchitect, description: "Audit component render frequency, expensive calculations, memoization gaps, and state updates.", deliverables: ["Render trace findings", "Component hot spot list", "Memoization candidates"], dependencies: [1] },
@@ -1376,7 +1650,7 @@ export class MissionEngine {
         { title: "Content System Design", agent: AgentRole.MarketingStrategist, description: "Design themes, formats, cadence, and distribution loop.", deliverables: ["Content calendar", "Format matrix", "Distribution plan"], dependencies: [1] },
         { title: "Performance & Risk Review", agent: AgentRole.RiskCritic, description: "Define quality controls, measurement, and brand risks.", deliverables: ["Measurement plan", "Risk notes", "Review checklist"], dependencies: [2] },
       ],
-      operational_plan: [
+      personal_planning: [
         { title: "Operating Baseline", agent: AgentRole.Researcher, description: `Map current process, constraints, handoffs, and failure points for: ${focus}.`, deliverables: ["Process map", "Constraint list", "Stakeholder map"] },
         { title: "Execution System Design", agent: AgentRole.ProductStrategist, description: "Create workflow, ownership, cadence, and decision rules.", deliverables: ["Operating model", "Ownership map", "Cadence plan"], dependencies: [1] },
         { title: "Risk & Resource Review", agent: AgentRole.RiskCritic, description: "Stress-test capacity, quality, and change-management risk.", deliverables: ["Risk register", "Resource plan", "Control points"], dependencies: [2] },
@@ -1391,8 +1665,9 @@ export class MissionEngine {
     return templates[classification.intent].map((template, index, list) => ({
       id: generateId(),
       title: template.title,
-      owner: getAgentByRole(template.agent)?.name,
-      responsibleAgent: getAgentByRole(template.agent)?.name,
+      owner: missionDisplayRole(classification, template.agent),
+      responsibleAgent: missionDisplayRole(classification, template.agent),
+      displayRole: missionDisplayRole(classification, template.agent),
       description: template.description,
       status: "pending" as const,
       assignedAgent: template.agent,
@@ -1461,7 +1736,11 @@ export class MissionEngine {
     const has = (...terms: string[]) => terms.some((term) => text.includes(term));
     let intent: MissionIntent = "general_problem_solving";
 
-    if (has("slow", "performance", "render", "re-render", "rerender", "latency", "bundle", "memory", "react app", "debug", "optimiz")) {
+    if (has("toefl", "ielts", "sat", "gre", "gmat", "exam", "test prep", "practice test", "study plan")) {
+      intent = "exam_preparation";
+    } else if (has("learn", "study", "course", "curriculum", "training", "practice routine", "skill plan")) {
+      intent = "learning_plan";
+    } else if (has("slow", "performance", "render", "re-render", "rerender", "latency", "bundle", "memory", "react app", "debug", "optimiz")) {
       intent = "technical_debugging";
     } else if (has("launch", "go-to-market", "gtm", "startup", "customers", "sales", "selling", "sell", "money", "business", "businesses", "website", "websites", "clients", "online", "school", "schools", "market")) {
       intent = "business_launch";
@@ -1473,18 +1752,23 @@ export class MissionEngine {
       intent = "financial_planning";
     } else if (has("content", "newsletter", "social", "campaign", "brand")) {
       intent = "content_strategy";
-    } else if (has("operations", "process", "workflow", "team", "hiring", "execution plan")) {
-      intent = "operational_plan";
+    } else if (has("personal", "routine", "habit", "schedule", "life", "career", "fitness")) {
+      intent = "personal_planning";
     }
 
     const isLaunch = intent === "business_launch";
     const isTechnical = intent === "technical_debugging" || has("api", "backend", "frontend", "database", "code", "component");
+    const isLearning = intent === "exam_preparation" || intent === "learning_plan";
     const needsMarketing = isLaunch || intent === "content_strategy" || has("marketing", "campaign", "positioning", "sales");
     const needsFinance = isLaunch || intent === "financial_planning" || has("budget", "cost", "pricing", "runway");
     const needsProduct = isLaunch || intent === "product_strategy" || has("product", "mvp", "feature", "user experience", "ux");
 
     const agents = new Set<AgentRole>([AgentRole.Planner]);
-    if (intent === "technical_debugging") {
+    if (isLearning) {
+      agents.add(AgentRole.Researcher);
+      agents.add(AgentRole.ProductStrategist);
+      agents.add(AgentRole.TechnicalArchitect);
+    } else if (intent === "technical_debugging") {
       agents.add(AgentRole.TechnicalArchitect);
       if (has("api", "backend", "data fetching", "network")) agents.add(AgentRole.RiskCritic);
       if (has("user", "ux", "interface", "experience")) agents.add(AgentRole.ProductStrategist);
@@ -1507,6 +1791,7 @@ export class MissionEngine {
       needsProduct,
       isLaunch,
       isTechnical,
+      isLearning,
     };
   }
 
@@ -1517,6 +1802,14 @@ export class MissionEngine {
       if (/(roadmap|priorit|final|plan)/.test(text)) return AgentRole.Finalizer;
       if (/(ux|user|experience)/.test(text)) return AgentRole.ProductStrategist;
       return AgentRole.TechnicalArchitect;
+    }
+    if (classification.isLearning) {
+      if (/(diagnostic|baseline|level|weak|assessment)/.test(text)) return AgentRole.Researcher;
+      if (/(calendar|curriculum|study|section|routine|schedule)/.test(text)) return AgentRole.ProductStrategist;
+      if (/(practice|drill|speaking|writing|reading|listening|vocabulary|mock|simulation|test)/.test(text)) return AgentRole.TechnicalArchitect;
+      if (/(risk|burnout|unrealistic|avoid|concern)/.test(text)) return AgentRole.RiskCritic;
+      if (/(final|plan|synthesis)/.test(text)) return AgentRole.Finalizer;
+      return [AgentRole.Researcher, AgentRole.ProductStrategist, AgentRole.TechnicalArchitect, AgentRole.RiskCritic, AgentRole.Finalizer][index % 5];
     }
     if (/(market|campaign|content|position|launch|gtm|sales)/.test(text)) return AgentRole.MarketingStrategist;
     if (/(budget|finance|cost|pricing|runway|resource)/.test(text)) return AgentRole.Finance;
@@ -1532,11 +1825,14 @@ export class MissionEngine {
     if (classification.selectedAgents.includes(AgentRole.RiskCritic) && !hasRisk) {
       ctx.workstreams = [...ctx.workstreams, {
         id: generateId(),
-        title: classification.intent === "technical_debugging" ? "Regression, Risk & Monitoring Review" : "Risk Critic Review",
-        owner: getAgentByRole(AgentRole.RiskCritic)?.name,
-        responsibleAgent: getAgentByRole(AgentRole.RiskCritic)?.name,
+        title: classification.intent === "technical_debugging" ? "Regression, Risk & Monitoring Review" : classification.isLearning ? "Risk Review" : "Risk Critic Review",
+        owner: missionDisplayRole(classification, AgentRole.RiskCritic),
+        responsibleAgent: missionDisplayRole(classification, AgentRole.RiskCritic),
+        displayRole: missionDisplayRole(classification, AgentRole.RiskCritic),
         description: classification.intent === "technical_debugging"
           ? "Challenge the optimization plan for regressions, measurement blind spots, dependency risk, and premature refactors."
+          : classification.isLearning
+            ? "Challenge the study plan for burnout, unrealistic timing, missing practice sections, weak review loops, and test-day readiness."
           : "Challenge the plan for tradeoffs, hidden assumptions, quality risks, and execution failure points.",
         status: "pending",
         assignedAgent: AgentRole.RiskCritic,
@@ -1554,6 +1850,7 @@ export class MissionEngine {
       title: workstream.title,
       description: workstream.description,
       agent: workstream.assignedAgent ?? this.agentForMissionWorkstream(classification, workstream.title, index),
+      displayRole: workstream.displayRole ?? missionDisplayRole(classification, workstream.assignedAgent ?? this.agentForMissionWorkstream(classification, workstream.title, index)),
       supportingAgents: workstream.supportingAgentIds ?? [],
       dependencies: [] as string[],
       status: "pending" as const,
@@ -1693,19 +1990,6 @@ export class MissionEngine {
       });
     }
 
-    const confidenceValues = ctx.workstreams.map((workstream) => workstream.confidence ?? 70);
-    if (confidenceValues.length > 1 && Math.max(...confidenceValues) - Math.min(...confidenceValues) >= 16) {
-      conflicts.push({
-        id: generateId(),
-        title: "Confidence disagreement across workstreams",
-        agents: Array.from(new Set(ctx.workstreams.map((workstream) => getAgentByRole(workstream.assignedAgent ?? AgentRole.Planner)?.name ?? "Unknown Agent"))),
-        riskLevel: "moderate",
-        description: "Some workstreams are materially less certain than others and should not be treated as equally ready.",
-        disagreementSummary: "Higher-confidence outputs can proceed, while lower-confidence outputs need validation or narrower scope.",
-        resolved: false,
-      });
-    }
-
     if (/CONFLICT_DETECTED:\s*true/i.test(ctx.riskReview) && conflicts.length === 0) {
       conflicts.push({
         id: generateId(),
@@ -1726,6 +2010,9 @@ export class MissionEngine {
   }
 
   private resolveConflictAction(conflict: ConflictInfo, classification: MissionClassification) {
+    if (classification.isLearning) {
+      return "Use 2 full mock tests instead of 4, keep short daily speaking practice, and reserve review blocks for weak speaking and writing areas.";
+    }
     if (classification.intent === "technical_debugging") {
       return conflict.title?.includes("API")
         ? "Measure frontend render time and network/API latency separately before prioritizing fixes."
@@ -1769,6 +2056,7 @@ export class MissionEngine {
 
   private generateReport(ctx: MissionContext): MissionReport {
     const classification = this.classifyMission(ctx.missionBrief);
+    if (classification.isLearning) return this.generateLearningReport(ctx, classification);
     const metrics = ctx.efficiencyMetrics ?? this.generateEfficiencyMetrics(ctx, ctx.conflicts.length > 0);
     const parallelGroups = ctx.missionGraph?.parallelGroups ?? this.buildNamedParallelGroups(ctx.executionTasks);
     const revisedTasks = ctx.executionTasks.filter((task) => task.status === "revised" || task.revisionNote);
@@ -1800,6 +2088,70 @@ export class MissionEngine {
       successMetrics: `Task coverage: ${metrics.taskCoverage}%. Confidence score: ${metrics.finalConfidenceScore}%. Perspectives considered: ${metrics.perspectivesConsidered}. Parallel waves: ${parallelGroups.map((group) => group.title).join(", ")}. Synchronization status: ${ctx.missionGraph?.finalizationReadiness.status ?? "ready_for_synthesis"}.`,
       finalRecommendations: this.generateFinalRecommendations(ctx, classification),
       singleAgentComparison: `Single-agent baseline: ${metrics.singleAgentBaseline}%. Agent Society quality score: ${metrics.qualityScore}%. Estimated efficiency gain: ${Math.max(0, metrics.qualityScore - metrics.singleAgentBaseline)} points. The Mission Graph improves coverage by decomposing the brief, assigning specialists, running compatible workstreams in parallel, allowing Risk Critic interrupts, resolving conflicts through Mediator, letting Planner revise dependencies, and synchronizing before Finalizer synthesis.`,
+    };
+  }
+
+  private generateLearningReport(ctx: MissionContext, classification: MissionClassification): MissionReport {
+    const metrics = ctx.efficiencyMetrics ?? this.generateEfficiencyMetrics(ctx, ctx.conflicts.length > 0);
+    const isToefl = /toefl/i.test(ctx.missionBrief);
+    const subject = isToefl ? "TOEFL" : "study";
+    const workstreamLines = ctx.workstreams.map((workstream) =>
+      `- ${sanitizeUserFacingText(workstream.title)} (${sanitizeUserFacingText(workstream.displayRole ?? workstream.owner ?? "Coach")}, ${workstream.confidence ?? 80}% confidence): ${sanitizeUserFacingText(workstream.description)}`
+    ).join("\n");
+    const mediatorNote = ctx.conflicts.length
+      ? "Risk Critic reduced the mock-test count from 4 to 2 so the learner has more time to review weak speaking and writing areas."
+      : "No mediation was required; the study plan remained balanced across practice, review, and recovery.";
+
+    return {
+      executiveSummary: `Final ${subject} study plan is ready: start with a diagnostic, rotate the four TOEFL sections daily, use official practice resources, complete two full mock tests in the final 10 days, and review weak areas after every timed session.`,
+      missionObjective: sanitizeUserFacingText(ctx.missionBrief),
+      selectedMissionConfiguration: configSummary(ctx.configuration),
+      workstreams: workstreamLines,
+      roleAssignments: [
+        "Diagnostic Coach: baseline practice test and weak-area map.",
+        "Curriculum Coach: 30-day calendar, weekly goals, and review days.",
+        "Practice Coach: Reading, Listening, Speaking, Writing, vocabulary, and grammar drills.",
+        "Test Simulation Coach: timed section sets and full mock-test schedule.",
+        "Risk Critic: burnout, ignored speaking practice, template overuse, and unrealistic target checks.",
+        "Finalizer: final clean study plan and score tracking metrics.",
+      ].join("\n"),
+      agentContributions: ctx.dialogue.map((entry) => {
+        const label = entry.displayRole ?? entry.agentName;
+        const summary = this.tryParseAgentOutput(entry.content)?.summary ?? sanitizeUserFacingText(entry.content).split("\n").find(Boolean) ?? "Contribution captured.";
+        return `- ${label}: ${sanitizeUserFacingText(summary)}`;
+      }).join("\n"),
+      keyDisagreements: ctx.conflicts.map((conflict) => `${sanitizeUserFacingText(conflict.summary ?? conflict.title)} ${sanitizeUserFacingText(conflict.disagreementSummary ?? conflict.description)}`).join("\n") || "No active conflict.",
+      mediatorDecisions: mediatorNote,
+      executionRoadmap: [
+        "Current assumption / starting point: take a baseline TOEFL practice test before choosing daily emphasis.",
+        "Days 1-2: baseline test, score tracker, target score, resource setup, error log.",
+        "Days 3-7: Reading and Listening fundamentals, daily vocabulary, short speaking recordings, one timed writing task.",
+        "Days 8-14: rotate all four sections; add integrated speaking and writing templates with timed practice.",
+        "Days 15-20: increase timed section sets, review error log, repeat weakest question types.",
+        "Days 21-24: full mock test 1, score review, two-day weak-area repair loop.",
+        "Days 25-28: final section drills, speaking fluency, essay structure, and vocabulary review.",
+        "Day 29: full mock test 2 under test conditions.",
+        "Day 30: light review, template refresh, logistics, sleep, and confidence check.",
+      ].join("\n"),
+      timeline: [
+        "Diagnostic Assessment completed.",
+        "30-Day Study Calendar created.",
+        "TOEFL section practice schedule created.",
+        "Practice schedule adjusted after risk review.",
+        "Mock test plan finalized.",
+        "Final TOEFL study plan generated.",
+      ].join("\n"),
+      budgetEstimate: "Use official ETS TOEFL resources as the primary benchmark, then add free or low-cost vocabulary tools, voice recording, and writing feedback only where they improve review quality.",
+      riskAssessment: [
+        "Burnout risk: keep one lighter review day each week.",
+        "Speaking avoidance risk: record at least one short answer daily.",
+        "Template memorization risk: practice under timing instead of only reading templates.",
+        "Poor time management risk: use timed section sets starting in week 2.",
+        "Unrealistic target risk: adjust daily emphasis after the baseline and each mock test.",
+      ].join("\n"),
+      successMetrics: `Track section scores after each mock, daily study completion, vocabulary retention, speaking timing accuracy, writing rubric misses, and error-log repeat rate. Output completeness: ${metrics.taskCoverage}%. Average confidence: ${metrics.finalConfidenceScore}%. Perspectives used: ${metrics.perspectivesConsidered}.`,
+      finalRecommendations: "Keep the plan practical: study daily, rotate sections, review mistakes deeply, speak out loud every day, write under time pressure, and treat mock tests as diagnosis plus review rather than just volume.",
+      singleAgentComparison: `Multi-agent quality score: ${metrics.qualityScore}%. The added value is perspective coverage: diagnostic planning, curriculum structure, practice design, risk review, mediation, and final synthesis.`,
     };
   }
 

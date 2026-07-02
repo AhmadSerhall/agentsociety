@@ -2,28 +2,30 @@
 
 Use these prompts after Mission Engine changes.
 
-## Mission A - Business Launch
+## Test 1 - TOEFL Study Plan
 
 Prompt:
 
 ```txt
-Create a launch strategy for a Lebanese AI SaaS startup targeting schools.
+give me a plan of study of how i prepare for the TOEFL exam
 ```
 
 Expected:
 
-- Classification: `business_launch`
-- Agents include Research, Product Strategist, Marketing Strategist, Finance Agent, Risk Critic, Mediator if conflicts exist, Finalizer.
-- Workstreams mention market/customer validation, offer/positioning, go-to-market, budget/resources, and launch risk.
-- Timeline and final report use launch/business language.
-- Network includes business/launch agents, not only technical agents.
+- Classification: `exam_preparation` or `learning_plan`
+- User-facing roles include Planner, Diagnostic Coach, Curriculum Coach, Practice Coach, Test Simulation Coach, Risk Critic, Mediator, and Finalizer.
+- No visible Product Strategist, Marketing Strategist, Finance Agent, Technical Architect, business launch, market activation, product positioning, or budget modeling language unless explicitly requested.
+- Workstreams include Diagnostic Assessment, 30-Day Study Calendar, TOEFL Section Practice, Resources and Tools, Mock Test and Score Improvement Plan, Risk Review, and Final Study Plan.
+- Final report includes daily tasks, weekly goals, Reading, Listening, Speaking, Writing, vocabulary, mock tests, resources, risks, final-week strategy, and score tracking metrics.
+- Normal UI shows no `###`, `**`, `---`, raw JSON, raw ids, `null`, `undefined`, placeholders, or repeated mission-title spam.
+- Conflict copy clearly explains agent vs agent disagreement, such as mock-test frequency vs review time.
 
-## Mission B - Technical Debugging
+## Test 2 - Technical Debugging
 
 Prompt:
 
 ```txt
-Analyze why my React app is slow and propose an optimization plan.
+Analyze why my React app is slow and propose an optimization plan
 ```
 
 Expected:
@@ -34,6 +36,22 @@ Expected:
 - Conflicts mention quick fixes vs deeper architecture correction and possibly frontend vs API latency investigation.
 - Final report uses technical optimization recommendations.
 - Network centers around Planner, Technical Architect, Risk Critic, Mediator when needed, and Finalizer.
+
+## Test 3 - Business Launch
+
+Prompt:
+
+```txt
+Create a launch strategy for a Lebanese AI SaaS startup targeting schools
+```
+
+Expected:
+
+- Classification: `business_launch`
+- Agents include Research, Product Strategist, Marketing Strategist, Finance Agent, Risk Critic, Mediator if conflicts exist, Finalizer.
+- Workstreams mention market/customer validation, offer/positioning, go-to-market, budget/resources, and launch risk.
+- Timeline and final report use launch/business language.
+- Network includes business/launch agents, not only technical agents.
 
 ## Mission C - Architecture Decision
 

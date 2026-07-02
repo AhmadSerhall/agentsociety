@@ -4,10 +4,12 @@ import { motion } from "framer-motion";
 import { Maximize2, MessageSquareText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { AgentDialogueEntry } from "@/types";
+import { sanitizeUserFacingText } from "@/utils";
 import { normalizeDialogueEntry } from "./agent-output-formatter";
 
 export function AgentSpeechBubble({ entry, onExpand }: { entry: AgentDialogueEntry; onExpand: (entry: AgentDialogueEntry) => void }) {
   const output = normalizeDialogueEntry(entry);
+  const displayName = sanitizeUserFacingText(entry.displayRole || entry.agentName);
 
   return (
     <motion.article
@@ -20,15 +22,20 @@ export function AgentSpeechBubble({ entry, onExpand }: { entry: AgentDialogueEnt
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-semibold text-white">{entry.agentName}</span>
+            <span className="text-sm font-semibold text-white">{displayName}</span>
             <span className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[0.65rem] uppercase tracking-[0.14em] text-cyan-100/70">
-              {output.type}
+              {entry.status ?? output.type}
             </span>
             {entry.targetAgentRole && (
               <span className="text-xs text-white/38">to {entry.targetAgentRole.replace(/-/g, " ")}</span>
             )}
           </div>
           <p className="mt-2 text-sm leading-relaxed text-white/70">{output.summary}</p>
+          {output.bullets.length > 0 && (
+            <ul className="mt-2 space-y-1 text-sm text-white/58">
+              {output.bullets.slice(0, 4).map((bullet) => <li key={bullet}>- {bullet}</li>)}
+            </ul>
+          )}
           {entry.referencedWorkstreamIds?.length ? (
             <p className="mt-2 text-xs text-white/40">Related workstream context attached</p>
           ) : null}
@@ -43,6 +50,7 @@ export function AgentSpeechBubble({ entry, onExpand }: { entry: AgentDialogueEnt
       <div className="mt-3 flex items-center gap-2 text-xs text-white/35">
         <MessageSquareText className="h-3.5 w-3.5 text-cyan-200/70" />
         <span>{new Date(entry.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
+        {entry.confidence ? <span>{entry.confidence}% confidence</span> : null}
       </div>
     </motion.article>
   );

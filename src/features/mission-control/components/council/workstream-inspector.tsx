@@ -5,7 +5,8 @@ import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import type { ConflictInfo, ExecutionTask } from "@/types";
-import { displayTaskOutput, displayWorkstreamTitle } from "./agent-output-formatter";
+import { sanitizeUserFacingText } from "@/utils";
+import { displayRoleForTask, displayTaskOutput, displayWorkstreamTitle } from "./agent-output-formatter";
 
 export function WorkstreamInspector({ task, conflicts, open, onOpenChange }: { task: ExecutionTask | null; conflicts: ConflictInfo[]; open: boolean; onOpenChange: (open: boolean) => void }) {
   return (
@@ -19,14 +20,14 @@ export function WorkstreamInspector({ task, conflicts, open, onOpenChange }: { t
             <div className="rounded-2xl border border-cyan-200/15 bg-cyan-300/[0.055] p-4">
               <Badge className="mb-3 bg-cyan-300/10 text-cyan-100 hover:bg-cyan-300/10">{task.status}</Badge>
               <h3 className="text-xl font-semibold text-white">{displayWorkstreamTitle(task)}</h3>
-              <p className="mt-2 text-sm leading-relaxed text-white/58">{task.description ?? "No description supplied yet."}</p>
+              <p className="mt-2 text-sm leading-relaxed text-white/58">{sanitizeUserFacingText(task.description ?? "No description supplied yet.")}</p>
             </div>
             <InfoGrid task={task} />
             <Section title="Dependencies" icon={<GitBranch className="h-4 w-4" />}>
-              {task.dependencies.length ? task.dependencies.map((dep) => <Pill key={dep}>{dep}</Pill>) : <p className="text-sm text-white/45">No dependencies. This workstream can begin immediately.</p>}
+              {task.dependencies.length ? <p className="text-sm text-white/45">{task.dependencies.length} prerequisite workstream{task.dependencies.length > 1 ? "s" : ""} must finish first.</p> : <p className="text-sm text-white/45">No dependencies. This workstream can begin immediately.</p>}
             </Section>
             <Section title="Collaborators" icon={<UsersRound className="h-4 w-4" />}>
-              <Pill>{task.agent.replace(/-/g, " ")}</Pill>
+              <Pill>{displayRoleForTask(task)}</Pill>
               {task.supportingAgents?.map((agent) => <Pill key={agent}>{agent.replace(/-/g, " ")}</Pill>)}
             </Section>
             <Section title="Current Output">
@@ -35,8 +36,8 @@ export function WorkstreamInspector({ task, conflicts, open, onOpenChange }: { t
             <Section title="Conflicts">
               {conflicts.length ? conflicts.map((conflict) => (
                 <div key={conflict.id} className="rounded-xl border border-amber-200/15 bg-amber-300/[0.055] p-3">
-                  <p className="text-sm font-medium text-amber-100">{conflict.title ?? "Active disagreement"}</p>
-                  <p className="mt-1 text-sm leading-relaxed text-white/58">{conflict.summary ?? conflict.description}</p>
+                  <p className="text-sm font-medium text-amber-100">{sanitizeUserFacingText(conflict.title ?? "Active disagreement")}</p>
+                  <p className="mt-1 text-sm leading-relaxed text-white/58">{sanitizeUserFacingText(conflict.summary ?? conflict.description)}</p>
                 </div>
               )) : <p className="text-sm text-white/45">No conflicts attached to this workstream.</p>}
             </Section>
@@ -50,7 +51,7 @@ export function WorkstreamInspector({ task, conflicts, open, onOpenChange }: { t
 function InfoGrid({ task }: { task: ExecutionTask }) {
   return (
     <div className="grid gap-3 sm:grid-cols-3">
-      <Info label="Primary" value={task.agent.replace(/-/g, " ")} />
+      <Info label="Primary" value={displayRoleForTask(task)} />
       <Info label="Confidence" value={`${task.confidence}%`} />
       <Info label="Status" value={task.status.replace(/-/g, " ")} />
     </div>

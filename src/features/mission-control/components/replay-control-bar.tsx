@@ -40,6 +40,10 @@ function currentEvent(events: MissionReplayEvent[], time: number) {
   return events.filter((event) => event.relativeTimestamp <= time).at(-1) ?? null;
 }
 
+function isReplayControlTarget(target: EventTarget | null) {
+  return target instanceof HTMLElement && Boolean(target.closest("button, input, textarea, select, [role='slider'], [role='switch'], [role='combobox'], [data-no-drag]"));
+}
+
 export function ReplayControlBar() {
   const mode = useReplayStore((s) => s.mode);
   const status = useReplayStore((s) => s.replayStatus);
@@ -116,6 +120,7 @@ export function ReplayControlBar() {
 
   const startDrag = (event: ReactPointerEvent<HTMLElement>) => {
     if (event.button !== 0) return;
+    if (isReplayControlTarget(event.target)) return;
     event.preventDefault();
     dragRef.current = {
       originX: position.x,
@@ -183,8 +188,9 @@ export function ReplayControlBar() {
     <motion.div
       initial={{ opacity: 0, y: 24, scale: 0.98 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
-      className={`fixed z-50 select-none text-white ${overlayWidthClass}`}
+      className={`fixed z-50 cursor-grab select-none text-white active:cursor-grabbing ${overlayWidthClass}`}
       style={{ left: position.x, top: position.y }}
+      onPointerDown={startDrag}
     >
       {uiMode === "mini" ? (
         <MiniDock
@@ -203,7 +209,7 @@ export function ReplayControlBar() {
           <div
             className="flex flex-wrap items-center justify-between gap-3"
           >
-            <div className="cursor-grab touch-none active:cursor-grabbing" onPointerDown={startDrag}>
+            <div className="touch-none">
               <p className="text-xs uppercase tracking-[0.24em] text-cyan-100/55">Floating Mission Replay</p>
               <p className="mt-1 text-sm text-white/70">{status === "completed" ? "Replay complete" : isPlaying ? "Playing recorded mission events" : "Replay paused"} - {eventLabel(activeEvent)}</p>
             </div>
@@ -308,14 +314,13 @@ function MiniDock({
   onExpand: () => void;
   onExit: () => void;
 }) {
-  const progress = duration ? Math.min(100, (time / duration) * 100) : 0;
   return (
     <div className="overflow-hidden rounded-2xl border border-cyan-200/15 bg-[#07111f]/94 p-3 shadow-[0_24px_100px_rgba(34,211,238,0.22)] backdrop-blur-2xl">
       <div className="flex items-center gap-3">
         <Button size="icon" onClick={onToggle} className="bg-cyan-300 text-[#06101f] hover:bg-cyan-200">
           {status === "playing" ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
         </Button>
-        <div className="min-w-0 flex-1 cursor-grab touch-none active:cursor-grabbing" onPointerDown={onDragStart}>
+        <div className="min-w-0 flex-1 touch-none" onPointerDown={onDragStart}>
           <p className="truncate text-xs uppercase tracking-[0.18em] text-cyan-100/60">Replay Dock</p>
           <p className="truncate text-sm text-white/70">{eventLabel(event)}</p>
         </div>
@@ -330,12 +335,9 @@ function MiniDock({
           max={Math.max(1, duration)}
           step={100}
           onValueChange={([value]) => onSeek(value)}
-          className="[&_[role=slider]]:border-cyan-100 [&_[role=slider]]:bg-[#07111f]"
+          className="[&_[data-slot=slider-range]]:bg-gradient-to-r [&_[data-slot=slider-range]]:from-cyan-300 [&_[data-slot=slider-range]]:to-purple-400 [&_[data-slot=slider-thumb]]:border-cyan-100 [&_[data-slot=slider-thumb]]:bg-[#07111f] [&_[data-slot=slider-track]]:h-1.5 [&_[data-slot=slider-track]]:bg-white/10"
         />
         <span className="text-right text-xs tabular-nums text-white/45">{formatTime(duration)}</span>
-      </div>
-      <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/10">
-        <div className="h-full rounded-full bg-gradient-to-r from-cyan-300 to-purple-400" style={{ width: `${progress}%` }} />
       </div>
     </div>
   );

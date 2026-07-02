@@ -4,6 +4,7 @@ import { CheckCircle2, GitMerge, ShieldCheck, Sparkles } from "lucide-react";
 import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import type { MissionContext } from "@/types";
+import { sanitizeUserFacingText } from "@/utils";
 
 export function CouncilSummaryPanel({ context }: { context: MissionContext }) {
   const report = context.finalReport;
@@ -19,9 +20,9 @@ export function CouncilSummaryPanel({ context }: { context: MissionContext }) {
       </div>
       <div className="mt-5 text-center">
         <Badge className="bg-emerald-300/15 text-emerald-100 hover:bg-emerald-300/15">Saved to history</Badge>
-        <h3 className="mt-3 text-2xl font-bold text-white">{report?.missionObjective || "Council Synchronized"}</h3>
+        <h3 className="mt-3 text-2xl font-bold text-white">{sanitizeUserFacingText(report?.missionObjective || "Council Synchronized")}</h3>
         <p className="mx-auto mt-3 max-w-2xl text-sm leading-relaxed text-white/62">
-          {report?.executiveSummary || "The agent society completed the Mission Graph, resolved required coordination points, and synthesized the final execution plan."}
+          {sanitizeUserFacingText(report?.executiveSummary || "The agent society completed the workstreams, resolved required coordination points, and synthesized the final execution plan.")}
         </p>
       </div>
       <div className="mt-5 grid gap-3 md:grid-cols-3">
@@ -31,7 +32,7 @@ export function CouncilSummaryPanel({ context }: { context: MissionContext }) {
       </div>
       <div className="mt-5 rounded-2xl border border-cyan-200/10 bg-cyan-300/[0.045] p-4">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-100/75">Key decision</p>
-        <p className="mt-2 line-clamp-5 text-sm leading-relaxed text-white/62">{keyDecision}</p>
+        <p className="mt-2 line-clamp-5 text-sm leading-relaxed text-white/62">{sanitizeUserFacingText(keyDecision)}</p>
       </div>
     </section>
   );

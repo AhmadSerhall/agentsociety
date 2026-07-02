@@ -66,6 +66,7 @@ export interface Workstream {
   title: string;
   owner?: string;
   responsibleAgent?: string;
+  displayRole?: string;
   description: string;
   status: "pending" | "ready" | "in_progress" | "blocked" | "completed" | "revised" | "cancelled";
   assignedAgent: AgentRole | null;
@@ -85,6 +86,7 @@ export interface ExecutionTask {
   title: string;
   description?: string;
   agent: AgentRole;
+  displayRole?: string;
   supportingAgents?: AgentRole[];
   dependencies: string[];
   status: "pending" | "ready" | "running" | "blocked" | "completed" | "revised" | "cancelled";

@@ -4,14 +4,23 @@ import { Activity, AlertTriangle, BrainCircuit, GitBranch, ShieldCheck } from "l
 import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import type { MissionContext } from "@/types";
+import { sanitizeUserFacingText } from "@/utils";
 import { normalizeDialogueEntry } from "./agent-output-formatter";
 
 export function MissionIntelligencePanel({ context }: { context: MissionContext }) {
   const activeConflict = context.conflicts.find((conflict) => conflict.status !== "resolved" && !conflict.resolved) ?? context.conflicts.at(-1);
   const latest = context.dialogue.at(-1);
-  const currentDecision = latest ? normalizeDialogueEntry(latest).summary : "Awaiting the Planner to shape the Mission Graph.";
+  const currentDecision = latest ? normalizeDialogueEntry(latest).summary : "Awaiting the Planner to create useful workstreams.";
+  const conflictBody = activeConflict
+    ? activeConflict.resolved || activeConflict.status === "resolved"
+      ? "No active conflict."
+      : sanitizeUserFacingText(activeConflict.summary ?? activeConflict.description)
+    : "No active conflict.";
+  const keyDecision = activeConflict?.finalAction ?? activeConflict?.resolvedAction ?? activeConflict?.mediatorDecision ?? "Key decision will appear after the first meaningful tradeoff is resolved.";
+  const mediatorNotes = activeConflict?.resolved
+    ? sanitizeUserFacingText(activeConflict.finalAction ?? activeConflict.resolvedAction ?? context.mediatorDecisions)
+    : sanitizeUserFacingText(context.mediatorDecisions || "Mediator is standing by until a disagreement needs arbitration.");
   const blockedTasks = context.executionTasks.filter((task) => task.status === "blocked");
-  const nextTasks = context.executionTasks.filter((task) => task.status === "ready" || task.status === "pending").slice(0, 3);
   const averageConfidence = Math.round(context.executionTasks.reduce((sum, task) => sum + (task.confidence ?? 0), 0) / Math.max(1, context.executionTasks.length));
 
   return (
@@ -22,16 +31,11 @@ export function MissionIntelligencePanel({ context }: { context: MissionContext 
       </div>
       <div className="mt-4 space-y-3">
         <IntelCard icon={<BrainCircuit className="h-4 w-4" />} title="Current Decision" body={currentDecision} tone="cyan" />
-        <IntelCard
-          icon={<AlertTriangle className="h-4 w-4" />}
-          title="Active Conflict"
-          body={activeConflict ? (activeConflict.summary ?? activeConflict.description) : "No conflict yet. Risk Critic is monitoring assumptions."}
-          tone={activeConflict && !activeConflict.resolved ? "amber" : "emerald"}
-        />
+        <IntelCard icon={<AlertTriangle className="h-4 w-4" />} title="Active Conflict" body={conflictBody} tone={activeConflict && !activeConflict.resolved ? "amber" : "emerald"} />
         <IntelCard
           icon={<Activity className="h-4 w-4" />}
-          title="Next Up"
-          body={nextTasks.length ? nextTasks.map((task) => task.title).join(" -> ") : "Finalizer is waiting for synchronization readiness."}
+          title="Key Decision"
+          body={keyDecision}
           tone="purple"
         />
         <IntelCard
@@ -43,7 +47,7 @@ export function MissionIntelligencePanel({ context }: { context: MissionContext 
         <IntelCard
           icon={<ShieldCheck className="h-4 w-4" />}
           title="Mediator Notes"
-          body={context.mediatorDecisions || "Mediator is standing by until a disagreement needs arbitration."}
+          body={mediatorNotes}
           tone="emerald"
         />
       </div>
@@ -64,7 +68,7 @@ function IntelCard({ icon, title, body, tone }: { icon: ReactNode; title: string
         {icon}
         <p className="text-xs font-semibold uppercase tracking-[0.16em]">{title}</p>
       </div>
-      <p className="mt-2 line-clamp-4 text-sm leading-relaxed text-white/62">{body}</p>
+      <p className="mt-2 line-clamp-4 text-sm leading-relaxed text-white/62">{sanitizeUserFacingText(body)}</p>
     </div>
   );
 }
