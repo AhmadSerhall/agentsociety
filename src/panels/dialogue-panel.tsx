@@ -1,10 +1,10 @@
 "use client";
 
-import ReactMarkdown from "react-markdown";
 import { AGENT_DEFINITIONS } from "@/agents";
 import { Badge } from "@/components/ui/badge";
+import { normalizeDialogueEntry } from "@/features/mission-control/components/council/agent-output-formatter";
 import { useMissionStore } from "@/store";
-import { formatRelativeTime, sanitizeMissionText } from "@/utils";
+import { formatRelativeTime } from "@/utils";
 import { useShallow } from "zustand/react/shallow";
 
 export function DialoguePanel() {
@@ -20,6 +20,7 @@ export function DialoguePanel() {
         {dialogue.map((entry, index) => {
           const def = AGENT_DEFINITIONS.find((agent) => agent.id === entry.agentId);
           const color = def?.color ?? "#22d3ee";
+          const output = normalizeDialogueEntry(entry);
           return (
             <article key={`${entry.agentId}-${entry.timestamp}-${index}`} className="flex min-w-0 gap-3 overflow-hidden rounded-2xl border border-white/10 bg-black/20 p-4">
               <div
@@ -33,15 +34,28 @@ export function DialoguePanel() {
                   <span className="text-sm font-semibold" style={{ color }}>{entry.agentName}</span>
                   <span className="text-xs text-white/38">{formatRelativeTime(entry.timestamp)}</span>
                   <Badge variant="outline" className="border-white/10 bg-white/[0.04] text-[0.65rem] text-white/60">
-                    Complete
+                    {output.type}
                   </Badge>
                   {entry.isConflict && (
                     <Badge className="bg-amber-400/15 text-amber-200 hover:bg-amber-400/15">Conflict</Badge>
                   )}
                 </div>
-                <div className="mt-3 max-w-none whitespace-pre-wrap break-words text-sm leading-relaxed text-white/68 [&_*]:max-w-full [&_*]:break-words [&_h1]:mb-3 [&_h1]:text-lg [&_h1]:font-semibold [&_h1]:text-white [&_h2]:mb-3 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:text-white [&_h3]:mb-2 [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:text-white [&_li]:ml-5 [&_li]:list-disc [&_ol_li]:list-decimal [&_p]:mb-3 [&_p]:last:mb-0 [&_strong]:font-semibold [&_strong]:text-white">
-                  <ReactMarkdown>{sanitizeMissionText(entry.content)}</ReactMarkdown>
-                </div>
+                <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-relaxed text-white/68">{output.summary}</p>
+                {output.bullets.length > 0 && (
+                  <ul className="mt-3 space-y-1 text-sm text-white/56">
+                    {output.bullets.map((bullet) => <li key={bullet}>- {bullet}</li>)}
+                  </ul>
+                )}
+                {output.workstreams.length > 0 && (
+                  <div className="mt-3 grid gap-2 md:grid-cols-2">
+                    {output.workstreams.map((stream) => (
+                      <div key={stream.title} className="rounded-xl border border-cyan-200/10 bg-cyan-300/[0.045] p-3">
+                        <p className="text-sm font-medium text-white">{stream.title}</p>
+                        {stream.description && <p className="mt-1 text-xs leading-relaxed text-white/50">{stream.description}</p>}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </article>
           );

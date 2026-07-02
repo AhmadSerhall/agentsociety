@@ -8,10 +8,12 @@ const DEFAULT_QWEN_MODEL = "qwen-turbo";
 
 interface RuntimeSettings {
   allowMockFallback: boolean;
+  developerDebugMode: boolean;
   qwenApiKey: string;
   qwenBaseUrl: string;
   qwenModel: string;
   setAllowMockFallback: (enabled: boolean) => void;
+  setDeveloperDebugMode: (enabled: boolean) => void;
   setQwenCredentials: (credentials: { apiKey: string; baseUrl: string; model: string }) => void;
   clearQwenCredentials: () => void;
   load: () => void;
@@ -19,14 +21,16 @@ interface RuntimeSettings {
 
 interface PersistedRuntimeSettings {
   allowMockFallback?: boolean;
+  developerDebugMode?: boolean;
   qwenApiKey?: string;
   qwenBaseUrl?: string;
   qwenModel?: string;
 }
 
-function readSettings(): Pick<RuntimeSettings, "allowMockFallback" | "qwenApiKey" | "qwenBaseUrl" | "qwenModel"> {
+function readSettings(): Pick<RuntimeSettings, "allowMockFallback" | "developerDebugMode" | "qwenApiKey" | "qwenBaseUrl" | "qwenModel"> {
   const fallback = {
     allowMockFallback: false,
+    developerDebugMode: false,
     qwenApiKey: "",
     qwenBaseUrl: DEFAULT_QWEN_BASE_URL,
     qwenModel: DEFAULT_QWEN_MODEL,
@@ -38,6 +42,7 @@ function readSettings(): Pick<RuntimeSettings, "allowMockFallback" | "qwenApiKey
     const parsed = JSON.parse(raw) as PersistedRuntimeSettings;
     return {
       allowMockFallback: Boolean(parsed.allowMockFallback),
+      developerDebugMode: Boolean(parsed.developerDebugMode),
       qwenApiKey: parsed.qwenApiKey ?? "",
       qwenBaseUrl: parsed.qwenBaseUrl ?? DEFAULT_QWEN_BASE_URL,
       qwenModel: parsed.qwenModel ?? DEFAULT_QWEN_MODEL,
@@ -55,6 +60,7 @@ function saveSettings(settings: PersistedRuntimeSettings) {
 
 export const useRuntimeSettingsStore = create<RuntimeSettings>((set) => ({
   allowMockFallback: false,
+  developerDebugMode: false,
   qwenApiKey: "",
   qwenBaseUrl: DEFAULT_QWEN_BASE_URL,
   qwenModel: DEFAULT_QWEN_MODEL,
@@ -62,6 +68,10 @@ export const useRuntimeSettingsStore = create<RuntimeSettings>((set) => ({
   setAllowMockFallback: (enabled) => {
     saveSettings({ allowMockFallback: enabled });
     set({ allowMockFallback: enabled });
+  },
+  setDeveloperDebugMode: (enabled) => {
+    saveSettings({ developerDebugMode: enabled });
+    set({ developerDebugMode: enabled });
   },
   setQwenCredentials: ({ apiKey, baseUrl, model }) => {
     const next = {

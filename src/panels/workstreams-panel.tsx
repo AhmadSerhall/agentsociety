@@ -3,9 +3,10 @@
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { AGENT_DEFINITIONS } from "@/agents";
+import type { Workstream } from "@/types";
 import { useMissionStore } from "@/store";
 import { extractActionItemsFromText, sanitizeMissionList, sanitizeMissionText } from "@/utils";
-import { CheckCircle2, CircleDashed, Loader2 } from "lucide-react";
+import { CheckCircle2, CircleDashed, GitBranch, Loader2, Lock, RefreshCw } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 
 export function WorkstreamsPanel() {
@@ -20,12 +21,12 @@ export function WorkstreamsPanel() {
       {workstreams.map((ws) => {
         const owner = AGENT_DEFINITIONS.find((agent) => agent.role === ws.assignedAgent);
         const confidence = ws.confidence ?? 78;
-        const StatusIcon = ws.status === "completed" ? CheckCircle2 : ws.status === "in_progress" ? Loader2 : CircleDashed;
+        const StatusIcon = getStatusIcon(ws.status);
         const ownerLabel = sanitizeMissionText(owner?.name ?? ws.owner ?? ws.responsibleAgent ?? "") || "Owner pending";
         const deliverables = sanitizeMissionList(ws.deliverables);
         const bullets = deliverables.length > 0 ? deliverables : extractActionItemsFromText(ws.output || ws.description, 4);
         return (
-          <div key={ws.id} className="rounded-2xl border border-cyan-200/10 bg-black/20 p-4">
+          <div key={ws.id} className={`rounded-2xl border p-4 ${ws.status === "blocked" ? "border-amber-200/30 bg-amber-400/10" : ws.status === "revised" ? "border-blue-200/25 bg-blue-400/10" : "border-cyan-200/10 bg-black/20"}`}>
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <h4 className="text-sm font-semibold text-white">{sanitizeMissionText(ws.title)}</h4>
@@ -38,6 +39,26 @@ export function WorkstreamsPanel() {
             </div>
 
             <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-relaxed text-white/62">{sanitizeMissionText(ws.description)}</p>
+
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              <Badge variant="outline" className="gap-1 border-cyan-200/15 bg-cyan-300/10 text-[0.65rem] text-cyan-100/75">
+                <GitBranch className="h-3 w-3" />
+                {ws.dependencies?.length || 0} dependencies
+              </Badge>
+              {ws.supportingAgentIds?.map((role) => {
+                const support = AGENT_DEFINITIONS.find((agent) => agent.role === role);
+                return support ? (
+                  <Badge key={role} variant="outline" className="border-white/10 bg-white/[0.04] text-[0.65rem] text-white/55">
+                    supports: {support.name}
+                  </Badge>
+                ) : null;
+              })}
+              {ws.nextStep && (
+                <Badge variant="outline" className="border-blue-200/20 bg-blue-400/10 text-[0.65rem] text-blue-100/75">
+                  planner revised
+                </Badge>
+              )}
+            </div>
 
             <div className="mt-4">
               <div className="mb-1 flex justify-between text-[0.68rem] text-white/45">
@@ -62,4 +83,12 @@ export function WorkstreamsPanel() {
       })}
     </div>
   );
+}
+
+function getStatusIcon(status: Workstream["status"]) {
+  if (status === "completed") return CheckCircle2;
+  if (status === "in_progress" || status === "ready") return Loader2;
+  if (status === "blocked") return Lock;
+  if (status === "revised") return RefreshCw;
+  return CircleDashed;
 }

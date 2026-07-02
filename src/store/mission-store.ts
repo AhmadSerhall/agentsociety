@@ -58,6 +58,7 @@ const createEmptyContext = (brief: string, config: MissionConfiguration): Missio
     [AgentRole.Finalizer]: "waiting",
   },
   executionTasks: [],
+  missionGraph: null,
   progress: 0,
   status: MissionState.Idle,
   startedAt: null,

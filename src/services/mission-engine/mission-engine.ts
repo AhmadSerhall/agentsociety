@@ -23,6 +23,7 @@ import {
   type MissionConfiguration,
   type MissionContext,
   type MissionEvent,
+  type MissionGraph,
   type MissionReplayEvent,
   type MissionReplayEventType,
   type MissionReport,
@@ -56,6 +57,34 @@ interface MissionClassification {
   needsProduct: boolean;
   isLaunch: boolean;
   isTechnical: boolean;
+}
+
+interface PlannerGraphJson {
+  summary?: string;
+  workstreams?: Array<{
+    id?: string;
+    title?: string;
+    description?: string;
+    primaryAgentId?: string;
+    supportingAgentIds?: string[];
+    dependencies?: string[];
+    parallelGroup?: number;
+    expectedDeliverables?: string[];
+    riskAreas?: string[];
+    confidence?: number;
+  }>;
+  parallelGroups?: Array<{
+    id?: string;
+    title?: string;
+    description?: string;
+    taskIds?: string[];
+  }>;
+  conflictZones?: Array<{
+    title?: string;
+    agentsInvolved?: string[];
+    reason?: string;
+  }>;
+  synthesisReadinessCriteria?: string[];
 }
 
 function now() {
@@ -98,6 +127,10 @@ function configSummary(config: MissionConfiguration) {
   ].join("\n");
 }
 
+function clampConfidence(value: number) {
+  return Math.max(45, Math.min(98, Math.round(value)));
+}
+
 function buildPrompt(phase: MissionState, brief: string, ctx: MissionContext, config: MissionConfiguration, task?: ExecutionTask) {
   return `Mission Brief: ${brief}
 
@@ -128,6 +161,9 @@ ${ctx.dialogue.slice(-6).map((entry) => `- ${entry.agentName} (${entry.status ??
 Shared Mission State:
 - Agent States: ${Object.entries(ctx.agentStates).map(([role, state]) => `${role}=${state}`).join(", ")}
 - Completed Tasks: ${ctx.executionTasks.filter((item) => item.status === "completed").map((item) => item.title).join("; ") || "None"}
+- Mission Graph Readiness: ${ctx.missionGraph?.finalizationReadiness.status ?? "not_created"}
+- Task Nodes: ${ctx.executionTasks.map((item) => `${item.title} (${item.status}, agent=${item.agent}, dependencies=${item.dependencies.length})`).join("; ") || "None"}
+- Open Conflicts: ${ctx.conflicts.filter((conflict) => !conflict.resolved).map((conflict) => conflict.title ?? conflict.description).join("; ") || "None"}
 
 Produce the ${phase} contribution. Make the output specific to the mission configuration, reference previous outputs where useful, and write as if communicating to the rest of the agent society.`;
 }
@@ -170,6 +206,7 @@ export class MissionEngine {
       timeline: [...initialContext.timeline],
       agentStates: initialContext.agentStates ?? createAgentStates(),
       executionTasks: [...(initialContext.executionTasks ?? [])],
+      missionGraph: initialContext.missionGraph,
       replayEvents: [...(initialContext.replayEvents ?? [])],
     };
     const signal = this.abortController.signal;
@@ -194,6 +231,14 @@ export class MissionEngine {
       await this.runAgentPhase(ctx, MissionState.Planning, mockMode, qwenClient, signal, onUpdate, classification);
       this.ensureRequiredWorkstreams(ctx, classification);
       ctx.executionTasks = this.createExecutionTasks(ctx.workstreams, classification);
+      ctx.missionGraph = this.createMissionGraph(ctx);
+      this.recordReplayEvent(ctx, "MISSION_GRAPH_CREATED", {
+        payload: { missionGraph: ctx.missionGraph },
+        metadata: {
+          parallelGroups: this.getParallelExecutionGroups(ctx.executionTasks),
+          potentialConflictZones: this.identifyPotentialConflictZones(ctx.executionTasks),
+        },
+      });
       for (const workstream of ctx.workstreams) {
         const agent = getAgentByRole(workstream.assignedAgent ?? AgentRole.Planner);
         this.recordReplayEvent(ctx, "WORKSTREAM_CREATED", {
@@ -254,6 +299,9 @@ export class MissionEngine {
         onUpdate({ ...ctx });
       }
 
+      this.updateMissionGraph(ctx);
+      this.reachSynchronizationPoint(ctx);
+      onUpdate({ ...ctx });
       await this.runAgentPhase(ctx, MissionState.Finalizing, mockMode, qwenClient, signal, onUpdate, classification);
       ctx.efficiencyMetrics = this.generateEfficiencyMetrics(ctx, shouldMediate);
       devLog("final metrics", ctx.efficiencyMetrics);
@@ -373,17 +421,39 @@ export class MissionEngine {
     onUpdate: (ctx: MissionContext) => void,
     classification: MissionClassification
   ) {
+    let graphInterruptHandled = false;
+
     while (ctx.executionTasks.some((task) => task.status !== "completed")) {
       if (signal.aborted) throw new DOMException("Mission cancelled", "AbortError");
 
       const completedTaskIds = new Set(ctx.executionTasks.filter((task) => task.status === "completed").map((task) => task.id));
       const readyTasks = ctx.executionTasks.filter((task) =>
-        task.status === "pending" && task.dependencies.every((dependency) => completedTaskIds.has(dependency))
+        (task.status === "pending" || task.status === "ready" || task.status === "revised") && task.dependencies.every((dependency) => completedTaskIds.has(dependency))
       );
 
       if (readyTasks.length === 0) {
+        const blockedTasks = ctx.executionTasks.filter((task) => task.status === "blocked");
+        if (blockedTasks.length > 0) {
+          this.applyPlannerRevision(ctx, blockedTasks, classification);
+          onUpdate({ ...ctx });
+          continue;
+        }
         throw new Error("Mission execution deadlock: no workstreams are ready to run.");
       }
+
+      readyTasks.forEach((task) => {
+        this.updateTask(ctx, task.id, { status: "ready" });
+        this.updateWorkstream(ctx, task.workstreamId, { status: "ready" });
+        this.recordReplayEvent(ctx, "TASK_READY", {
+          agentRole: task.agent,
+          workstreamId: task.workstreamId,
+          workstreamTitle: task.title,
+          payload: { task },
+          confidence: task.confidence,
+          dependencies: task.dependencies,
+        });
+      });
+      this.updateMissionGraph(ctx);
 
       ctx.executionTasks
         .filter((task) => task.status === "pending" && !readyTasks.some((readyTask) => readyTask.id === task.id))
@@ -403,8 +473,14 @@ export class MissionEngine {
 
       const completedCount = ctx.executionTasks.filter((task) => task.status === "completed").length;
       ctx.progress = Math.min(0.78, 0.16 + (completedCount / Math.max(1, ctx.executionTasks.length)) * 0.58);
+      this.updateMissionGraph(ctx);
       this.emit({ type: MissionEventType.MissionProgress, timestamp: now(), payload: { progress: ctx.progress } });
       onUpdate({ ...ctx });
+
+      if (!graphInterruptHandled && this.shouldCreateGraphInterrupt(ctx, classification)) {
+        graphInterruptHandled = true;
+        await this.handleGraphInterrupt(ctx, mockMode, qwenClient, signal, onUpdate, classification);
+      }
     }
   }
 
@@ -422,12 +498,22 @@ export class MissionEngine {
     const phase = this.phaseForAgent(task.agent);
     const phaseStart = Date.now();
 
-    this.updateTask(ctx, task.id, { status: "in_progress", startedAt: now() });
+    this.updateTask(ctx, task.id, { status: "running", startedAt: now() });
     this.updateWorkstream(ctx, task.workstreamId, { status: "in_progress", startedAt: now() });
     ctx.status = phase;
     ctx.currentAgent = task.agent;
     this.setAgentState(ctx, task.agent, "thinking");
     this.recordReplayEvent(ctx, "AGENT_STARTED", {
+      agentId: agentDef.id,
+      agentName: agentDef.name,
+      agentRole: task.agent,
+      workstreamId: task.workstreamId,
+      workstreamTitle: task.title,
+      payload: { task },
+      confidence: task.confidence,
+      dependencies: task.dependencies,
+    });
+    this.recordReplayEvent(ctx, "TASK_STARTED", {
       agentId: agentDef.id,
       agentName: agentDef.name,
       agentRole: task.agent,
@@ -501,6 +587,7 @@ export class MissionEngine {
       dependencies: task.dependencies,
     });
     this.emit({ type: MissionEventType.AgentFinished, timestamp: now(), payload: { agentRole: task.agent, agentName: agentDef.name, phase, taskId: task.id } });
+    this.updateMissionGraph(ctx);
     onUpdate({ ...ctx });
   }
 
@@ -516,6 +603,341 @@ export class MissionEngine {
         reject(new DOMException("Mission cancelled", "AbortError"));
       }, { once: true });
     });
+  }
+
+  private createMissionGraph(ctx: MissionContext): MissionGraph {
+    return {
+      missionId: ctx.missionId,
+      workstreams: ctx.workstreams.map((workstream) => workstream.id),
+      agents: Array.from(new Set(ctx.executionTasks.map((task) => task.agent))),
+      taskNodes: ctx.executionTasks.map((task) => ({ ...task })),
+      parallelGroups: this.buildNamedParallelGroups(ctx.executionTasks),
+      conflictZones: this.buildConflictZones(ctx.executionTasks),
+      synthesisReadinessCriteria: [
+        "all required workstreams completed",
+        "critical conflicts resolved",
+        "confidence above threshold",
+      ],
+      dependencies: ctx.executionTasks.flatMap((task) => task.dependencies.map((dependency) => ({ from: dependency, to: task.id }))),
+      assignments: ctx.executionTasks.map((task) => ({
+        taskId: task.id,
+        assignedAgentId: task.agent,
+        supportingAgentIds: task.supportingAgents ?? [],
+      })),
+      statuses: Object.fromEntries(ctx.executionTasks.map((task) => [task.id, task.status])),
+      outputs: Object.fromEntries(ctx.executionTasks.filter((task) => task.output).map((task) => [task.id, task.output ?? ""])),
+      conflicts: [...ctx.conflicts],
+      synchronizationPoints: [
+        {
+          id: `${ctx.missionId}-final-sync`,
+          title: "Final synthesis readiness",
+          requiredTaskIds: ctx.executionTasks.map((task) => task.id),
+          reached: false,
+        },
+      ],
+      finalizationReadiness: this.getFinalizationReadiness(ctx),
+    };
+  }
+
+  private updateMissionGraph(ctx: MissionContext) {
+    ctx.missionGraph = this.createMissionGraph(ctx);
+    this.recordReplayEvent(ctx, "MISSION_GRAPH_UPDATED", {
+      payload: { missionGraph: ctx.missionGraph },
+      metadata: {
+        activeAgents: this.getActiveAgentRoles(ctx),
+        blockedTasks: ctx.executionTasks.filter((task) => task.status === "blocked").map((task) => task.title),
+      },
+    });
+  }
+
+  private getFinalizationReadiness(ctx: MissionContext): MissionGraph["finalizationReadiness"] {
+    const requiredTasksCompleted = ctx.executionTasks.length > 0 && ctx.executionTasks.every((task) => task.status === "completed");
+    const criticalConflictsResolved = ctx.conflicts.every((conflict) => conflict.resolved || conflict.status === "resolved" || conflict.severity !== "critical");
+    const confidenceValues = ctx.executionTasks.map((task) => task.confidence);
+    const averageConfidence = confidenceValues.length
+      ? Math.round(confidenceValues.reduce((sum, value) => sum + value, 0) / confidenceValues.length)
+      : 0;
+    const confidenceThresholdMet = averageConfidence >= 72;
+    const ready = requiredTasksCompleted && criticalConflictsResolved && confidenceThresholdMet;
+
+    return {
+      requiredTasksCompleted,
+      criticalConflictsResolved,
+      confidenceThresholdMet,
+      status: ready ? "ready_for_synthesis" : requiredTasksCompleted ? "waiting" : "not_ready",
+    };
+  }
+
+  private getParallelExecutionGroups(tasks: ExecutionTask[]) {
+    return this.getParallelExecutionTaskGroups(tasks).map((group) => group.map((task) => task.title));
+  }
+
+  private buildNamedParallelGroups(tasks: ExecutionTask[]): MissionGraph["parallelGroups"] {
+    const groups = this.getParallelExecutionTaskGroups(tasks);
+    const names = [
+      ["Discovery Wave", "Agents that can begin immediately and establish market, technical, or context baselines."],
+      ["Design Wave", "Agents that turn discovery outputs into offer, architecture, pricing, or delivery design."],
+      ["Activation Wave", "Agents that convert the plan into outreach, risk review, operating checks, and execution readiness."],
+      ["Synthesis Wave", "Final dependencies are synchronized before the Finalizer assembles the report."],
+    ];
+
+    return groups.map((group, index) => ({
+      id: `group-${index + 1}`,
+      title: names[index]?.[0] ?? `Collaboration Wave ${index + 1}`,
+      description: names[index]?.[1] ?? "Agents collaborate on currently ready Mission Graph nodes.",
+      taskIds: group.map((task) => task.id),
+    }));
+  }
+
+  private getParallelExecutionTaskGroups(tasks: ExecutionTask[]) {
+    const groups: ExecutionTask[][] = [];
+    const remaining = [...tasks];
+    const completed = new Set<string>();
+
+    while (remaining.length) {
+      const ready = remaining.filter((task) => task.dependencies.every((dependency) => completed.has(dependency)));
+      const group = ready.length ? ready : [remaining[0]];
+      groups.push(group);
+      group.forEach((task) => {
+        completed.add(task.id);
+        const index = remaining.findIndex((candidate) => candidate.id === task.id);
+        if (index >= 0) remaining.splice(index, 1);
+      });
+    }
+
+    return groups;
+  }
+
+  private buildConflictZones(tasks: ExecutionTask[]): MissionGraph["conflictZones"] {
+    const zones: MissionGraph["conflictZones"] = [];
+    if (tasks.some((task) => task.agent === AgentRole.Finance) && tasks.some((task) => task.agent === AgentRole.MarketingStrategist)) {
+      zones.push({
+        title: "Pricing vs market willingness",
+        agentsInvolved: [AgentRole.Finance, AgentRole.MarketingStrategist],
+        reason: "Finance may recommend prices higher than target businesses accept.",
+      });
+    }
+    if (tasks.some((task) => task.agent === AgentRole.TechnicalArchitect) && tasks.some((task) => task.agent === AgentRole.Finance)) {
+      zones.push({
+        title: "Production quality vs margin",
+        agentsInvolved: [AgentRole.TechnicalArchitect, AgentRole.Finance],
+        reason: "Technical delivery quality can increase cost and reduce margin unless packages are scoped clearly.",
+      });
+    }
+    if (tasks.some((task) => task.agent === AgentRole.MarketingStrategist) && tasks.some((task) => task.agent === AgentRole.RiskCritic)) {
+      zones.push({
+        title: "Aggressive outreach vs trust risk",
+        agentsInvolved: [AgentRole.MarketingStrategist, AgentRole.RiskCritic],
+        reason: "Fast outreach can create credibility or objection-handling risks.",
+      });
+    }
+    return zones;
+  }
+
+  private identifyPotentialConflictZones(tasks: ExecutionTask[]) {
+    const zones: string[] = [];
+    if (tasks.some((task) => task.agent === AgentRole.TechnicalArchitect) && tasks.some((task) => task.agent === AgentRole.Finance)) {
+      zones.push("Technical scope vs budget feasibility");
+    }
+    if (tasks.some((task) => task.agent === AgentRole.MarketingStrategist) && tasks.some((task) => task.agent === AgentRole.RiskCritic)) {
+      zones.push("Launch speed vs risk controls");
+    }
+    if (tasks.some((task) => task.agent === AgentRole.ProductStrategist) && tasks.some((task) => task.agent === AgentRole.TechnicalArchitect)) {
+      zones.push("Product ambition vs implementation complexity");
+    }
+    return zones;
+  }
+
+  private shouldCreateGraphInterrupt(ctx: MissionContext, classification: MissionClassification) {
+    if (ctx.conflicts.some((conflict) => conflict.status === "open" || conflict.status === "resolving" || conflict.status === "resolved")) {
+      return false;
+    }
+
+    const completedAgents = new Set(ctx.executionTasks.filter((task) => task.status === "completed").map((task) => task.agent));
+    if (classification.intent === "technical_debugging") {
+      return completedAgents.has(AgentRole.TechnicalArchitect);
+    }
+    return completedAgents.has(AgentRole.Researcher) && (
+      completedAgents.has(AgentRole.TechnicalArchitect) ||
+      completedAgents.has(AgentRole.MarketingStrategist) ||
+      completedAgents.has(AgentRole.Finance)
+    );
+  }
+
+  private async handleGraphInterrupt(
+    ctx: MissionContext,
+    mockMode: boolean,
+    qwenClient: ReturnType<typeof createQwenClient> | null,
+    signal: AbortSignal,
+    onUpdate: (ctx: MissionContext) => void,
+    classification: MissionClassification
+  ) {
+    const affectedTasks = this.selectAffectedTasksForConflict(ctx, classification);
+    if (affectedTasks.length === 0) return;
+
+    const conflict = this.createGraphConflict(ctx, affectedTasks, classification);
+    ctx.conflicts = [...ctx.conflicts, conflict];
+    affectedTasks.forEach((task) => {
+      this.updateTask(ctx, task.id, { status: "blocked", blockedReason: conflict.summary ?? conflict.description });
+      this.updateWorkstream(ctx, task.workstreamId, { status: "blocked" });
+      this.recordReplayEvent(ctx, "TASK_BLOCKED", {
+        agentRole: task.agent,
+        workstreamId: task.workstreamId,
+        workstreamTitle: task.title,
+        payload: { task, conflict },
+        confidence: task.confidence,
+        dependencies: task.dependencies,
+      });
+    });
+    this.recordReplayEvent(ctx, "AGENT_CHALLENGED_ASSUMPTION", {
+      agentRole: AgentRole.RiskCritic,
+      agentName: getAgentByRole(AgentRole.RiskCritic)?.name,
+      payload: { conflict },
+    });
+    this.recordReplayEvent(ctx, "CONFLICT_CREATED", { payload: { conflict }, metadata: { affectedTaskIds: conflict.affectedTaskIds } });
+    this.addTimeline(ctx, AgentRole.RiskCritic, MissionState.RiskReview, "Risk Critic interrupted the graph", conflict.summary ?? conflict.description, "conflict");
+    this.emit({ type: MissionEventType.ConflictDetected, timestamp: now(), payload: { conflict } });
+    this.updateMissionGraph(ctx);
+    onUpdate({ ...ctx });
+
+    await this.delay(650, signal);
+    ctx.conflicts = ctx.conflicts.map((item) => item.id === conflict.id ? { ...item, status: "resolving" } : item);
+    this.recordReplayEvent(ctx, "MEDIATION_STARTED", { agentRole: AgentRole.Mediator, agentName: getAgentByRole(AgentRole.Mediator)?.name, payload: { conflict } });
+    await this.runAgentPhase(ctx, MissionState.ConflictResolution, mockMode, qwenClient, signal, onUpdate, classification);
+
+    const decision = this.resolveConflictAction(conflict, classification);
+    ctx.conflicts = ctx.conflicts.map((item) => item.id === conflict.id ? {
+      ...item,
+      status: "resolved",
+      resolved: true,
+      mediatorDecision: ctx.mediatorDecisions,
+      resolution: ctx.mediatorDecisions,
+      resolvedAction: decision,
+      finalAction: decision,
+      resolvedAt: now(),
+    } : item);
+    this.recordReplayEvent(ctx, "CONFLICT_RESOLVED", { payload: { conflictId: conflict.id, decision }, metadata: { mediatorDecision: ctx.mediatorDecisions } });
+    this.emit({ type: MissionEventType.ConflictResolved, timestamp: now(), payload: { conflictId: conflict.id } });
+
+    this.applyPlannerRevision(ctx, affectedTasks, classification);
+    onUpdate({ ...ctx });
+  }
+
+  private selectAffectedTasksForConflict(ctx: MissionContext, classification: MissionClassification) {
+    const pending = ctx.executionTasks.filter((task) => task.status === "pending" || task.status === "ready" || task.status === "revised");
+    if (classification.isLaunch) {
+      return pending.filter((task) => [AgentRole.MarketingStrategist, AgentRole.Finance, AgentRole.RiskCritic].includes(task.agent)).slice(0, 2);
+    }
+    if (classification.intent === "technical_debugging") {
+      return pending.filter((task) => [AgentRole.TechnicalArchitect, AgentRole.RiskCritic, AgentRole.Finalizer].includes(task.agent)).slice(0, 2);
+    }
+    return pending.slice(0, 2);
+  }
+
+  private createGraphConflict(ctx: MissionContext, affectedTasks: ExecutionTask[], classification: MissionClassification): ConflictInfo {
+    const involvedRoles = Array.from(new Set([
+      ...affectedTasks.map((task) => task.agent),
+      AgentRole.RiskCritic,
+    ]));
+    const title = classification.isLaunch
+      ? "Launch acceleration vs validation confidence"
+      : classification.intent === "technical_debugging"
+        ? "Quick optimization vs measurement-backed architecture"
+        : "Execution confidence gap between workstreams";
+
+    return {
+      id: generateId(),
+      title,
+      agents: this.agentNamesFromRoles(involvedRoles),
+      agentsInvolved: this.agentNamesFromRoles(involvedRoles),
+      affectedTaskIds: affectedTasks.map((task) => task.id),
+      description: "Risk Critic found a weak assumption that could reduce final output quality if the graph continues unchanged.",
+      summary: `${title}: ${affectedTasks.map((task) => task.title).join(", ")} paused for mediation while unrelated workstreams continue.`,
+      riskLevel: "high",
+      severity: "high",
+      disagreementSummary: "Specialists disagree on whether the current assumptions are strong enough for synthesis.",
+      proposedSolutions: [
+        "Narrow the affected workstream scope.",
+        "Add a validation dependency.",
+        "Reassign review to the strongest specialist.",
+      ],
+      status: "open",
+      resolved: false,
+      createdAt: now(),
+    };
+  }
+
+  private applyPlannerRevision(ctx: MissionContext, tasks: ExecutionTask[], classification: MissionClassification) {
+    this.recordReplayEvent(ctx, "PLANNER_REVIEW_REQUESTED", {
+      agentRole: AgentRole.Planner,
+      agentName: getAgentByRole(AgentRole.Planner)?.name,
+      payload: { affectedTaskIds: tasks.map((task) => task.id), classification },
+    });
+
+    tasks.forEach((task, index) => {
+      const revisedAgent = task.agent === AgentRole.MarketingStrategist && classification.isLaunch
+        ? AgentRole.Researcher
+        : task.agent;
+      const revisionNote = revisedAgent !== task.agent
+        ? "Planner reassigned this validation loop to Research before returning it to launch execution."
+        : "Planner added mediator guidance and released the task back into the graph.";
+
+      this.updateTask(ctx, task.id, {
+        status: "revised",
+        agent: revisedAgent,
+        revisionNote,
+        blockedReason: undefined,
+        dependencies: index === 0 ? task.dependencies : Array.from(new Set([...task.dependencies, tasks[0].id])),
+      });
+      this.updateWorkstream(ctx, task.workstreamId, {
+        status: "revised",
+        assignedAgent: revisedAgent,
+        nextStep: revisionNote,
+      });
+      this.recordReplayEvent(ctx, revisedAgent !== task.agent ? "TASK_REASSIGNED" : "PLANNER_REVISED_PLAN", {
+        agentRole: AgentRole.Planner,
+        agentName: getAgentByRole(AgentRole.Planner)?.name,
+        workstreamId: task.workstreamId,
+        workstreamTitle: task.title,
+        payload: { taskId: task.id, from: task.agent, to: revisedAgent, revisionNote },
+      });
+    });
+
+    this.addTimeline(ctx, AgentRole.Planner, MissionState.Planning, "Planner revised the Mission Graph", "Planner released blocked workstreams with updated ownership and dependencies after mediation.", "workstream");
+    this.updateMissionGraph(ctx);
+  }
+
+  private reachSynchronizationPoint(ctx: MissionContext) {
+    const readiness = this.getFinalizationReadiness(ctx);
+    if (readiness.status !== "ready_for_synthesis") {
+      this.addTimeline(ctx, AgentRole.Finalizer, MissionState.Finalizing, "Finalizer waiting for synchronization", "Final synthesis is delayed until required tasks, critical conflicts, and confidence thresholds are satisfied.", "report");
+      this.recordReplayEvent(ctx, "SYNCHRONIZATION_POINT_REACHED", {
+        agentRole: AgentRole.Finalizer,
+        agentName: getAgentByRole(AgentRole.Finalizer)?.name,
+        payload: { readiness },
+      });
+      return;
+    }
+
+    ctx.missionGraph = ctx.missionGraph ? {
+      ...ctx.missionGraph,
+      finalizationReadiness: readiness,
+      synchronizationPoints: ctx.missionGraph.synchronizationPoints.map((point) => ({
+        ...point,
+        reached: true,
+        reachedAt: now(),
+      })),
+    } : ctx.missionGraph;
+    this.addTimeline(ctx, AgentRole.Finalizer, MissionState.Finalizing, "Synchronization point reached", "All required workstreams and conflicts are synchronized; Finalizer can synthesize the report.", "report");
+    this.recordReplayEvent(ctx, "SYNCHRONIZATION_POINT_REACHED", {
+      agentRole: AgentRole.Finalizer,
+      agentName: getAgentByRole(AgentRole.Finalizer)?.name,
+      payload: { readiness, missionGraph: ctx.missionGraph },
+    });
+  }
+
+  private getActiveAgentRoles(ctx: MissionContext) {
+    return Array.from(new Set(ctx.executionTasks.filter((task) => task.status === "running").map((task) => task.agent)));
   }
 
   private cancelContext(ctx: MissionContext) {
@@ -664,6 +1086,29 @@ export class MissionEngine {
   }
 
   private parseWorkstreams(text: string, classification: MissionClassification, brief: string): Workstream[] {
+    const jsonParse = this.parsePlannerJson(text, classification);
+    if (jsonParse.workstreams.length > 0) {
+      console.info("[MissionEngine] Planner JSON parsed successfully.", {
+        extractionAttempted: jsonParse.extractionAttempted,
+        repairAttempted: false,
+        finalWorkstreams: jsonParse.workstreams.length,
+        selectedAgents: classification.selectedAgents,
+      });
+      return jsonParse.workstreams;
+    }
+
+    const repaired = this.repairPlannerOutput(text, classification, brief);
+    if (repaired.length > 0) {
+      console.warn("[MissionEngine] Planner JSON parsing failed, but repair succeeded.", {
+        extractionAttempted: jsonParse.extractionAttempted,
+        extractionError: jsonParse.error,
+        repairAttempted: true,
+        finalWorkstreams: repaired.length,
+        selectedAgents: classification.selectedAgents,
+      });
+      return repaired;
+    }
+
     const normalized = sanitizeMissionText(text);
     const headingPattern = /(?:^|\n)\s*(?:#{1,4}\s*)?(?:\*\*)?(?:(?:Workstream|Task)\s*(\d+)?|(\d+))\s*[:.)-]\s*(.+?)(?:\*\*)?\s*(?=\n|$)/gi;
     const matches = Array.from(normalized.matchAll(headingPattern));
@@ -697,13 +1142,23 @@ export class MissionEngine {
     }).filter((workstream) => workstream.title && workstream.description);
 
     if (workstreams.length === 0) {
-      console.warn("[MissionEngine] Planner parsing failed; using mission-specific fallback workstreams.", { classification, text });
+      const fallback = this.fallbackWorkstreams(classification, brief);
+      console.warn("[MissionEngine] Planner parsing failed; using mission-specific fallback workstreams.", {
+        extractionAttempted: jsonParse.extractionAttempted,
+        extractionError: jsonParse.error,
+        repairAttempted: true,
+        fallbackReason: "No valid JSON and markdown repair produced no usable workstreams.",
+        finalWorkstreams: fallback.length,
+        selectedAgents: classification.selectedAgents,
+        classification,
+        text,
+      });
       devLog("fallback used", true);
-      return this.fallbackWorkstreams(classification, brief);
+      return fallback;
     }
 
     devLog("fallback used", false);
-    return workstreams.map((workstream, _index, list) => ({
+    const repairedMarkdown = workstreams.map((workstream, _index, list) => ({
       ...workstream,
       dependencies: workstream.dependencies?.map((dependencyKey) => {
         const dependencyIndex = Number(dependencyKey.replace("workstream-", "")) - 1;
@@ -711,6 +1166,149 @@ export class MissionEngine {
       }).filter((id): id is string => Boolean(id)) ?? [],
       deliverables: workstream.deliverables.length > 0 ? workstream.deliverables : extractActionItemsFromText(workstream.description, 3),
     }));
+    console.warn("[MissionEngine] Planner returned markdown; markdown parser repaired it.", {
+      extractionAttempted: jsonParse.extractionAttempted,
+      extractionError: jsonParse.error,
+      repairAttempted: true,
+      finalWorkstreams: repairedMarkdown.length,
+      selectedAgents: classification.selectedAgents,
+    });
+    return repairedMarkdown;
+  }
+
+  private parsePlannerJson(text: string, classification: MissionClassification): { workstreams: Workstream[]; graph?: PlannerGraphJson; extractionAttempted: boolean; error?: string } {
+    const candidates = [text, this.extractJsonObject(text)].filter((item): item is string => Boolean(item));
+    let lastError = "";
+
+    for (const candidate of candidates) {
+      try {
+        const graph = JSON.parse(candidate) as PlannerGraphJson;
+        const workstreams = this.workstreamsFromPlannerGraph(graph, classification);
+        if (workstreams.length > 0) {
+          return { workstreams, graph, extractionAttempted: candidate !== text };
+        }
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : String(error);
+      }
+    }
+
+    return { workstreams: [], extractionAttempted: Boolean(candidates[1]), error: lastError || "No JSON object found." };
+  }
+
+  private extractJsonObject(text: string) {
+    const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1];
+    if (fenced) return fenced.trim();
+
+    const first = text.indexOf("{");
+    if (first < 0) return "";
+
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+
+    for (let i = first; i < text.length; i += 1) {
+      const char = text[i];
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (char === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (char === "\"") {
+        inString = !inString;
+        continue;
+      }
+      if (inString) continue;
+      if (char === "{") depth += 1;
+      if (char === "}") depth -= 1;
+      if (depth === 0) return text.slice(first, i + 1);
+    }
+
+    return "";
+  }
+
+  private workstreamsFromPlannerGraph(graph: PlannerGraphJson, classification: MissionClassification): Workstream[] {
+    const items = Array.isArray(graph.workstreams) ? graph.workstreams : [];
+    const idMap = new Map<string, string>();
+
+    const workstreams = items.map((item, index) => {
+      const stableId = sanitizeMissionText(item.id || `ws-${index + 1}`).toLowerCase().replace(/[^a-z0-9-]+/g, "-") || `ws-${index + 1}`;
+      const id = generateId();
+      idMap.set(stableId, id);
+      idMap.set(String(item.id || index + 1), id);
+      const assignedAgent = this.agentFromId(item.primaryAgentId) ?? this.agentForMissionWorkstream(classification, item.title ?? "", index);
+      return {
+        id,
+        title: sanitizeMissionText(item.title || `Workstream ${index + 1}`),
+        owner: getAgentByRole(assignedAgent)?.name,
+        responsibleAgent: getAgentByRole(assignedAgent)?.name,
+        description: sanitizeMissionText(item.description || item.title || "Mission Graph workstream"),
+        status: "pending" as const,
+        assignedAgent,
+        supportingAgentIds: (item.supportingAgentIds ?? []).map((idValue) => this.agentFromId(idValue)).filter((role): role is AgentRole => Boolean(role)),
+        confidence: clampConfidence(item.confidence ?? Math.max(70, 86 - index * 3)),
+        dependencies: item.dependencies ?? [],
+        deliverables: sanitizeMissionList(item.expectedDeliverables ?? []),
+        nextStep: item.riskAreas?.length ? `Watch risk areas: ${item.riskAreas.join(", ")}` : "",
+      };
+    }).filter((workstream) => workstream.title && workstream.description);
+
+    return workstreams.map((workstream) => ({
+      ...workstream,
+      dependencies: workstream.dependencies?.map((dependency) => idMap.get(dependency)).filter((id): id is string => Boolean(id)) ?? [],
+      deliverables: workstream.deliverables.length > 0 ? workstream.deliverables : extractActionItemsFromText(workstream.description, 3),
+    }));
+  }
+
+  private repairPlannerOutput(text: string, classification: MissionClassification, brief: string): Workstream[] {
+    const normalized = sanitizeMissionText(text);
+    const repairedFromTable = this.repairMarkdownTable(normalized, classification);
+    if (repairedFromTable.length > 0) return repairedFromTable;
+
+    const headingPattern = /(?:^|\n)\s*(?:#{1,4}\s*)?(?:\*\*)?(?:(?:Workstream|Task)\s*(\d+)?|(\d+))\s*[:.)-]\s*(.+?)(?:\*\*)?\s*(?=\n|$)/gi;
+    if (headingPattern.test(normalized)) return [];
+
+    if (/\b(owner|agent|dependencies|deliverables|confidence)\b/i.test(normalized)) {
+      return this.fallbackWorkstreams(classification, brief).map((workstream, index) => ({
+        ...workstream,
+        description: index === 0 ? `${workstream.description} Planner repair note: Qwen returned prose instead of JSON, so this graph was rebuilt from the mission intent.` : workstream.description,
+      }));
+    }
+
+    return [];
+  }
+
+  private repairMarkdownTable(text: string, classification: MissionClassification): Workstream[] {
+    const rows = text.split("\n").filter((line) => line.includes("|") && !/^\s*\|?\s*-{2,}/.test(line));
+    if (rows.length < 2) return [];
+
+    const header = rows[0].split("|").map((cell) => cell.trim().toLowerCase()).filter(Boolean);
+    const titleIndex = header.findIndex((cell) => /title|workstream|task/.test(cell));
+    const ownerIndex = header.findIndex((cell) => /owner|agent|primary/.test(cell));
+    const descriptionIndex = header.findIndex((cell) => /description|summary|objective/.test(cell));
+    const confidenceIndex = header.findIndex((cell) => /confidence/.test(cell));
+    if (titleIndex < 0) return [];
+
+    return rows.slice(1).map((row, index) => {
+      const cells = row.split("|").map((cell) => cell.trim()).filter(Boolean);
+      const title = sanitizeMissionText(cells[titleIndex] || `Workstream ${index + 1}`);
+      const assignedAgent = this.agentFromOwner(cells[ownerIndex] || "") ?? this.agentForMissionWorkstream(classification, title, index);
+      return {
+        id: generateId(),
+        title,
+        owner: getAgentByRole(assignedAgent)?.name,
+        responsibleAgent: getAgentByRole(assignedAgent)?.name,
+        description: sanitizeMissionText(cells[descriptionIndex] || title),
+        status: "pending" as const,
+        assignedAgent,
+        supportingAgentIds: this.supportingAgentsFor(assignedAgent),
+        confidence: clampConfidence(Number(cells[confidenceIndex]?.match(/\d+/)?.[0] ?? Math.max(70, 84 - index * 2))),
+        dependencies: [],
+        deliverables: extractActionItemsFromText(cells[descriptionIndex] || title, 3),
+      };
+    }).filter((workstream) => workstream.title);
   }
 
   private extractField(body: string, labels: string[]) {
@@ -739,7 +1337,7 @@ export class MissionEngine {
 
   private fallbackWorkstreams(classification: MissionClassification, brief: string): Workstream[] {
     const focus = brief.replace(/\s+/g, " ").trim();
-    const templates: Record<MissionIntent, Array<{ title: string; agent: AgentRole; description: string; deliverables: string[]; dependencies?: number[] }>> = {
+    const templates: Record<MissionIntent, Array<{ title: string; agent: AgentRole; supporting?: AgentRole[]; description: string; deliverables: string[]; dependencies?: number[] }>> = {
       technical_debugging: [
         { title: "Performance Profiling & Baseline Measurement", agent: AgentRole.TechnicalArchitect, description: `Measure current performance symptoms, reproduction paths, bottlenecks, and user-visible latency for: ${focus}.`, deliverables: ["Performance baseline", "Reproduction checklist", "Measurement plan"] },
         { title: "Render & Re-render Analysis", agent: AgentRole.TechnicalArchitect, description: "Audit component render frequency, expensive calculations, memoization gaps, and state updates.", deliverables: ["Render trace findings", "Component hot spot list", "Memoization candidates"], dependencies: [1] },
@@ -748,11 +1346,13 @@ export class MissionEngine {
         { title: "Prioritized Optimization Roadmap", agent: AgentRole.Finalizer, description: "Sequence fixes by impact, risk, and regression cost.", deliverables: ["Priority roadmap", "Regression checklist", "Monitoring plan"], dependencies: [2, 3, 4] },
       ],
       business_launch: [
-        { title: "Market & Customer Validation", agent: AgentRole.Researcher, description: `Validate target users, competitors, demand signals, and adoption barriers for: ${focus}.`, deliverables: ["Customer assumptions", "Competitor map", "Validation script"] },
-        { title: "Product Offer & Positioning", agent: AgentRole.ProductStrategist, description: "Define offer, packaging, core benefits, pricing logic, and launch promise.", deliverables: ["Offer brief", "Positioning map", "Success criteria"], dependencies: [1] },
-        { title: "Go-To-Market Campaign Plan", agent: AgentRole.MarketingStrategist, description: "Build channels, messaging, launch calendar, and acquisition experiments.", deliverables: ["Campaign calendar", "Channel plan", "Message map"], dependencies: [2] },
-        { title: "Budget & Resource Model", agent: AgentRole.Finance, description: "Estimate launch budget, runway, team needs, and tradeoffs.", deliverables: ["Budget model", "Resource plan", "Runway estimate"], dependencies: [2] },
-        { title: "Launch Risk Review", agent: AgentRole.RiskCritic, description: "Challenge timeline, positioning, spend, and operational readiness.", deliverables: ["Risk register", "Mitigation plan", "Go/no-go checklist"], dependencies: [3, 4] },
+        { title: "Niche Research & Business Targeting", agent: AgentRole.Researcher, supporting: [AgentRole.MarketingStrategist, AgentRole.Finance], description: `Identify target business niches, buyer pain points, competitors, local demand, and first outreach segments for: ${focus}.`, deliverables: ["buyer personas", "competitor map", "niche shortlist", "demand validation script"] },
+        { title: "Website Production Workflow", agent: AgentRole.TechnicalArchitect, supporting: [AgentRole.ProductStrategist, AgentRole.Finance], description: "Design a repeatable website delivery system using templates, intake forms, hosting choices, revision limits, QA checks, and delivery timelines.", deliverables: ["production workflow", "template stack", "delivery checklist", "maintenance handoff"] },
+        { title: "Offer & Website Package Design", agent: AgentRole.ProductStrategist, supporting: [AgentRole.Researcher, AgentRole.TechnicalArchitect, AgentRole.Finance], description: "Turn market research and production constraints into clear website packages, scope boundaries, upsells, and client outcomes.", deliverables: ["starter package", "premium package", "upsell menu", "scope rules"], dependencies: [1, 2] },
+        { title: "Pricing, Payments & Revenue Model", agent: AgentRole.Finance, supporting: [AgentRole.TechnicalArchitect, AgentRole.MarketingStrategist], description: "Model setup fees, monthly maintenance, payment terms, sales targets, margins, and break-even assumptions.", deliverables: ["pricing ladder", "payment terms", "monthly recurring revenue model", "margin assumptions"], dependencies: [2, 3] },
+        { title: "Lead Generation & Outreach", agent: AgentRole.MarketingStrategist, supporting: [AgentRole.Researcher, AgentRole.Finance], description: "Create outreach channels, lead lists, cold email/DM scripts, proof assets, follow-up cadence, and first-week activation plan.", deliverables: ["lead sources", "outreach scripts", "follow-up sequence", "proof asset checklist"], dependencies: [1, 3] },
+        { title: "Sales Risk & Client Objection Review", agent: AgentRole.RiskCritic, supporting: [AgentRole.MarketingStrategist, AgentRole.Finance, AgentRole.ProductStrategist], description: "Challenge weak assumptions around pricing, trust, sales objections, fulfillment capacity, refunds, and difficult clients.", deliverables: ["objection map", "risk register", "mitigation plan", "go/no-go checklist"], dependencies: [4, 5] },
+        { title: "Final Execution Roadmap", agent: AgentRole.Finalizer, supporting: [AgentRole.Planner, AgentRole.Mediator], description: "Synthesize the workstreams into a practical 30-day execution roadmap for selling websites online to businesses.", deliverables: ["30-day roadmap", "daily actions", "sales targets", "quality checklist"], dependencies: [3, 4, 5, 6] },
       ],
       product_strategy: [
         { title: "User & Problem Definition", agent: AgentRole.Researcher, description: `Clarify users, jobs-to-be-done, constraints, and decision criteria for: ${focus}.`, deliverables: ["User map", "Problem statement", "Evidence gaps"] },
@@ -796,12 +1396,14 @@ export class MissionEngine {
       description: template.description,
       status: "pending" as const,
       assignedAgent: template.agent,
+      supportingAgentIds: template.supporting ?? this.supportingAgentsFor(template.agent),
       confidence: Math.max(68, 86 - index * 3),
       dependencies: template.dependencies?.map((dependency) => list[dependency - 1]?.title).filter(Boolean) ?? [],
       deliverables: template.deliverables,
     })).map((workstream, _index, list) => ({
       ...workstream,
       dependencies: workstream.dependencies?.map((title) => list.find((candidate) => candidate.title === title)?.id).filter((id): id is string => Boolean(id)) ?? [],
+      supportingAgentIds: workstream.supportingAgentIds ?? this.supportingAgentsFor(workstream.assignedAgent ?? AgentRole.Researcher),
     }));
   }
 
@@ -815,6 +1417,45 @@ export class MissionEngine {
     return match?.role ?? null;
   }
 
+  private agentFromId(id?: string): AgentRole | null {
+    if (!id) return null;
+    const normalized = id.toLowerCase().replace(/_/g, "-").trim();
+    const aliases: Record<string, AgentRole> = {
+      planner: AgentRole.Planner,
+      researcher: AgentRole.Researcher,
+      research: AgentRole.Researcher,
+      "research-agent": AgentRole.Researcher,
+      "product-strategist": AgentRole.ProductStrategist,
+      product: AgentRole.ProductStrategist,
+      "technical-architect": AgentRole.TechnicalArchitect,
+      technical: AgentRole.TechnicalArchitect,
+      "marketing-strategist": AgentRole.MarketingStrategist,
+      marketing: AgentRole.MarketingStrategist,
+      finance: AgentRole.Finance,
+      "finance-agent": AgentRole.Finance,
+      "risk-critic": AgentRole.RiskCritic,
+      risk: AgentRole.RiskCritic,
+      mediator: AgentRole.Mediator,
+      finalizer: AgentRole.Finalizer,
+    };
+    return aliases[normalized] ?? null;
+  }
+
+  private supportingAgentsFor(agent: AgentRole): AgentRole[] {
+    const map: Record<AgentRole, AgentRole[]> = {
+      [AgentRole.Planner]: [],
+      [AgentRole.Researcher]: [AgentRole.MarketingStrategist, AgentRole.ProductStrategist],
+      [AgentRole.ProductStrategist]: [AgentRole.Researcher, AgentRole.TechnicalArchitect, AgentRole.Finance],
+      [AgentRole.TechnicalArchitect]: [AgentRole.ProductStrategist, AgentRole.Finance, AgentRole.RiskCritic],
+      [AgentRole.MarketingStrategist]: [AgentRole.Researcher, AgentRole.Finance],
+      [AgentRole.Finance]: [AgentRole.TechnicalArchitect, AgentRole.MarketingStrategist, AgentRole.ProductStrategist],
+      [AgentRole.RiskCritic]: [AgentRole.MarketingStrategist, AgentRole.Finance, AgentRole.TechnicalArchitect],
+      [AgentRole.Mediator]: [AgentRole.Planner, AgentRole.RiskCritic],
+      [AgentRole.Finalizer]: [AgentRole.Planner, AgentRole.Mediator],
+    };
+    return map[agent] ?? [];
+  }
+
   private classifyMission(brief: string): MissionClassification {
     const text = brief.toLowerCase();
     const has = (...terms: string[]) => terms.some((term) => text.includes(term));
@@ -822,7 +1463,7 @@ export class MissionEngine {
 
     if (has("slow", "performance", "render", "re-render", "rerender", "latency", "bundle", "memory", "react app", "debug", "optimiz")) {
       intent = "technical_debugging";
-    } else if (has("launch", "go-to-market", "gtm", "startup", "customers", "sales", "school", "schools", "market")) {
+    } else if (has("launch", "go-to-market", "gtm", "startup", "customers", "sales", "selling", "sell", "money", "business", "businesses", "website", "websites", "clients", "online", "school", "schools", "market")) {
       intent = "business_launch";
     } else if (has("rebuild", "next.js", "nextjs", "react spa", "architecture", "technical", "stack", "migrate")) {
       intent = "product_strategy";
@@ -849,12 +1490,13 @@ export class MissionEngine {
       if (has("user", "ux", "interface", "experience")) agents.add(AgentRole.ProductStrategist);
     } else {
       agents.add(AgentRole.Researcher);
-      if (needsProduct) agents.add(AgentRole.ProductStrategist);
-      if (isTechnical) agents.add(AgentRole.TechnicalArchitect);
-      if (needsMarketing) agents.add(AgentRole.MarketingStrategist);
-      if (needsFinance) agents.add(AgentRole.Finance);
+      if (isLaunch || needsProduct) agents.add(AgentRole.ProductStrategist);
+      if (isLaunch || isTechnical || has("website", "websites", "build", "production")) agents.add(AgentRole.TechnicalArchitect);
+      if (isLaunch || needsMarketing) agents.add(AgentRole.MarketingStrategist);
+      if (isLaunch || needsFinance || has("money", "revenue", "payment", "price", "pricing")) agents.add(AgentRole.Finance);
     }
     agents.add(AgentRole.RiskCritic);
+    if (isLaunch || agents.has(AgentRole.RiskCritic)) agents.add(AgentRole.Mediator);
     agents.add(AgentRole.Finalizer);
 
     return {
@@ -910,7 +1552,9 @@ export class MissionEngine {
       id: generateId(),
       workstreamId: workstream.id,
       title: workstream.title,
+      description: workstream.description,
       agent: workstream.assignedAgent ?? this.agentForMissionWorkstream(classification, workstream.title, index),
+      supportingAgents: workstream.supportingAgentIds ?? [],
       dependencies: [] as string[],
       status: "pending" as const,
       confidence: workstream.confidence ?? Math.max(68, 86 - index * 3),
@@ -922,20 +1566,30 @@ export class MissionEngine {
         ?.map((dependencyId) => tasks.find((candidate) => candidate.workstreamId === dependencyId)?.id)
         .filter((dependencyId): dependencyId is string => Boolean(dependencyId)) ?? [];
 
-      if (explicitDependencies.length) return { ...task, dependencies: explicitDependencies };
-      if (task.agent === AgentRole.Researcher || index === 0) return task;
-
       const researchTask = tasks.find((candidate) => candidate.agent === AgentRole.Researcher);
+      const technicalTask = tasks.find((candidate) => candidate.agent === AgentRole.TechnicalArchitect);
       const productTask = tasks.find((candidate) => candidate.agent === AgentRole.ProductStrategist);
+
+      if (task.agent === AgentRole.Researcher || index === 0) return task;
+      if (classification.isTechnical && task.agent === AgentRole.TechnicalArchitect) return task;
+      if (classification.isLaunch && task.agent === AgentRole.TechnicalArchitect) return task;
+      if (explicitDependencies.length) return { ...task, dependencies: explicitDependencies };
 
       if (task.agent === AgentRole.ProductStrategist) {
         return { ...task, dependencies: researchTask ? [researchTask.id] : [] };
       }
-      if (task.agent === AgentRole.TechnicalArchitect || task.agent === AgentRole.MarketingStrategist) {
+      if (task.agent === AgentRole.MarketingStrategist) {
+        return { ...task, dependencies: researchTask ? [researchTask.id] : [] };
+      }
+      if (task.agent === AgentRole.Finance) {
+        return { ...task, dependencies: technicalTask ? [technicalTask.id] : productTask ? [productTask.id] : [] };
+      }
+      if (task.agent === AgentRole.TechnicalArchitect) {
         return { ...task, dependencies: productTask ? [productTask.id] : researchTask ? [researchTask.id] : [] };
       }
       if (task.agent === AgentRole.RiskCritic) {
-        return { ...task, dependencies: tasks.filter((candidate) => candidate.id !== task.id).map((candidate) => candidate.id) };
+        const upstream = tasks.filter((candidate) => candidate.id !== task.id && [AgentRole.Researcher, AgentRole.TechnicalArchitect, AgentRole.MarketingStrategist, AgentRole.Finance].includes(candidate.agent));
+        return { ...task, dependencies: upstream.slice(0, 2).map((candidate) => candidate.id) };
       }
       return { ...task, dependencies: researchTask ? [researchTask.id] : [] };
     });
@@ -1064,7 +1718,11 @@ export class MissionEngine {
       });
     }
 
-    ctx.conflicts = conflicts;
+    const existingIds = new Set(ctx.conflicts.map((conflict) => conflict.id));
+    ctx.conflicts = [
+      ...ctx.conflicts,
+      ...conflicts.filter((conflict) => !existingIds.has(conflict.id)),
+    ];
   }
 
   private resolveConflictAction(conflict: ConflictInfo, classification: MissionClassification) {
@@ -1112,26 +1770,36 @@ export class MissionEngine {
   private generateReport(ctx: MissionContext): MissionReport {
     const classification = this.classifyMission(ctx.missionBrief);
     const metrics = ctx.efficiencyMetrics ?? this.generateEfficiencyMetrics(ctx, ctx.conflicts.length > 0);
+    const parallelGroups = ctx.missionGraph?.parallelGroups ?? this.buildNamedParallelGroups(ctx.executionTasks);
+    const revisedTasks = ctx.executionTasks.filter((task) => task.status === "revised" || task.revisionNote);
     const workstreamLines = ctx.workstreams.map((workstream) =>
       `- ${sanitizeMissionText(workstream.title)} (${getAgentByRole(workstream.assignedAgent ?? AgentRole.Planner)?.name ?? workstream.owner ?? "Owner pending"}, ${workstream.confidence ?? 80}% confidence): ${sanitizeMissionText(workstream.description)}`
     ).join("\n");
     const contributionLines = ctx.dialogue.map((entry) => `- ${entry.agentName}: ${sanitizeMissionText(entry.content).split("\n").find(Boolean)?.replace(/^#+\s*/, "") ?? "Contribution captured."}`).join("\n");
     return {
-      executiveSummary: `Agent Society analyzed "${ctx.missionBrief}" as a ${MISSION_TYPE_LABELS[ctx.configuration.missionType]} mission using ${DEPTH_LABELS[ctx.configuration.depth]} depth. The agents completed ${ctx.workstreams.length} workstreams, resolved ${metrics.conflictsResolved} conflict, and produced a ${OUTPUT_FORMAT_LABELS[ctx.configuration.outputFormat]} aligned to a ${TIME_HORIZON_LABELS[ctx.configuration.timeHorizon]} horizon.`,
+      executiveSummary: `Agent Society analyzed "${ctx.missionBrief}" as a ${MISSION_TYPE_LABELS[ctx.configuration.missionType]} mission using ${DEPTH_LABELS[ctx.configuration.depth]} depth. The Planner created a Mission Graph with ${ctx.executionTasks.length} task nodes across ${parallelGroups.length} named collaboration waves. Agents completed ${ctx.workstreams.length} workstreams, resolved ${metrics.conflictsResolved} conflict, synchronized before final synthesis, and produced a ${OUTPUT_FORMAT_LABELS[ctx.configuration.outputFormat]} aligned to a ${TIME_HORIZON_LABELS[ctx.configuration.timeHorizon]} horizon.`,
       missionObjective: ctx.missionBrief,
       selectedMissionConfiguration: configSummary(ctx.configuration),
       workstreams: workstreamLines,
-      roleAssignments: ctx.workstreams.map((workstream) => `${workstream.title}: ${getAgentByRole(workstream.assignedAgent ?? AgentRole.Planner)?.name ?? "Unassigned"}`).join("\n"),
+      roleAssignments: [
+        "Mission Graph assignments:",
+        ...ctx.workstreams.map((workstream) => `${workstream.title}: ${getAgentByRole(workstream.assignedAgent ?? AgentRole.Planner)?.name ?? "Unassigned"}${workstream.dependencies?.length ? ` (depends on ${workstream.dependencies.length} node${workstream.dependencies.length > 1 ? "s" : ""})` : " (parallel start eligible)"}`),
+        "",
+        "Parallel execution groups:",
+        ...parallelGroups.map((group) => `${group.title}: ${group.taskIds.map((taskId) => ctx.executionTasks.find((task) => task.id === taskId)?.title).filter(Boolean).join(" + ")}`),
+        "",
+        revisedTasks.length ? `Planner revisions: ${revisedTasks.map((task) => `${task.title} - ${task.revisionNote}`).join("; ")}` : "Planner revisions: none required after synchronization.",
+      ].join("\n"),
       agentContributions: contributionLines,
       keyDisagreements: ctx.conflicts.map((conflict) => `${conflict.title}: ${conflict.disagreementSummary}`).join("\n") || "No material disagreement was detected.",
-      mediatorDecisions: ctx.mediatorDecisions || "No mediator decision was required.",
+      mediatorDecisions: ctx.mediatorDecisions || "No mediator decision was required. The graph reached synthesis readiness without mediation.",
       executionRoadmap: this.generateExecutionRoadmap(ctx, classification),
       timeline: ctx.timeline.map((entry) => `- ${entry.label}: ${entry.description ?? entry.state}`).join("\n"),
       budgetEstimate: this.generateResourceEstimate(ctx, classification),
       riskAssessment: ctx.riskReview || "Risk review was not completed.",
-      successMetrics: `Task coverage: ${metrics.taskCoverage}%. Confidence score: ${metrics.finalConfidenceScore}%. Perspectives considered: ${metrics.perspectivesConsidered}.`,
+      successMetrics: `Task coverage: ${metrics.taskCoverage}%. Confidence score: ${metrics.finalConfidenceScore}%. Perspectives considered: ${metrics.perspectivesConsidered}. Parallel waves: ${parallelGroups.map((group) => group.title).join(", ")}. Synchronization status: ${ctx.missionGraph?.finalizationReadiness.status ?? "ready_for_synthesis"}.`,
       finalRecommendations: this.generateFinalRecommendations(ctx, classification),
-      singleAgentComparison: `Single-agent baseline: ${metrics.singleAgentBaseline}%. Agent Society quality score: ${metrics.qualityScore}%. The multi-agent workflow improves coverage by separating planning, research, architecture, marketing, finance, risk criticism, mediation, and final synthesis.`,
+      singleAgentComparison: `Single-agent baseline: ${metrics.singleAgentBaseline}%. Agent Society quality score: ${metrics.qualityScore}%. Estimated efficiency gain: ${Math.max(0, metrics.qualityScore - metrics.singleAgentBaseline)} points. The Mission Graph improves coverage by decomposing the brief, assigning specialists, running compatible workstreams in parallel, allowing Risk Critic interrupts, resolving conflicts through Mediator, letting Planner revise dependencies, and synchronizing before Finalizer synthesis.`,
     };
   }
 

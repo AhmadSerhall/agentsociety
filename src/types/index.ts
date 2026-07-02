@@ -22,6 +22,7 @@ export type {
   Workstream,
   ExecutionTask,
   ConflictInfo,
+  MissionGraph,
   MissionReport,
   EfficiencyMetrics,
   TimelineEntry,

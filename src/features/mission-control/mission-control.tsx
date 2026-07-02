@@ -33,7 +33,8 @@ import { MissionSidebar, MissionSidebarContent, type MissionView } from "./compo
 import { MissionStatusBar } from "./components/mission-status-bar";
 import { SidebarPageView } from "./components/sidebar-pages";
 import { ReplayControlBar } from "./components/replay-control-bar";
-import { MissionWarRoom } from "./components/mission-war-room";
+import { AgentCouncilRoom } from "./components/council/agent-council-room";
+import { CompactMissionHeader } from "./components/council/compact-mission-header";
 import { downloadText, generateId, reportToMarkdown } from "@/utils";
 import { toast } from "@/hooks/use-toast";
 
@@ -53,7 +54,11 @@ export function MissionControl() {
   const progress = useMissionStore((s) => s.context?.progress ?? 0);
   const status = useMissionStore((s) => s.context?.status);
   const resetMission = useMissionStore((s) => s.reset);
-  const activeAgents = useMissionStore((s) => s.context?.currentAgent ? 1 : 0);
+  const activeAgents = useMissionStore((s) => {
+    const runningTaskAgents = new Set(s.context?.executionTasks.filter((task) => task.status === "running").map((task) => task.agent) ?? []);
+    if (runningTaskAgents.size > 0) return runningTaskAgents.size;
+    return s.context?.currentAgent ? 1 : 0;
+  });
   const replayMode = useReplayStore((s) => s.mode);
   const replayEvents = useReplayStore((s) => s.replayEvents);
   const replayTime = useReplayStore((s) => s.replayTime);
@@ -188,50 +193,62 @@ export function MissionControl() {
 
             {activeView === "mission-control" ? (
               <>
-                {/* Hero */}
-                <motion.div variants={fadeUp} className="text-center">
-                  <div className="mx-auto inline-flex rounded-full border border-cyan-200/15 bg-white/[0.045] px-4 py-2 text-xs uppercase tracking-[0.26em] text-cyan-100/70 backdrop-blur-xl">
-                    Mission Control Dashboard
-                  </div>
-                  <h1 className="mt-5 bg-gradient-to-r from-white via-cyan-100 to-purple-200 bg-clip-text text-4xl font-bold tracking-tight text-transparent md:text-6xl">
-                    Hello, Mission Operator
-                  </h1>
-                  <p className="mt-4 text-lg text-white/62 md:text-xl">
-                    What complex objective are we solving today?
-                  </p>
-                </motion.div>
-
-                <MissionBriefComposer
-                  brief={brief}
-                  config={config}
-                  isRunning={isRunning}
-                  isComplete={isComplete || status === MissionState.Cancelled}
-                  mockMode={mockMode}
-                  showConfig={showConfig}
-                  configContent={(
-                    <ConfigForm
-                      config={config}
-                      onChange={setConfig}
-                      onApply={() => setShowConfig(false)}
-                      onReset={() => setConfig({})}
-                    />
-                  )}
-                  onBriefChange={setBrief}
-                  onExampleSelect={handleExampleSelect}
-                  onConfigOpenChange={setShowConfig}
-                  onLaunch={handleLaunch}
-                  onCancel={cancel}
-                />
-
                 <AnimatePresence>
-                  {isLiveMission && (
+                  {!hasContent && (
                     <motion.div
                       variants={fadeUp}
                       initial="hidden"
                       animate="visible"
                       exit={{ opacity: 0 }}
                     >
-                      <MissionWarRoom onCancel={cancel} />
+                      <div className="text-center">
+                        <div className="mx-auto inline-flex rounded-full border border-cyan-200/15 bg-white/[0.045] px-4 py-2 text-xs uppercase tracking-[0.26em] text-cyan-100/70 backdrop-blur-xl">
+                          Mission Control Dashboard
+                        </div>
+                        <h1 className="mt-5 bg-gradient-to-r from-white via-cyan-100 to-purple-200 bg-clip-text text-4xl font-bold tracking-tight text-transparent md:text-6xl">
+                          Hello, Mission Operator
+                        </h1>
+                        <p className="mt-4 text-lg text-white/62 md:text-xl">
+                          What complex objective are we solving today?
+                        </p>
+                      </div>
+
+                      <MissionBriefComposer
+                        brief={brief}
+                        config={config}
+                        isRunning={isRunning}
+                        isComplete={isComplete || status === MissionState.Cancelled}
+                        mockMode={mockMode}
+                        showConfig={showConfig}
+                        configContent={(
+                          <ConfigForm
+                            config={config}
+                            onChange={setConfig}
+                            onApply={() => setShowConfig(false)}
+                            onReset={() => setConfig({})}
+                          />
+                        )}
+                        onBriefChange={setBrief}
+                        onExampleSelect={handleExampleSelect}
+                        onConfigOpenChange={setShowConfig}
+                        onLaunch={handleLaunch}
+                        onCancel={cancel}
+                      />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                <AnimatePresence>
+                  {hasContent && (
+                    <motion.div
+                      variants={fadeUp}
+                      initial="hidden"
+                      animate="visible"
+                      exit={{ opacity: 0 }}
+                      className="space-y-4"
+                    >
+                      <CompactMissionHeader activeAgents={activeAgents} onCancel={cancel} onStartNew={handleStartNewMission} />
+                      <AgentCouncilRoom onViewReport={() => setActiveMissionTab("report")} onStartNew={handleStartNewMission} />
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -239,7 +256,6 @@ export function MissionControl() {
                 <AnimatePresence>
                   {hasContent && isComplete && (
                     <motion.div variants={fadeUp} initial="hidden" animate="visible" exit={{ opacity: 0 }}>
-                      <MissionOutcomeCard type="completed" onStartNew={handleStartNewMission} onViewReport={() => setActiveMissionTab("report")} />
                       <MissionTabs value={activeMissionTab} onValueChange={setActiveMissionTab} />
                     </motion.div>
                   )}

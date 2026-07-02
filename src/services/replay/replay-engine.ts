@@ -73,6 +73,7 @@ function baseContext(events: MissionReplayEvent[]): MissionContext {
     currentAgent: null,
     agentStates: emptyAgentStates(),
     executionTasks: [],
+    missionGraph: null,
     progress: 0,
     status: MissionState.Idle,
     startedAt: null,
@@ -114,6 +115,30 @@ function applyReplayEvent(ctx: MissionContext, event: MissionReplayEvent) {
       break;
     case "MISSION_CLASSIFIED":
       addTimeline(ctx, event, "Mission classified", String(event.payload?.intent ?? "Mission intent classified."));
+      break;
+    case "MISSION_GRAPH_CREATED":
+    case "MISSION_GRAPH_UPDATED":
+      ctx.missionGraph = (event.payload?.missionGraph ?? ctx.missionGraph) as MissionContext["missionGraph"];
+      addTimeline(ctx, event, event.type === "MISSION_GRAPH_CREATED" ? "Mission Graph created" : "Mission Graph updated", "Replay reconstructed graph topology, assignments, dependencies, and readiness.");
+      break;
+    case "TASK_READY":
+      patchTask(ctx, String(event.payload?.task ? (event.payload.task as ExecutionTask).id : event.workstreamId), { status: "ready" });
+      patchWorkstream(ctx, String(event.workstreamId), { status: "ready" });
+      break;
+    case "TASK_STARTED":
+      patchTask(ctx, String(event.payload?.task ? (event.payload.task as ExecutionTask).id : event.workstreamId), { status: "running", startedAt: event.timestamp });
+      patchWorkstream(ctx, String(event.workstreamId), { status: "in_progress", startedAt: event.timestamp });
+      break;
+    case "TASK_BLOCKED":
+      patchTask(ctx, String(event.payload?.task ? (event.payload.task as ExecutionTask).id : event.workstreamId), { status: "blocked" });
+      patchWorkstream(ctx, String(event.workstreamId), { status: "blocked" });
+      addTimeline(ctx, event, "Task blocked", "A weak assumption paused affected nodes while unrelated work continued.");
+      break;
+    case "TASK_REASSIGNED":
+    case "PLANNER_REVISED_PLAN":
+      patchTask(ctx, String(event.payload?.taskId ?? event.workstreamId), { status: "revised", revisionNote: String(event.payload?.revisionNote ?? "Planner revised this node.") });
+      patchWorkstream(ctx, String(event.workstreamId), { status: "revised", nextStep: String(event.payload?.revisionNote ?? "Planner revised this workstream.") });
+      addTimeline(ctx, event, event.type === "TASK_REASSIGNED" ? "Task reassigned" : "Planner revised plan", "Planner updated the Mission Graph after mediation.");
       break;
     case "PLANNER_STARTED":
       ctx.status = MissionState.Planning;
@@ -161,9 +186,19 @@ function applyReplayEvent(ctx: MissionContext, event: MissionReplayEvent) {
       ctx.dialogue = [...ctx.dialogue, event.payload?.dialogue as AgentDialogueEntry].filter(Boolean);
       break;
     case "CONFLICT_DETECTED":
+    case "CONFLICT_CREATED":
     case "CONFLICT_UPDATED":
       upsertConflict(ctx, event.payload?.conflict as ConflictInfo);
-      addTimeline(ctx, event, event.type === "CONFLICT_DETECTED" ? "Conflict detected" : "Conflict updated", String(event.payload?.conflictTitle ?? "Mission conflict updated."));
+      addTimeline(ctx, event, event.type === "CONFLICT_UPDATED" ? "Conflict updated" : "Conflict detected", String(event.payload?.conflictTitle ?? "Mission conflict updated."));
+      break;
+    case "MEDIATION_STARTED":
+      ctx.status = MissionState.ConflictResolution;
+      ctx.currentAgent = AgentRole.Mediator;
+      ctx.agentStates[AgentRole.Mediator] = "thinking";
+      addTimeline(ctx, event, "Mediation started", "Mediator began resolving an active graph conflict.");
+      break;
+    case "SYNCHRONIZATION_POINT_REACHED":
+      addTimeline(ctx, event, "Synchronization point reached", "Finalizer readiness was evaluated before synthesis.");
       break;
     case "CONFLICT_RESOLVED":
       upsertConflict(ctx, { ...(event.payload?.conflict as ConflictInfo), resolved: true });

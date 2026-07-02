@@ -39,6 +39,11 @@ export function MissionWarRoom({ onCancel }: { onCancel: () => void }) {
   const conflicts = context?.conflicts ?? [];
   const timeline = context?.timeline ?? [];
   const metrics = context?.efficiencyMetrics;
+  const activeTasks = context?.executionTasks.filter((task) => task.status === "running") ?? [];
+  const activeAgents = Array.from(new Set(activeTasks.map((task) => task.agent))).map((role) => getAgentByRole(role)).filter(Boolean);
+  const blockedTasks = context?.executionTasks.filter((task) => task.status === "blocked") ?? [];
+  const revisedTasks = context?.executionTasks.filter((task) => task.status === "revised") ?? [];
+  const synthesisStatus = context?.missionGraph?.finalizationReadiness.status ?? "not_ready";
 
   const activeWorkstream = useMemo(() => workstreams.find((item) => item.status === "in_progress"), [workstreams]);
 
@@ -57,7 +62,7 @@ export function MissionWarRoom({ onCancel }: { onCancel: () => void }) {
             <h3 className="mt-3 whitespace-normal break-words text-xl font-bold leading-snug text-white">{context.missionBrief}</h3>
             <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-white/45">
               <span className="capitalize">Phase: {formatStatus(context.status)}</span>
-              <span>Active: {activeAgent?.name ?? "None"}</span>
+              <span>Active agents: {activeAgents.length ? activeAgents.map((agent) => agent?.name).join(", ") : activeAgent?.name ?? "None"}</span>
               <span className="flex items-center gap-1"><Clock3 className="h-3.5 w-3.5" /> {formatDuration(elapsed)}</span>
             </div>
           </div>
@@ -81,13 +86,13 @@ export function MissionWarRoom({ onCancel }: { onCancel: () => void }) {
 
       <div className="grid gap-4 xl:grid-cols-[0.85fr_1.4fr_0.9fr]">
         <div className="space-y-4">
-          <WarCard title="Agent Workflow" icon={<RadioTower className="h-4 w-4" />}>
+          <WarCard title="Parallel Agent Society" icon={<RadioTower className="h-4 w-4" />}>
             <div className="space-y-2">
               {ORDER.map((role) => {
                 const def = getAgentByRole(role);
                 if (!def) return null;
                 const state = context.agentStates[role] ?? "waiting";
-                const active = context.currentAgent === role;
+                const active = activeAgents.some((agent) => agent?.role === role) || context.currentAgent === role;
                 return (
                   <motion.div
                     key={role}
@@ -107,15 +112,16 @@ export function MissionWarRoom({ onCancel }: { onCancel: () => void }) {
             </div>
           </WarCard>
 
-          <WarCard title="Workstreams" icon={<Shield className="h-4 w-4" />}>
+          <WarCard title="Mission Graph Workstreams" icon={<Shield className="h-4 w-4" />}>
             <div className="space-y-2">
               {workstreams.slice(0, 7).map((ws) => (
-                <div key={ws.id} className={`rounded-xl border p-3 ${ws.status === "in_progress" ? "border-cyan-200/35 bg-cyan-300/10" : "border-white/10 bg-black/15"}`}>
+                <div key={ws.id} className={`rounded-xl border p-3 ${ws.status === "in_progress" || ws.status === "ready" ? "border-cyan-200/35 bg-cyan-300/10" : ws.status === "blocked" ? "border-amber-200/35 bg-amber-400/10" : ws.status === "revised" ? "border-blue-200/25 bg-blue-400/10" : "border-white/10 bg-black/15"}`}>
                   <div className="flex items-start justify-between gap-2">
                     <p className="text-sm font-medium text-white">{sanitizeMissionText(ws.title)}</p>
                     <Badge variant="outline" className="shrink-0 border-white/10 bg-white/[0.04] text-[0.62rem] capitalize text-white/60">{ws.status.replace("_", " ")}</Badge>
                   </div>
                   <p className="mt-1 text-xs text-white/42">{getAgentByRole(ws.assignedAgent ?? AgentRole.Planner)?.name ?? ws.owner ?? "Owner pending"}</p>
+                  <p className="mt-1 text-[0.65rem] text-white/32">{ws.dependencies?.length || 0} dependencies {ws.nextStep ? " · planner revised" : ""}</p>
                   <Progress value={ws.confidence ?? 60} className="mt-2 h-1 bg-white/10" />
                 </div>
               ))}
@@ -148,7 +154,21 @@ export function MissionWarRoom({ onCancel }: { onCancel: () => void }) {
                 );
               })}
             </AnimatePresence>
-            {activeAgent && (
+            {activeAgents.length > 0 ? (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="rounded-2xl border border-cyan-200/15 bg-cyan-300/10 p-3 text-sm text-cyan-100">
+                <div className="mb-2 flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Parallel agents collaborating
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {activeAgents.map((agent) => (
+                    <span key={agent?.id} className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-xs">
+                      {agent?.name}
+                    </span>
+                  ))}
+                </div>
+              </motion.div>
+            ) : activeAgent && (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center gap-2 rounded-2xl border border-cyan-200/15 bg-cyan-300/10 p-3 text-sm text-cyan-100">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 {activeAgent.name} is {context.agentStates[activeAgent.role] ?? "thinking"}...
@@ -191,8 +211,10 @@ export function MissionWarRoom({ onCancel }: { onCancel: () => void }) {
             <div className="grid grid-cols-2 gap-2">
               <MiniMetric label="Coverage" value={`${metrics?.taskCoverage ?? Math.round(progress * 100)}%`} />
               <MiniMetric label="Confidence" value={`${metrics?.finalConfidenceScore ?? activeWorkstream?.confidence ?? 0}%`} />
+              <MiniMetric label="Blocked" value={String(blockedTasks.length)} />
+              <MiniMetric label="Revised" value={String(revisedTasks.length)} />
               <MiniMetric label="Conflicts" value={String(conflicts.length)} />
-              <MiniMetric label="Streams" value={String(dialogue.length)} />
+              <MiniMetric label="Synthesis" value={synthesisStatus.replace(/_/g, " ")} />
             </div>
           </WarCard>
         </div>

@@ -59,15 +59,15 @@ function cardClass() {
 }
 
 const agentIconMap = {
-  planner: BrainCircuit,
-  research: Search,
-  product: Lightbulb,
-  technical: Network,
-  marketing: Megaphone,
-  finance: WalletCards,
-  risk: ShieldAlert,
-  mediator: Scale,
-  finalizer: PackageCheck,
+  "agent-planner": BrainCircuit,
+  "agent-researcher": Search,
+  "agent-product": Lightbulb,
+  "agent-technical": Network,
+  "agent-marketing": Megaphone,
+  "agent-finance": WalletCards,
+  "agent-risk": ShieldAlert,
+  "agent-mediator": Scale,
+  "agent-finalizer": PackageCheck,
 };
 
 function copyText(text: string) {
@@ -121,6 +121,7 @@ function contextFromHistory(entry: MissionHistoryEntry): MissionContext {
       finalizer: "complete",
     },
     executionTasks: [],
+    missionGraph: null,
     progress: entry.finalReport ? 1 : 0.5,
     status: entry.finalReport ? MissionState.Completed : MissionState.Cancelled,
     startedAt: entry.timestamp,
@@ -150,15 +151,37 @@ function AgentsPage() {
 
   return (
     <section className="space-y-5">
-      <PageHeader icon={Bot} title="Agents" meta={`${AGENT_DEFINITIONS.length} mission specialists`} description="Every mission runs through a fixed specialist pipeline: plan, research, strategize, architect, market, finance, critique, mediate, and synthesize." />
+      <PageHeader icon={Bot} title="Agents" meta={`${AGENT_DEFINITIONS.length} mission specialists`} description="Every mission forms a dynamic agent society. The Planner creates a Mission Graph, assigns workstreams, specialists collaborate in parallel, critics interrupt weak assumptions, and the Mediator resolves execution conflicts." />
       <div className={cardClass()}>
-        <h3 className="text-sm font-semibold text-white">Agent Society Pipeline</h3>
-        <div className="mt-4 grid gap-2 md:grid-cols-3">
-          {AGENT_DEFINITIONS.map((agent, index) => (
-            <div key={agent.id} className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-2">
-              <span className="grid h-7 w-7 place-items-center rounded-full text-xs font-bold text-white" style={{ backgroundColor: agent.color }}>{index + 1}</span>
-              <span className="text-xs text-white/70">{agent.name}</span>
+        <h3 className="text-sm font-semibold text-white">Agent Society Collaboration Map</h3>
+        <div className="mt-5 grid gap-3 lg:grid-cols-[1fr_1.2fr_1fr]">
+          <div className="space-y-2">
+            {AGENT_DEFINITIONS.slice(0, 4).map((agent) => <AgentMapNode key={agent.id} agent={agent} />)}
+          </div>
+          <div className="grid min-h-48 place-items-center rounded-3xl border border-cyan-200/15 bg-cyan-300/[0.055] p-5 text-center shadow-[0_0_60px_rgba(34,211,238,0.12)]">
+            <div>
+              <div className="mx-auto grid h-16 w-16 place-items-center rounded-3xl border border-cyan-200/25 bg-cyan-300/10">
+                <Network className="h-7 w-7 text-cyan-100" />
+              </div>
+              <h4 className="mt-4 text-base font-semibold text-white">Mission Engine</h4>
+              <p className="mt-2 text-sm leading-relaxed text-white/55">Maintains the Mission Graph, synchronizes dependencies, routes conflicts, and waits for synthesis readiness.</p>
             </div>
+          </div>
+          <div className="space-y-2">
+            {AGENT_DEFINITIONS.slice(4).map((agent) => <AgentMapNode key={agent.id} agent={agent} />)}
+          </div>
+        </div>
+      </div>
+      <div className={cardClass()}>
+        <h3 className="text-sm font-semibold text-white">Collaboration Examples</h3>
+        <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+          {[
+            "Research + Marketing validate audience and positioning.",
+            "Technical + Finance estimate build cost and infrastructure tradeoffs.",
+            "Risk Critic challenges aggressive assumptions mid-execution.",
+            "Mediator resolves disagreement and Planner revises assignments.",
+          ].map((example) => (
+            <div key={example} className="rounded-xl border border-white/10 bg-white/[0.035] p-3 text-sm leading-relaxed text-white/58">{example}</div>
           ))}
         </div>
       </div>
@@ -167,6 +190,7 @@ function AgentsPage() {
           const active = context?.currentAgent === agent.role;
           const complete = completedRoles.has(agent.role);
           const AgentIcon = agentIconMap[agent.id as keyof typeof agentIconMap] ?? Bot;
+          const meta = agentCollaborationMeta(agent.id);
           return (
             <article
               key={agent.id}
@@ -200,6 +224,16 @@ function AgentsPage() {
                   <span key={capability} className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs text-white/58">{capability}</span>
                 ))}
               </div>
+              <div className="mt-4 grid grid-cols-2 gap-2 text-[0.68rem] text-white/58">
+                <CapabilityPill label="Can run in parallel" active={meta.parallel} />
+                <CapabilityPill label="Can challenge assumptions" active={meta.challenges} />
+                <CapabilityPill label="Can create conflicts" active={meta.createsConflicts} />
+                <CapabilityPill label="Can resolve conflicts" active={meta.resolvesConflicts} />
+                <CapabilityPill label="Can revise graph" active={meta.revisesGraph} />
+              </div>
+              <p className="mt-3 text-xs leading-relaxed text-white/45">
+                Typical collaborations: {meta.collaborations.join("; ")}
+              </p>
               <p className="mt-4 text-sm leading-relaxed text-white/58">{agent.systemPrompt.slice(0, 190)}...</p>
               <div className="mt-4 flex items-center gap-2 text-xs text-white/45">
                 <CheckCircle2 className="h-3.5 w-3.5" style={{ color: agent.color }} />
@@ -211,6 +245,109 @@ function AgentsPage() {
       </div>
     </section>
   );
+}
+
+function AgentMapNode({ agent }: { agent: (typeof AGENT_DEFINITIONS)[number] }) {
+  const AgentIcon = agentIconMap[agent.id as keyof typeof agentIconMap] ?? Bot;
+  return (
+    <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.035] p-3">
+      <span className="grid h-10 w-10 place-items-center rounded-2xl border" style={{ borderColor: `${agent.color}88`, backgroundColor: `${agent.color}22` }}>
+        <AgentIcon className="h-4 w-4" style={{ color: agent.color }} />
+      </span>
+      <div className="min-w-0">
+        <p className="truncate text-sm font-medium text-white">{agent.name}</p>
+        <p className="text-xs text-white/38">{agent.capabilities.slice(0, 2).join(" + ")}</p>
+      </div>
+    </div>
+  );
+}
+
+function CapabilityPill({ label, active }: { label: string; active: boolean | string }) {
+  const text = typeof active === "string" ? active : active ? "yes" : "no";
+  const isActive = Boolean(active);
+  return (
+    <span className={`rounded-full border px-2 py-1 ${isActive ? "border-cyan-200/20 bg-cyan-300/10 text-cyan-100/80" : "border-white/10 bg-white/[0.03] text-white/35"}`}>
+      {label}: {text}
+    </span>
+  );
+}
+
+function agentCollaborationMeta(agentId: string) {
+  const map: Record<string, { parallel: boolean; challenges: boolean | string; createsConflicts: boolean | string; resolvesConflicts: boolean; revisesGraph: boolean | string; collaborations: string[] }> = {
+    "agent-planner": {
+      parallel: false,
+      challenges: false,
+      createsConflicts: false,
+      resolvesConflicts: false,
+      revisesGraph: true,
+      collaborations: ["All specialists for task decomposition", "Mediator after conflicts", "Finalizer before synthesis"],
+    },
+    "agent-researcher": {
+      parallel: true,
+      challenges: "if assumptions are weak",
+      createsConflicts: "if assumptions are weak",
+      resolvesConflicts: false,
+      revisesGraph: false,
+      collaborations: ["Marketing Strategist for audience validation", "Product Strategist for user needs", "Risk Critic for evidence gaps"],
+    },
+    "agent-product": {
+      parallel: true,
+      challenges: true,
+      createsConflicts: true,
+      resolvesConflicts: false,
+      revisesGraph: false,
+      collaborations: ["Research Agent for customer needs", "Technical Architect for feasibility", "Finance Agent for pricing strategy"],
+    },
+    "agent-technical": {
+      parallel: true,
+      challenges: true,
+      createsConflicts: true,
+      resolvesConflicts: false,
+      revisesGraph: false,
+      collaborations: ["Finance Agent for infrastructure cost", "Product Strategist for scope", "Risk Critic for technical risk"],
+    },
+    "agent-marketing": {
+      parallel: true,
+      challenges: true,
+      createsConflicts: true,
+      resolvesConflicts: false,
+      revisesGraph: false,
+      collaborations: ["Research Agent for audience validation", "Finance Agent for campaign budget", "Risk Critic for trust risks"],
+    },
+    "agent-finance": {
+      parallel: true,
+      challenges: true,
+      createsConflicts: true,
+      resolvesConflicts: false,
+      revisesGraph: false,
+      collaborations: ["Technical Architect for infrastructure cost", "Marketing Strategist for campaign budget", "Product Strategist for pricing strategy", "Risk Critic for financial risk"],
+    },
+    "agent-risk": {
+      parallel: true,
+      challenges: true,
+      createsConflicts: true,
+      resolvesConflicts: false,
+      revisesGraph: false,
+      collaborations: ["All agents when assumptions look weak", "Mediator for resolution", "Planner for graph revision"],
+    },
+    "agent-mediator": {
+      parallel: false,
+      challenges: false,
+      createsConflicts: false,
+      resolvesConflicts: true,
+      revisesGraph: "through decision",
+      collaborations: ["Conflicting agents", "Planner for assignment/dependency changes", "Finalizer for resolved decisions"],
+    },
+    "agent-finalizer": {
+      parallel: false,
+      challenges: false,
+      createsConflicts: false,
+      resolvesConflicts: false,
+      revisesGraph: false,
+      collaborations: ["All completed workstreams", "Mediator decisions", "Planner readiness criteria"],
+    },
+  };
+  return map[agentId] ?? map["agent-researcher"];
 }
 
 function MissionHistoryPage({ onOpenMissionControl, onReplay }: { onOpenMissionControl: () => void; onReplay: (events: MissionReplayEvent[]) => void }) {
@@ -319,6 +456,8 @@ function SettingsPage() {
   const runtime = getQwenRuntimeInfo();
   const allowMockFallback = useRuntimeSettingsStore((state) => state.allowMockFallback);
   const setAllowMockFallback = useRuntimeSettingsStore((state) => state.setAllowMockFallback);
+  const developerDebugMode = useRuntimeSettingsStore((state) => state.developerDebugMode);
+  const setDeveloperDebugMode = useRuntimeSettingsStore((state) => state.setDeveloperDebugMode);
   const qwenApiKey = useRuntimeSettingsStore((state) => state.qwenApiKey);
   const qwenBaseUrl = useRuntimeSettingsStore((state) => state.qwenBaseUrl);
   const qwenModel = useRuntimeSettingsStore((state) => state.qwenModel);
@@ -429,6 +568,13 @@ function SettingsPage() {
           <p className="mt-1 text-sm text-white/50">When off, Qwen failures stop the mission with a clear error instead of pretending Qwen succeeded.</p>
         </div>
         <Switch checked={allowMockFallback} onCheckedChange={setAllowMockFallback} />
+      </div>
+      <div className={`${cardClass()} flex items-center justify-between gap-4`}>
+        <div>
+          <h3 className="text-sm font-semibold text-white">Developer Debug Mode</h3>
+          <p className="mt-1 text-sm text-white/50">When enabled, transcript drawers can reveal raw model output for debugging. Keep this off for the normal product experience.</p>
+        </div>
+        <Switch checked={developerDebugMode} onCheckedChange={setDeveloperDebugMode} />
       </div>
     </section>
   );

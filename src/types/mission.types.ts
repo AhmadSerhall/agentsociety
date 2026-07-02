@@ -67,8 +67,9 @@ export interface Workstream {
   owner?: string;
   responsibleAgent?: string;
   description: string;
-  status: "pending" | "in_progress" | "completed";
+  status: "pending" | "ready" | "in_progress" | "blocked" | "completed" | "revised" | "cancelled";
   assignedAgent: AgentRole | null;
+  supportingAgentIds?: AgentRole[];
   deliverables: string[];
   confidence?: number;
   dependencies?: string[];
@@ -82,11 +83,15 @@ export interface ExecutionTask {
   id: string;
   workstreamId: string;
   title: string;
+  description?: string;
   agent: AgentRole;
+  supportingAgents?: AgentRole[];
   dependencies: string[];
-  status: "pending" | "in_progress" | "completed";
+  status: "pending" | "ready" | "running" | "blocked" | "completed" | "revised" | "cancelled";
   confidence: number;
   output?: string;
+  blockedReason?: string;
+  revisionNote?: string;
   startedAt?: string;
   completedAt?: string;
 }
@@ -95,13 +100,44 @@ export interface ConflictInfo {
   id: string;
   title?: string;
   agents: string[];
+  agentsInvolved?: string[];
+  affectedTaskIds?: string[];
   description: string;
+  summary?: string;
   riskLevel?: "low" | "moderate" | "high" | "critical";
+  severity?: "low" | "moderate" | "high" | "critical";
   disagreementSummary?: string;
+  proposedSolutions?: string[];
   mediatorDecision?: string;
+  resolvedAction?: string;
   finalAction?: string;
   resolution?: string;
+  status?: "open" | "resolving" | "resolved";
   resolved: boolean;
+  createdAt?: string;
+  resolvedAt?: string;
+}
+
+export interface MissionGraph {
+  missionId: string;
+  workstreams: string[];
+  agents: AgentRole[];
+  taskNodes: ExecutionTask[];
+  parallelGroups: Array<{ id: string; title: string; description: string; taskIds: string[] }>;
+  conflictZones: Array<{ title: string; agentsInvolved: AgentRole[]; reason: string }>;
+  synthesisReadinessCriteria: string[];
+  dependencies: Array<{ from: string; to: string }>;
+  assignments: Array<{ taskId: string; assignedAgentId: AgentRole; supportingAgentIds: AgentRole[] }>;
+  statuses: Record<string, ExecutionTask["status"]>;
+  outputs: Record<string, string>;
+  conflicts: ConflictInfo[];
+  synchronizationPoints: Array<{ id: string; title: string; requiredTaskIds: string[]; reached: boolean; reachedAt?: string }>;
+  finalizationReadiness: {
+    requiredTasksCompleted: boolean;
+    criticalConflictsResolved: boolean;
+    confidenceThresholdMet: boolean;
+    status: "not_ready" | "waiting" | "ready_for_synthesis";
+  };
 }
 
 export interface MissionReport {
@@ -147,14 +183,24 @@ export interface TimelineEntry {
 export type MissionReplayEventType =
   | "MISSION_CREATED"
   | "MISSION_STARTED"
+  | "MISSION_GRAPH_CREATED"
+  | "MISSION_GRAPH_UPDATED"
+  | "TASK_READY"
+  | "TASK_STARTED"
+  | "TASK_BLOCKED"
+  | "TASK_REASSIGNED"
   | "MISSION_CONFIGURATION_SELECTED"
   | "MISSION_CLASSIFIED"
   | "PLANNER_STARTED"
   | "PLANNER_STREAM"
   | "PLANNER_FINISHED"
+  | "PLANNER_REVIEW_REQUESTED"
+  | "PLANNER_REVISED_PLAN"
   | "WORKSTREAM_CREATED"
   | "WORKSTREAM_ASSIGNED"
   | "AGENT_STARTED"
+  | "AGENT_REQUESTED_INPUT"
+  | "AGENT_CHALLENGED_ASSUMPTION"
   | "AGENT_WAITING"
   | "AGENT_THINKING"
   | "AGENT_ANALYZING"
@@ -163,10 +209,13 @@ export type MissionReplayEventType =
   | "AGENT_FINISHED"
   | "DIALOGUE_CREATED"
   | "CONFLICT_DETECTED"
+  | "CONFLICT_CREATED"
   | "CONFLICT_UPDATED"
   | "CONFLICT_RESOLVED"
   | "MEDIATOR_STARTED"
+  | "MEDIATION_STARTED"
   | "MEDIATOR_FINISHED"
+  | "SYNCHRONIZATION_POINT_REACHED"
   | "FINALIZER_STARTED"
   | "FINALIZER_STREAM"
   | "FINALIZER_FINISHED"
@@ -210,6 +259,7 @@ export interface MissionContext {
   currentAgent: AgentRole | null;
   agentStates: Record<AgentRole, AgentThinkingState>;
   executionTasks: ExecutionTask[];
+  missionGraph: MissionGraph | null;
   progress: number;
   status: MissionState;
   startedAt: string | null;
