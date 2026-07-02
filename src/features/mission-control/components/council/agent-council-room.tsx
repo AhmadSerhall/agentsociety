@@ -9,8 +9,10 @@ import { Button } from "@/components/ui/button";
 import { useMissionStore } from "@/store";
 import { MissionState, type AgentDialogueEntry, type ExecutionTask } from "@/types";
 import { downloadText, reportToMarkdown } from "@/utils";
+import { AgentContributionDrawer } from "./agent-contribution-drawer";
 import { AgentRoster } from "./agent-roster";
 import { AgentSpeechBubble } from "./agent-speech-bubble";
+import { CouncilSummaryPanel } from "./council-summary-panel";
 import { MissionIntelligencePanel } from "./mission-intelligence-panel";
 import { TranscriptDrawer } from "./transcript-drawer";
 import { WorkstreamInspector } from "./workstream-inspector";
@@ -28,10 +30,19 @@ const POSITIONS = [
   "left-[50%] top-[50%] -translate-x-1/2 -translate-y-1/2",
 ];
 
-export function AgentCouncilRoom({ onViewReport, onStartNew }: { onViewReport: () => void; onStartNew: () => void }) {
+export function AgentCouncilRoom({
+  onViewReport,
+  onReplayMission,
+  onStartNew,
+}: {
+  onViewReport: () => void;
+  onReplayMission: () => void;
+  onStartNew: () => void;
+}) {
   const context = useMissionStore((s) => s.context);
   const [transcriptOpen, setTranscriptOpen] = useState(false);
-  const [focusEntry, setFocusEntry] = useState<AgentDialogueEntry | null>(null);
+  const [contributionOpen, setContributionOpen] = useState(false);
+  const [contributionEntry, setContributionEntry] = useState<AgentDialogueEntry | null>(null);
   const [selectedTask, setSelectedTask] = useState<ExecutionTask | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState(false);
 
@@ -44,9 +55,13 @@ export function AgentCouncilRoom({ onViewReport, onStartNew }: { onViewReport: (
     ? context.conflicts.filter((conflict) => conflict.affectedTaskIds?.includes(selectedTask.id) || conflict.affectedTaskIds?.includes(selectedTask.workstreamId))
     : [];
 
-  const openTranscript = (entry?: AgentDialogueEntry) => {
-    setFocusEntry(entry ?? null);
+  const openTranscript = () => {
     setTranscriptOpen(true);
+  };
+
+  const openContribution = (entry: AgentDialogueEntry) => {
+    setContributionEntry(entry);
+    setContributionOpen(true);
   };
 
   const selectTask = (task: ExecutionTask) => {
@@ -70,55 +85,64 @@ export function AgentCouncilRoom({ onViewReport, onStartNew }: { onViewReport: (
             <div>
               <Badge className="bg-emerald-300/15 text-emerald-100 hover:bg-emerald-300/15">Mission Report Ready</Badge>
               <h3 className="mt-3 text-2xl font-bold text-white">The council has synchronized the final synthesis.</h3>
-              <p className="mt-1 max-w-3xl text-sm leading-relaxed text-white/60">Review the detailed report, export the result, replay the mission transcript, or start a fresh objective.</p>
+              <p className="mt-1 max-w-3xl text-sm leading-relaxed text-white/60">Review the detailed report, export the result, replay recorded events, or start a fresh objective.</p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button onClick={onViewReport} className="gap-2 bg-cyan-300 text-[#06101f] hover:bg-cyan-200"><Eye className="h-4 w-4" /> View Full Report</Button>
-              {context.finalReport && <Button variant="outline" onClick={() => downloadText("agent-society-report.md", reportToMarkdown(context.finalReport!), "text/markdown")} className="gap-2 border-white/10 bg-white/[0.04] text-white/70"><Download className="h-4 w-4" /> Export Markdown</Button>}
-              <Button variant="outline" onClick={() => openTranscript()} className="gap-2 border-white/10 bg-white/[0.04] text-white/70"><PlayCircle className="h-4 w-4" /> Replay Mission</Button>
-              <Button variant="outline" onClick={onStartNew} className="gap-2 border-purple-300/20 bg-purple-400/10 text-purple-100"><RotateCcw className="h-4 w-4" /> Start New Mission</Button>
+              <Button onClick={onViewReport} className="gap-2 bg-cyan-300 text-[#06101f] shadow-[0_0_28px_rgba(34,211,238,0.22)] hover:bg-cyan-200 focus-visible:ring-cyan-200"><Eye className="h-4 w-4" /> View Full Report</Button>
+              {context.finalReport && <Button variant="outline" onClick={() => downloadText("agent-society-report.md", reportToMarkdown(context.finalReport!), "text/markdown")} className="gap-2 border-white/10 bg-white/[0.04] text-white/70 hover:bg-white/[0.08] hover:text-white"><Download className="h-4 w-4" /> Export Markdown</Button>}
+              <Button variant="outline" onClick={onReplayMission} className="gap-2 border-white/10 bg-white/[0.04] text-white/70 hover:bg-white/[0.08] hover:text-white"><PlayCircle className="h-4 w-4" /> Replay Mission</Button>
+              <Button variant="outline" onClick={onStartNew} className="gap-2 border-purple-300/20 bg-purple-400/10 text-purple-100 hover:bg-purple-400/15"><RotateCcw className="h-4 w-4" /> Start New Mission</Button>
             </div>
           </div>
         </motion.div>
       )}
 
-      <div className="grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)_320px]">
-        <AgentRoster currentAgent={context.currentAgent} states={context.agentStates} />
-        <div className="relative min-h-[600px] overflow-hidden rounded-[1.6rem] border border-cyan-200/12 bg-[radial-gradient(circle_at_50%_35%,rgba(34,211,238,0.12),transparent_34%),linear-gradient(135deg,rgba(3,7,18,0.88),rgba(15,23,42,0.66))] p-5 shadow-[0_26px_100px_rgba(0,0,0,0.34)] backdrop-blur-xl">
-          <div className="pointer-events-none absolute inset-0 opacity-70">
-            <div className="absolute left-1/2 top-1/2 h-[430px] w-[430px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-cyan-200/10" />
-            <div className="absolute left-1/2 top-1/2 h-[310px] w-[310px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-purple-200/10" />
-            <div className="absolute inset-x-8 top-1/2 h-px bg-gradient-to-r from-transparent via-cyan-300/25 to-transparent" />
-            <div className="absolute inset-y-8 left-1/2 w-px bg-gradient-to-b from-transparent via-purple-300/22 to-transparent" />
-          </div>
-
-          <CouncilGraph currentAgent={context.currentAgent} />
-
-          <div className="absolute inset-x-4 bottom-4 z-20 grid gap-3 md:grid-cols-2">
-            <AnimatePresence mode="popLayout">
-              {latestDialogue.length ? latestDialogue.map((entry) => (
-                <AgentSpeechBubble key={`${entry.agentId}-${entry.timestamp}`} entry={entry} onExpand={openTranscript} />
-              )) : (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="rounded-2xl border border-white/10 bg-black/25 p-4 text-sm text-white/50">
-                  The council is assembling. Agent messages will appear here as specialists collaborate.
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-
-          <Button onClick={() => openTranscript()} variant="outline" className="absolute right-4 top-4 z-20 rounded-full border-white/10 bg-white/[0.055] text-white/70 hover:bg-white/[0.1] hover:text-white">
-            Full Transcript
-          </Button>
+      {completed ? (
+        <div className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)_340px]">
+          <AgentRoster currentAgent={context.currentAgent} states={context.agentStates} />
+          <CouncilSummaryPanel context={context} />
+          <MissionIntelligencePanel context={context} />
         </div>
-        <MissionIntelligencePanel context={context} />
-      </div>
+      ) : (
+        <div className="grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)_320px]">
+          <AgentRoster currentAgent={context.currentAgent} states={context.agentStates} />
+          <div className="relative min-h-[620px] overflow-hidden rounded-[1.6rem] border border-cyan-200/12 bg-[radial-gradient(circle_at_50%_35%,rgba(34,211,238,0.12),transparent_34%),linear-gradient(135deg,rgba(3,7,18,0.88),rgba(15,23,42,0.66))] p-5 shadow-[0_26px_100px_rgba(0,0,0,0.34)] backdrop-blur-xl">
+            <div className="pointer-events-none absolute inset-0 opacity-70">
+              <div className="absolute left-1/2 top-1/2 h-[430px] w-[430px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-cyan-200/10" />
+              <div className="absolute left-1/2 top-1/2 h-[310px] w-[310px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-purple-200/10" />
+              <div className="absolute inset-x-8 top-1/2 h-px bg-gradient-to-r from-transparent via-cyan-300/25 to-transparent" />
+              <div className="absolute inset-y-8 left-1/2 w-px bg-gradient-to-b from-transparent via-purple-300/22 to-transparent" />
+            </div>
+
+            <CouncilGraph currentAgent={context.currentAgent} />
+
+            <div className="absolute inset-x-4 bottom-4 z-20 grid max-h-[300px] gap-3 overflow-y-auto pr-1 [scrollbar-color:rgba(34,211,238,0.55)_transparent] [scrollbar-width:thin] md:grid-cols-2">
+              <AnimatePresence mode="popLayout">
+                {latestDialogue.length ? latestDialogue.map((entry) => (
+                  <AgentSpeechBubble key={`${entry.agentId}-${entry.timestamp}`} entry={entry} onExpand={openContribution} />
+                )) : (
+                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="rounded-2xl border border-white/10 bg-black/25 p-4 text-sm text-white/50">
+                    The council is assembling. Agent messages will appear here as specialists collaborate.
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            <Button onClick={openTranscript} variant="outline" className="absolute right-4 top-4 z-20 rounded-full border-white/10 bg-white/[0.055] text-white/70 hover:bg-white/[0.1] hover:text-white">
+              Full Transcript
+            </Button>
+          </div>
+          <MissionIntelligencePanel context={context} />
+        </div>
+      )}
 
       <WorkstreamStrip tasks={context.executionTasks} selectedId={selectedTask?.id} onSelect={selectTask} />
       <div className="rounded-[1.2rem] border border-white/10 bg-white/[0.035] px-4 py-3 text-sm text-white/52">
         Synchronization status: {context.missionGraph?.finalizationReadiness.status.replace(/_/g, " ") ?? "waiting for mission graph"}.
       </div>
 
-      <TranscriptDrawer dialogue={context.dialogue} open={transcriptOpen} onOpenChange={setTranscriptOpen} focusEntry={focusEntry} />
+      <TranscriptDrawer dialogue={context.dialogue} open={transcriptOpen} onOpenChange={setTranscriptOpen} />
+      <AgentContributionDrawer entry={contributionEntry} context={context} open={contributionOpen} onOpenChange={setContributionOpen} />
       <WorkstreamInspector task={selectedTask} conflicts={selectedConflicts} open={inspectorOpen} onOpenChange={setInspectorOpen} />
     </motion.section>
   );

@@ -16,7 +16,7 @@ export function WorkstreamStrip({ tasks, selectedId, onSelect }: { tasks: Execut
   }
 
   return (
-    <section className="rounded-[1.35rem] border border-cyan-200/10 bg-black/24 p-4 shadow-[0_20px_70px_rgba(0,0,0,0.24)] backdrop-blur-xl">
+    <section data-workstream-strip className="rounded-[1.35rem] border border-cyan-200/10 bg-black/24 p-4 shadow-[0_20px_70px_rgba(0,0,0,0.24)] backdrop-blur-xl">
       <div className="mb-3 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-white">Workstream Strip</h3>
         <p className="text-xs text-white/38">Click a card for inspector</p>

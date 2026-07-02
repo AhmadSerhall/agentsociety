@@ -66,6 +66,10 @@ function cleanText(value: unknown): string {
   return value
     .replace(/```[\s\S]*?```/g, "")
     .replace(/^#{1,6}\s+/gm, "")
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/\*(.*?)\*/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
     .replace(/\b(ws|agent)-[a-z0-9-]+\b/gi, "")
     .replace(/\b(primaryAgentId|supportingAgentIds|assignedAgentId|taskIds|workstreamId)\b:?/gi, "")
     .replace(/\n{3,}/g, "\n\n")

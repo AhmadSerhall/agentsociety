@@ -113,7 +113,7 @@ export function MissionSidebar({
       initial={{ opacity: 0, x: -24 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.45, ease: "easeOut" }}
-      className="hidden min-h-screen w-72 shrink-0 border-r border-cyan-300/10 bg-[#050914]/70 px-4 py-5 shadow-[24px_0_80px_rgba(6,182,212,0.08)] backdrop-blur-2xl lg:flex lg:flex-col"
+      className="sticky top-0 hidden h-screen w-72 shrink-0 overflow-y-auto border-r border-cyan-300/10 bg-[#050914]/70 px-4 py-5 shadow-[24px_0_80px_rgba(6,182,212,0.08)] backdrop-blur-2xl [scrollbar-color:rgba(34,211,238,0.55)_transparent] [scrollbar-width:thin] lg:flex lg:flex-col"
     >
       <SidebarContent activeView={activeView} onViewChange={onViewChange} />
     </motion.aside>

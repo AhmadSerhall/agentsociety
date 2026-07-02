@@ -15,6 +15,7 @@ interface ReplayState {
   replayEvents: MissionReplayEvent[];
   autoFollowEnabled: boolean;
   inspectorEnabled: boolean;
+  adaptiveSpeedEnabled: boolean;
   selectedReplayEvent: MissionReplayEvent | null;
   bookmarks: ReplayBookmark[];
   startReplay: (events: MissionReplayEvent[]) => void;
@@ -29,6 +30,7 @@ interface ReplayState {
   setSpeed: (speed: number) => void;
   setAutoFollowEnabled: (enabled: boolean) => void;
   setInspectorEnabled: (enabled: boolean) => void;
+  setAdaptiveSpeedEnabled: (enabled: boolean) => void;
   selectReplayEvent: (event: MissionReplayEvent | null) => void;
 }
 
@@ -43,6 +45,16 @@ function setReplayGuard(enabled: boolean) {
   }
 }
 
+function isImportantReplayEvent(event?: MissionReplayEvent) {
+  if (!event) return false;
+  return event.type.includes("CONFLICT") ||
+    event.type.includes("MEDIATOR") ||
+    event.type.includes("MEDIATION") ||
+    event.type.includes("FINALIZER") ||
+    event.type === "MISSION_COMPLETED" ||
+    event.type === "SYNCHRONIZATION_POINT_REACHED";
+}
+
 export const useReplayStore = create<ReplayState>((set, get) => ({
   mode: "live",
   replayStatus: "idle",
@@ -51,6 +63,7 @@ export const useReplayStore = create<ReplayState>((set, get) => ({
   replayEvents: [],
   autoFollowEnabled: true,
   inspectorEnabled: false,
+  adaptiveSpeedEnabled: true,
   selectedReplayEvent: null,
   bookmarks: [],
 
@@ -101,15 +114,20 @@ export const useReplayStore = create<ReplayState>((set, get) => ({
     set({ replayTime: nextTime, replayStatus: nextTime >= duration ? "completed" : "paused" });
   },
   tick: (deltaMs) => {
-    const { replayStatus, replayTime, replaySpeed, replayEvents } = get();
+    const { replayStatus, replayTime, replaySpeed, replayEvents, adaptiveSpeedEnabled } = get();
     if (replayStatus !== "playing") return;
     const duration = getReplayDuration(replayEvents);
-    const nextTime = Math.min(duration, replayTime + deltaMs * replaySpeed);
+    const nextEvent = replayEvents.find((event) => event.relativeTimestamp > replayTime);
+    const idleGap = nextEvent ? nextEvent.relativeTimestamp - replayTime : 0;
+    const adaptiveBoost = adaptiveSpeedEnabled && idleGap > 2200 && !isImportantReplayEvent(nextEvent) ? 4 : 1;
+    const nextTime = Math.min(duration, replayTime + deltaMs * replaySpeed * adaptiveBoost);
+    const selected = replayEvents.filter((event) => event.relativeTimestamp <= nextTime).at(-1) ?? null;
     applyReplayState(replayEvents, nextTime);
-    set({ replayTime: nextTime, replayStatus: nextTime >= duration ? "completed" : "playing" });
+    set({ replayTime: nextTime, replayStatus: nextTime >= duration ? "completed" : "playing", selectedReplayEvent: selected });
   },
   setSpeed: (speed) => set({ replaySpeed: speed }),
   setAutoFollowEnabled: (enabled) => set({ autoFollowEnabled: enabled }),
   setInspectorEnabled: (enabled) => set({ inspectorEnabled: enabled }),
+  setAdaptiveSpeedEnabled: (enabled) => set({ adaptiveSpeedEnabled: enabled }),
   selectReplayEvent: (event) => set({ selectedReplayEvent: event }),
 }));

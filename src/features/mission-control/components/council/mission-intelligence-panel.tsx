@@ -15,7 +15,7 @@ export function MissionIntelligencePanel({ context }: { context: MissionContext 
   const averageConfidence = Math.round(context.executionTasks.reduce((sum, task) => sum + (task.confidence ?? 0), 0) / Math.max(1, context.executionTasks.length));
 
   return (
-    <aside className="rounded-[1.35rem] border border-purple-200/10 bg-black/24 p-4 shadow-[0_20px_70px_rgba(0,0,0,0.24)] backdrop-blur-xl">
+    <aside data-mission-intelligence className="rounded-[1.35rem] border border-purple-200/10 bg-black/24 p-4 shadow-[0_20px_70px_rgba(0,0,0,0.24)] backdrop-blur-xl">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-white">Mission Intelligence</h3>
         <Badge className="bg-purple-300/10 text-purple-100 hover:bg-purple-300/10">{averageConfidence || 0}% confidence</Badge>

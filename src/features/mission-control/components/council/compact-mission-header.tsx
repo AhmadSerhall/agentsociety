@@ -29,7 +29,7 @@ export function CompactMissionHeader({ activeAgents, onCancel, onStartNew }: { a
     <motion.header
       initial={{ opacity: 0, y: -12 }}
       animate={{ opacity: 1, y: 0 }}
-      className="sticky top-3 z-30 overflow-hidden rounded-[1.45rem] border border-cyan-200/15 bg-[#07111f]/78 p-4 shadow-[0_24px_90px_rgba(0,0,0,0.35)] backdrop-blur-2xl"
+      className=" top-3 z-30 overflow-hidden rounded-[1.45rem] border border-cyan-200/15 bg-[#07111f]/78 p-4 shadow-[0_24px_90px_rgba(0,0,0,0.35)] backdrop-blur-2xl"
     >
       <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-300/70 to-transparent" />
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">

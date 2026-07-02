@@ -45,8 +45,11 @@ export function MissionControl() {
   const [showMobileNav, setShowMobileNav] = useState(false);
   const [validationOpen, setValidationOpen] = useState(false);
   const [apiKeyRequiredOpen, setApiKeyRequiredOpen] = useState(false);
+  const [replayComingOpen, setReplayComingOpen] = useState(false);
+  const [highlightReportTab, setHighlightReportTab] = useState(false);
   const [activeView, setActiveView] = useState<MissionView>("mission-control");
   const [activeMissionTab, setActiveMissionTab] = useState("workflow");
+  const tabsRef = useRef<HTMLDivElement | null>(null);
   const { context, isRunning, launch, cancel } = useMissionEngine();
   const loadHistory = useHistoryStore((s) => s.load);
   const loadRuntimeSettings = useRuntimeSettingsStore((s) => s.load);
@@ -147,14 +150,32 @@ export function MissionControl() {
     setActiveMissionTab("workflow");
   };
 
+  const handleViewFullReport = () => {
+    setActiveMissionTab("report");
+    window.setTimeout(() => {
+      tabsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      setHighlightReportTab(true);
+      window.setTimeout(() => setHighlightReportTab(false), 1400);
+    }, 50);
+  };
+
+  const handleReplayMission = () => {
+    if (context?.replayEvents?.length) {
+      startReplay(context.replayEvents);
+      tabsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+    setReplayComingOpen(true);
+  };
+
   return (
-    <div className="relative min-h-screen overflow-hidden">
+    <div className="relative h-screen overflow-hidden">
       <SpaceBackground />
 
-      <div className="relative z-10 flex min-h-screen">
+      <div className="relative z-10 flex h-full">
         <MissionSidebar activeView={activeView} onViewChange={handleViewChange} />
 
-        <main className="min-w-0 flex-1 px-4 py-4 md:px-7 md:py-6">
+        <main className="h-screen min-w-0 flex-1 overflow-y-auto px-4 py-4 [scrollbar-color:rgba(34,211,238,0.65)_transparent] [scrollbar-width:thin] md:px-7 md:py-6">
           <motion.div
             className="mx-auto flex max-w-7xl flex-col gap-7"
             variants={stagger}
@@ -248,14 +269,22 @@ export function MissionControl() {
                       className="space-y-4"
                     >
                       <CompactMissionHeader activeAgents={activeAgents} onCancel={cancel} onStartNew={handleStartNewMission} />
-                      <AgentCouncilRoom onViewReport={() => setActiveMissionTab("report")} onStartNew={handleStartNewMission} />
+                      <AgentCouncilRoom onViewReport={handleViewFullReport} onReplayMission={handleReplayMission} onStartNew={handleStartNewMission} />
                     </motion.div>
                   )}
                 </AnimatePresence>
 
                 <AnimatePresence>
                   {hasContent && isComplete && (
-                    <motion.div variants={fadeUp} initial="hidden" animate="visible" exit={{ opacity: 0 }}>
+                    <motion.div
+                      ref={tabsRef}
+                      data-mission-tabs
+                      variants={fadeUp}
+                      initial="hidden"
+                      animate="visible"
+                      exit={{ opacity: 0 }}
+                      className={highlightReportTab ? "rounded-3xl ring-2 ring-cyan-300/70 ring-offset-4 ring-offset-[#050914] transition-shadow duration-500" : "transition-shadow duration-500"}
+                    >
                       <MissionTabs value={activeMissionTab} onValueChange={setActiveMissionTab} />
                     </motion.div>
                   )}
@@ -328,6 +357,23 @@ export function MissionControl() {
               Open Settings
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={replayComingOpen} onOpenChange={setReplayComingOpen}>
+        <DialogContent className="border-cyan-200/15 bg-[#07111f]/95 text-white shadow-[0_30px_120px_rgba(34,211,238,0.18)] backdrop-blur-2xl">
+          <DialogHeader>
+            <div className="mb-2 grid h-12 w-12 place-items-center rounded-2xl border border-cyan-200/25 bg-cyan-300/10">
+              <RotateCcw className="h-5 w-5 text-cyan-100" />
+            </div>
+            <DialogTitle className="text-xl text-white">Replay system coming next</DialogTitle>
+            <DialogDescription className="leading-relaxed text-white/60">
+              This mission does not have replay events available. Full replay controls are available for saved missions with recorded Mission Engine events.
+            </DialogDescription>
+          </DialogHeader>
+          <Button onClick={() => setReplayComingOpen(false)} className="ml-auto rounded-full bg-cyan-300 text-[#06101f] hover:bg-cyan-200">
+            Got it
+          </Button>
         </DialogContent>
       </Dialog>
     </div>
