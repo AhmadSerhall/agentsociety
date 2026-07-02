@@ -2042,6 +2042,32 @@ export class MissionEngine {
     const conflictResolutionScore = ctx.conflicts.length === 0 ? 100 : Math.round((resolved / ctx.conflicts.length) * 100);
     const outputCompleteness = Math.min(100, Math.round((ctx.dialogue.reduce((sum, entry) => sum + sanitizeMissionText(entry.content).length, 0) / Math.max(1, totalWorkstreams)) / 20));
     const qualityScore = Math.round((taskCoverage * 0.32) + (confidence * 0.34) + (conflictResolutionScore * 0.18) + (outputCompleteness * 0.16));
+    const executionDurationMs = ctx.startedAt ? Math.max(0, new Date(ctx.completedAt ?? now()).getTime() - new Date(ctx.startedAt).getTime()) : 0;
+    const tokenText = [
+      ctx.researchSummary,
+      ctx.productStrategy,
+      ctx.technicalArchitecture,
+      ctx.marketingStrategy,
+      ctx.financialPlan,
+      ctx.riskReview,
+      ctx.mediatorDecisions,
+      ctx.dialogue.map((entry) => entry.content).join("\n"),
+    ].join("\n");
+    const tokensConsumed = Math.max(0, Math.round(tokenText.length / 4));
+    const finishedEvents = ctx.replayEvents.filter((event) => /FINISHED$/.test(event.type) && event.agentRole);
+    const startedEvents = ctx.replayEvents.filter((event) => /STARTED$/.test(event.type) && event.agentRole);
+    const latencies = finishedEvents.map((finished) => {
+      const started = [...startedEvents].reverse().find((event) =>
+        event.agentRole === finished.agentRole &&
+        event.relativeTimestamp <= finished.relativeTimestamp &&
+        (!finished.workstreamId || event.workstreamId === finished.workstreamId)
+      );
+      return started ? finished.relativeTimestamp - started.relativeTimestamp : 0;
+    }).filter((value) => value > 0);
+    const independentTasks = ctx.executionTasks.filter((task) => task.dependencies.length === 0).length;
+    const parallelismPercent = Math.round((independentTasks / Math.max(1, ctx.executionTasks.length)) * 100);
+    const consensusPercent = ctx.conflicts.length === 0 ? 100 : Math.round((resolved / Math.max(1, ctx.conflicts.length)) * 100);
+    const requiredAgents = new Set(ctx.executionTasks.map((task) => task.agent));
     return {
       taskCoverage,
       qualityScore: Math.max(45, Math.min(98, qualityScore)),
@@ -2050,6 +2076,14 @@ export class MissionEngine {
       perspectivesConsidered: participatingAgents.size,
       revisionCount: ctx.conflicts.length + ctx.executionTasks.filter((task) => task.confidence < 75).length + (hadConflicts ? 1 : 0),
       finalConfidenceScore: confidence,
+      executionDurationMs,
+      tokensConsumed,
+      averageLatencyMs: latencies.length ? Math.round(latencies.reduce((sum, value) => sum + value, 0) / latencies.length) : 0,
+      retryCount: ctx.replayEvents.filter((event) => event.type === "PLANNER_REVISED_PLAN" || event.type === "TASK_REASSIGNED" || /fallback/i.test(JSON.stringify(event.payload ?? {}))).length,
+      failureCount: ctx.executionTasks.filter((task) => task.status === "blocked" || task.status === "cancelled").length + (ctx.status === MissionState.Failed ? 1 : 0),
+      parallelismPercent,
+      consensusPercent,
+      agentUtilizationPercent: Math.min(100, Math.round((participatingAgents.size / Math.max(1, requiredAgents.size || participatingAgents.size)) * 100)),
       singleAgentBaseline: Math.max(42, Math.min(72, confidence - 18 + Math.round(participatingAgents.size / 2))),
     };
   }

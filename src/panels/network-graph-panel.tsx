@@ -113,13 +113,7 @@ export function NetworkGraphPanel({ className }: { className?: string }) {
         <MiniMap
           pannable
           zoomable
-          nodeColor={(node) => {
-            const data = node.data as AgentNodeData;
-            if (data.active) return "#67e8f9";
-            if (data.conflicted) return "#f59e0b";
-            if (data.complete) return "#22d3ee";
-            return data.agent.color;
-          }}
+          nodeColor={(node) => (node.data as AgentNodeData).agent.color}
           maskColor="rgba(2,6,23,0.62)"
           className="!bottom-4 !right-4 !rounded-xl !border !border-cyan-200/10 !bg-black/35"
         />
@@ -138,6 +132,7 @@ function buildGraph(
   const roles = new Set<AgentRole>([
     AgentRole.Planner,
     AgentRole.Finalizer,
+    ...(context?.workstreams.map((workstream) => workstream.assignedAgent).filter((role): role is AgentRole => Boolean(role)) ?? []),
     ...(context?.executionTasks.map((task) => task.agent) ?? []),
     ...(context?.dialogue.map((entry) => entry.agentRole) ?? []),
   ]);
@@ -145,8 +140,13 @@ function buildGraph(
 
   const tasksByRole = new Map<AgentRole, number>();
   const confidenceByRole = new Map<AgentRole, number[]>();
+  context?.workstreams.forEach((workstream) => {
+    if (!workstream.assignedAgent) return;
+    tasksByRole.set(workstream.assignedAgent, (tasksByRole.get(workstream.assignedAgent) ?? 0) + 1);
+    confidenceByRole.set(workstream.assignedAgent, [...(confidenceByRole.get(workstream.assignedAgent) ?? []), workstream.confidence ?? 76]);
+  });
   context?.executionTasks.forEach((task) => {
-    tasksByRole.set(task.agent, (tasksByRole.get(task.agent) ?? 0) + 1);
+    if (!context.workstreams.length) tasksByRole.set(task.agent, (tasksByRole.get(task.agent) ?? 0) + 1);
     confidenceByRole.set(task.agent, [...(confidenceByRole.get(task.agent) ?? []), task.confidence]);
   });
 
@@ -261,17 +261,16 @@ function latestDisplayRole(context: ReturnType<typeof useMissionStore.getState>[
 function AgentNode({ data }: NodeProps<Node<AgentNodeData>>) {
   const Icon = agentIconMap[data.agent.id] ?? BrainCircuit;
   const activityLabel = data.active ? "Active" : data.complete ? "Complete" : data.state === "waiting" ? "Waiting" : data.state;
-  const ringColor = data.conflicted ? "#f59e0b" : data.active ? "#67e8f9" : data.complete ? "#22d3ee" : data.agent.color;
+  const ringColor = data.agent.color;
+  const statusGlow = data.conflicted ? "0 0 36px rgba(245,158,11,0.30)" : data.active ? `0 0 40px ${ringColor}66` : data.complete ? `0 0 30px ${ringColor}42` : `0 22px 70px rgba(0,0,0,0.38), 0 0 18px ${ringColor}22`;
 
   return (
     <div
       className={cn(
-        "group relative min-w-[230px] rounded-2xl border bg-slate-950/86 px-4 py-3 text-white shadow-[0_22px_70px_rgba(0,0,0,0.38)] backdrop-blur-xl transition-all duration-300",
-        data.active && "scale-[1.03] border-cyan-200/50 shadow-[0_0_36px_rgba(34,211,238,0.30)]",
-        data.complete && !data.active && "border-cyan-200/28 shadow-[0_0_26px_rgba(34,211,238,0.16)]",
-        data.conflicted && "border-amber-200/55 shadow-[0_0_34px_rgba(245,158,11,0.28)]",
+        "group relative min-w-[230px] rounded-2xl border bg-slate-950/86 px-4 py-3 text-white backdrop-blur-xl transition-all duration-300",
+        data.active && "scale-[1.03]",
       )}
-      style={{ borderColor: `${ringColor}88` }}
+      style={{ borderColor: data.conflicted ? "#f59e0bcc" : `${ringColor}99`, boxShadow: statusGlow }}
     >
       <Handle type="target" position={Position.Left} className="!h-2.5 !w-2.5 !border-cyan-100/70 !bg-slate-950" />
       <Handle type="source" position={Position.Right} className="!h-2.5 !w-2.5 !border-cyan-100/70 !bg-slate-950" />

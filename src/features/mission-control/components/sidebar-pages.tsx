@@ -45,6 +45,7 @@ import { toast } from "@/hooks/use-toast";
 import { getQwenRuntimeInfo } from "@/services/qwen";
 import { useHistoryStore, useMissionStore, useRuntimeSettingsStore } from "@/store";
 import {
+  AgentRole,
   MissionState,
   type MissionConfiguration,
   type MissionContext,
@@ -79,6 +80,23 @@ function filenameSafe(text: string) {
 }
 
 function contextFromHistory(entry: MissionHistoryEntry): MissionContext {
+  const workstreamTaskIds = new Map(entry.workstreams.map((workstream, index) => [workstream.id, `${entry.id}-task-${index}`]));
+  const executionTasks = entry.workstreams.map((workstream, index) => ({
+    id: `${entry.id}-task-${index}`,
+    workstreamId: workstream.id,
+    title: workstream.title,
+    description: workstream.description,
+    agent: workstream.assignedAgent ?? AgentRole.Researcher,
+    displayRole: workstream.displayRole ?? workstream.owner,
+    supportingAgents: workstream.supportingAgentIds ?? [],
+    dependencies: workstream.dependencies?.map((dependencyId) => workstreamTaskIds.get(dependencyId)).filter((dependencyId): dependencyId is string => Boolean(dependencyId)) ?? [],
+    status: workstream.status === "completed" ? "completed" as const : "pending" as const,
+    confidence: workstream.confidence ?? 76,
+    output: workstream.output,
+    startedAt: workstream.startedAt,
+    completedAt: workstream.completedAt,
+  }));
+
   return {
     missionId: entry.id,
     missionBrief: entry.missionBrief,
@@ -102,7 +120,7 @@ function contextFromHistory(entry: MissionHistoryEntry): MissionContext {
     dialogue: entry.dialogue.map((dialogue, index) => ({
       agentId: `history-${index}`,
       agentName: dialogue.agentName,
-      agentRole: AGENT_DEFINITIONS[index]?.role ?? AGENT_DEFINITIONS[0].role,
+      agentRole: agentRoleFromName(dialogue.agentName) ?? AGENT_DEFINITIONS[index]?.role ?? AGENT_DEFINITIONS[0].role,
       content: dialogue.content,
       timestamp: entry.timestamp,
     })),
@@ -120,7 +138,7 @@ function contextFromHistory(entry: MissionHistoryEntry): MissionContext {
       mediator: "complete",
       finalizer: "complete",
     },
-    executionTasks: [],
+    executionTasks,
     missionGraph: null,
     progress: entry.finalReport ? 1 : 0.5,
     status: entry.finalReport ? MissionState.Completed : MissionState.Cancelled,
@@ -128,6 +146,14 @@ function contextFromHistory(entry: MissionHistoryEntry): MissionContext {
     completedAt: entry.timestamp,
     replayEvents: entry.replayEvents ?? [],
   };
+}
+
+function agentRoleFromName(name: string): AgentRole | null {
+  const normalized = name.toLowerCase();
+  return AGENT_DEFINITIONS.find((agent) =>
+    normalized.includes(agent.name.toLowerCase()) ||
+    normalized.includes(agent.role.replace(/-/g, " "))
+  )?.role ?? null;
 }
 
 export function SidebarPageView({

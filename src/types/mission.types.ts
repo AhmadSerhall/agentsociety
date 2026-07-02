@@ -168,6 +168,14 @@ export interface EfficiencyMetrics {
   perspectivesConsidered: number;
   revisionCount: number;
   finalConfidenceScore: number;
+  executionDurationMs?: number;
+  tokensConsumed?: number;
+  averageLatencyMs?: number;
+  retryCount?: number;
+  failureCount?: number;
+  parallelismPercent?: number;
+  consensusPercent?: number;
+  agentUtilizationPercent?: number;
   /** Comparison: single-agent estimated score. */
   singleAgentBaseline: number;
 }
