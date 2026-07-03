@@ -21,7 +21,7 @@ export function WorkstreamStrip({ tasks, selectedId, onSelect }: { tasks: Execut
         <h3 className="text-sm font-semibold text-white">Workstream Strip</h3>
         <p className="text-xs text-white/38">Click a card for inspector</p>
       </div>
-      <div className="flex gap-3 overflow-x-auto pb-2 [scrollbar-color:rgba(34,211,238,0.65)_transparent] [scrollbar-width:thin]">
+      <div className="flex gap-3 overflow-x-auto pb-2 pt-2 [scrollbar-color:rgba(34,211,238,0.65)_transparent] [scrollbar-width:thin]">
         {tasks.map((task) => {
           const active = task.status === "running";
           const blocked = task.status === "blocked";

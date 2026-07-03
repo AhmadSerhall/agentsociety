@@ -32,7 +32,9 @@ export function AgentWorkflowPanel() {
     return <p className="text-sm italic text-white/45">Planner will create the Mission Graph after launch.</p>;
   }
 
-  const groups = graph?.parallelGroups?.length ? graph.parallelGroups : buildParallelGroups(tasks);
+  const graphGroups = graph?.parallelGroups ?? [];
+  const graphGroupsHaveTasks = graphGroups.some((group) => getGroupTasks(group, tasks).length > 0);
+  const groups = graphGroups.length && graphGroupsHaveTasks ? graphGroups : buildParallelGroups(tasks);
 
   return (
     <div className="space-y-4">
@@ -158,7 +160,9 @@ function buildParallelGroups(tasks: ExecutionTask[]): MissionGraph["parallelGrou
 }
 
 function getGroupTasks(group: MissionGraph["parallelGroups"][number], tasks: ExecutionTask[]) {
-  return group.taskIds.map((taskId) => tasks.find((task) => task.id === taskId)).filter((task): task is ExecutionTask => Boolean(task));
+  return group.taskIds
+    .map((taskId) => tasks.find((task) => task.id === taskId || task.workstreamId === taskId))
+    .filter((task): task is ExecutionTask => Boolean(task));
 }
 
 function getStatusIcon(status: ExecutionTask["status"]) {
