@@ -26,6 +26,24 @@ type MissionIntent =
 
 interface MockMissionClassification {
   intent: MissionIntent;
+  semantic?: {
+    objective: string;
+    primaryDomain: string;
+    secondaryDomains: string[];
+    intent: string;
+    relevantConcepts: string[];
+    riskThemes: string[];
+    naturalWorkstreams: Array<{
+      title: string;
+      description: string;
+      agent: AgentRole;
+      supportingAgents?: AgentRole[];
+      deliverables: string[];
+      acceptanceCriteria: string[];
+      expectedOutputs: string[];
+      dependencies?: number[];
+    }>;
+  };
 }
 
 const MOCK_TIMINGS: Partial<Record<MissionState, number>> = {
@@ -99,6 +117,33 @@ export class MockAgentRunner {
     const { configuration } = ctx;
     const focus = this.extractMissionFocus(ctx.missionBrief);
     const noun = missionNoun(configuration);
+    if (classification?.semantic?.naturalWorkstreams?.length) {
+      return JSON.stringify({
+        summary: `${classification.semantic.primaryDomain} plan for ${classification.semantic.objective}`,
+        workstreams: classification.semantic.naturalWorkstreams.map((workstream, index) => ({
+          id: `semantic-${index + 1}`,
+          title: workstream.title,
+          description: workstream.description,
+          primaryAgentId: workstream.agent,
+          supportingAgentIds: workstream.supportingAgents ?? [],
+          dependencies: workstream.dependencies?.map((dependency) => `semantic-${dependency}`) ?? [],
+          parallelGroup: index + 1,
+          expectedDeliverables: workstream.deliverables,
+          acceptanceCriteria: workstream.acceptanceCriteria,
+          expectedOutputs: workstream.expectedOutputs,
+          riskAreas: classification.semantic?.riskThemes ?? [],
+          confidence: Math.max(70, 88 - index * 3),
+        })),
+        parallelGroups: classification.semantic.naturalWorkstreams.map((workstream, index) => ({
+          id: `group-${index + 1}`,
+          title: workstream.title,
+          description: workstream.description,
+          taskIds: [`semantic-${index + 1}`],
+        })),
+        conflictZones: [],
+        synthesisReadinessCriteria: ["domain understood", "useful agents selected", "workstreams completed", "final answer validated"],
+      });
+    }
     if (classification?.intent === "exam_preparation" || classification?.intent === "learning_plan") {
       return JSON.stringify({
         summary: "Create a practical study plan with diagnostic testing, daily section practice, resources, mock tests, risk controls, and final synthesis.",

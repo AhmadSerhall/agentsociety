@@ -72,6 +72,8 @@ export interface Workstream {
   assignedAgent: AgentRole | null;
   supportingAgentIds?: AgentRole[];
   deliverables: string[];
+  acceptanceCriteria?: string[];
+  expectedOutputs?: string[];
   confidence?: number;
   dependencies?: string[];
   nextStep?: string;
@@ -88,6 +90,8 @@ export interface ExecutionTask {
   agent: AgentRole;
   displayRole?: string;
   supportingAgents?: AgentRole[];
+  acceptanceCriteria?: string[];
+  expectedOutputs?: string[];
   dependencies: string[];
   status: "pending" | "ready" | "running" | "blocked" | "completed" | "revised" | "cancelled";
   confidence: number;

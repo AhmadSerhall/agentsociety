@@ -54,12 +54,37 @@ type MissionIntent =
 interface MissionClassification {
   intent: MissionIntent;
   selectedAgents: AgentRole[];
+  semantic: SemanticMissionAnalysis;
   needsMarketing: boolean;
   needsFinance: boolean;
   needsProduct: boolean;
   isLaunch: boolean;
   isTechnical: boolean;
   isLearning: boolean;
+}
+
+interface SemanticWorkstreamBlueprint {
+  title: string;
+  description: string;
+  agent: AgentRole;
+  supportingAgents?: AgentRole[];
+  deliverables: string[];
+  acceptanceCriteria: string[];
+  expectedOutputs: string[];
+  dependencies?: number[];
+}
+
+interface SemanticMissionAnalysis {
+  objective: string;
+  primaryDomain: string;
+  secondaryDomains: string[];
+  intent: string;
+  skills: string[];
+  relevantConcepts: string[];
+  requiredExpertise: Array<{ agent: AgentRole; reason: string; priority: "core" | "support" | "review" }>;
+  usefulAgents: AgentRole[];
+  riskThemes: string[];
+  naturalWorkstreams: SemanticWorkstreamBlueprint[];
 }
 
 interface PlannerGraphJson {
@@ -73,6 +98,8 @@ interface PlannerGraphJson {
     dependencies?: string[];
     parallelGroup?: number;
     expectedDeliverables?: string[];
+    acceptanceCriteria?: string[];
+    expectedOutputs?: string[];
     riskAreas?: string[];
     confidence?: number;
   }>;
@@ -166,7 +193,14 @@ function buildPrompt(phase: MissionState, brief: string, ctx: MissionContext, co
 Selected Mission Configuration:
 ${configSummary(config)}
 
-Mission Domain: ${domain?.intent ?? "general_problem_solving"}
+Semantic Mission Analysis:
+- Mission Type / Execution Style: ${MISSION_TYPE_LABELS[config.missionType]}
+- Primary Domain: ${domain?.semantic.primaryDomain ?? "To be inferred from the objective"}
+- Secondary Domains: ${domain?.semantic.secondaryDomains.join(", ") || "None detected yet"}
+- User Intent: ${domain?.semantic.intent ?? "Infer the user's real objective before decomposing work"}
+- Relevant Concepts: ${domain?.semantic.relevantConcepts.join(", ") || "Infer from the objective"}
+- Required Expertise: ${domain?.semantic.requiredExpertise.map((item) => `${missionDisplayRole(domain, item.agent)} (${item.priority}: ${item.reason})`).join("; ") || "Infer before planning"}
+- Mission-Specific Risks: ${domain?.semantic.riskThemes.join("; ") || "Only include real risks if they exist"}
 Your User-Facing Role: ${displayRole ?? "Mission Specialist"}
 
 Current Execution Task:
@@ -202,8 +236,14 @@ Rules:
 - Return ONLY valid JSON matching the response contract below. No markdown, headings, code fences, tables, separators, or prose outside JSON.
 - Do not repeat the mission brief except when a single short reference is necessary.
 - Do not write generic contribution titles. Produce direct useful content inside your assigned workstream.
-- Use the mission domain and your user-facing role. Stay inside the assigned workstream.
+- Treat Mission Type as an execution style, not the domain. Use Semantic Mission Analysis to decide what the user is actually trying to accomplish.
+- Use the inferred domain, concepts, and your user-facing role. Stay inside the assigned workstream.
 - Do not invent business, product, marketing, technical, or finance sections unless the mission domain calls for them.
+- Do not include Product, Marketing, Finance, Risk, or Mediator work unless the objective genuinely needs that expertise.
+- Planner must infer domains, intent, skills, required expertise, useful agents, natural workstreams, dependencies, parallelism, and mission-specific risks before producing the graph.
+- Planner JSON workstreams should include mission-specific title, description, primaryAgentId, supportingAgentIds, dependencies, expectedDeliverables, acceptanceCriteria, and expectedOutputs.
+- Avoid generic labels like "Problem Framing", "Option Design", "Risk Review", "Generated workstream derived from mission brief", "General Mission analysis", or "Execution Roadmap" unless those exact words are truly the user's domain.
+- Conflict signals must describe genuine incompatible recommendations or assumptions. Use an empty conflictSignals array if there is no real disagreement.
 - If this is an exam preparation or learning plan mission, produce actual study advice, drills, schedules, resources, checkpoints, and test strategy.
 
 Response contract:
@@ -470,11 +510,11 @@ export class MissionEngine {
         if (!useRuntimeSettingsStore.getState().allowMockFallback) {
           throw new Error(`Qwen request failed during ${agentDef.name}: ${error instanceof Error ? error.message : String(error)}`);
         }
-        result = `## Qwen Fallback Activated\n\nQwen request failed for ${agentDef.name}, so Agent Society used the local mock runner because mock fallback is enabled in Settings.\n\n${this.mockRunner.generate(phase, ctx, undefined, classification)}`;
+        result = this.mockRunner.generate(phase, ctx, undefined, classification);
       }
       if (signal.aborted) throw new DOMException("Mission cancelled", "AbortError");
     } else {
-      result = "No client available.";
+      result = this.mockRunner.generate(phase, ctx, undefined, classification);
     }
 
     result = this.normalizeAgentResult(ctx, phase, agentRole, result, classification ?? this.classifyMission(ctx.missionBrief));
@@ -640,13 +680,13 @@ export class MissionEngine {
         if (!useRuntimeSettingsStore.getState().allowMockFallback) {
           throw new Error(`Qwen request failed during ${agentDef.name}: ${error instanceof Error ? error.message : String(error)}`);
         }
-        result = `## Qwen Fallback Activated\n\nQwen request failed for ${agentDef.name}, so Agent Society used the local mock runner because mock fallback is enabled in Settings.\n\n${this.mockRunner.generate(phase, ctx, task, classification)}`;
+        result = this.mockRunner.generate(phase, ctx, task, classification);
       }
       this.setAgentState(ctx, task.agent, "reviewing");
       this.recordReplayEvent(ctx, "AGENT_REVIEWING", { agentId: agentDef.id, agentName: agentDef.name, agentRole: task.agent, workstreamId: task.workstreamId, workstreamTitle: task.title, confidence: task.confidence, dependencies: task.dependencies });
       onUpdate({ ...ctx });
     } else {
-      result = "No client available.";
+      result = this.mockRunner.generate(phase, ctx, task, classification);
     }
 
     result = this.normalizeAgentResult(ctx, phase, task.agent, result, classification, task);
@@ -925,17 +965,13 @@ export class MissionEngine {
 
   private buildNamedParallelGroups(tasks: ExecutionTask[]): MissionGraph["parallelGroups"] {
     const groups = this.getParallelExecutionTaskGroups(tasks);
-    const names = [
-      ["Discovery Wave", "Agents that can begin immediately and establish market, technical, or context baselines."],
-      ["Design Wave", "Agents that turn discovery outputs into offer, architecture, pricing, or delivery design."],
-      ["Activation Wave", "Agents that convert the plan into outreach, risk review, operating checks, and execution readiness."],
-      ["Synthesis Wave", "Final dependencies are synchronized before the Finalizer assembles the report."],
-    ];
 
     return groups.map((group, index) => ({
       id: `group-${index + 1}`,
-      title: names[index]?.[0] ?? `Collaboration Wave ${index + 1}`,
-      description: names[index]?.[1] ?? "Agents collaborate on currently ready Mission Graph nodes.",
+      title: group.length === 1 ? group[0].title : `${group.map((task) => getAgentByRole(task.agent)?.name ?? task.agent).join(" + ")} Parallel Work`,
+      description: group.length === 1
+        ? sanitizeMissionText(group[0].description ?? group[0].title)
+        : `These workstreams can run together because their dependencies are already satisfied: ${group.map((task) => task.title).join("; ")}.`,
       taskIds: group.map((task) => task.id),
     }));
   }
@@ -960,43 +996,19 @@ export class MissionEngine {
   }
 
   private buildConflictZones(tasks: ExecutionTask[]): MissionGraph["conflictZones"] {
-    const zones: MissionGraph["conflictZones"] = [];
-    if (tasks.some((task) => task.agent === AgentRole.Finance) && tasks.some((task) => task.agent === AgentRole.MarketingStrategist)) {
-      zones.push({
-        title: "Pricing vs market willingness",
-        agentsInvolved: [AgentRole.Finance, AgentRole.MarketingStrategist],
-        reason: "Finance may recommend prices higher than target businesses accept.",
-      });
-    }
-    if (tasks.some((task) => task.agent === AgentRole.TechnicalArchitect) && tasks.some((task) => task.agent === AgentRole.Finance)) {
-      zones.push({
-        title: "Production quality vs margin",
-        agentsInvolved: [AgentRole.TechnicalArchitect, AgentRole.Finance],
-        reason: "Technical delivery quality can increase cost and reduce margin unless packages are scoped clearly.",
-      });
-    }
-    if (tasks.some((task) => task.agent === AgentRole.MarketingStrategist) && tasks.some((task) => task.agent === AgentRole.RiskCritic)) {
-      zones.push({
-        title: "Aggressive outreach vs trust risk",
-        agentsInvolved: [AgentRole.MarketingStrategist, AgentRole.RiskCritic],
-        reason: "Fast outreach can create credibility or objection-handling risks.",
-      });
-    }
-    return zones;
+    return tasks
+      .filter((task) => task.agent === AgentRole.RiskCritic && task.dependencies.length > 0)
+      .map((task) => ({
+        title: `${task.title} checkpoint`,
+        agentsInvolved: [AgentRole.RiskCritic, ...task.dependencies.map((dependencyId) => tasks.find((candidate) => candidate.id === dependencyId)?.agent).filter((agent): agent is AgentRole => Boolean(agent))],
+        reason: sanitizeMissionText(task.description ?? "Risk review depends on upstream workstream outputs."),
+      }));
   }
 
   private identifyPotentialConflictZones(tasks: ExecutionTask[]) {
-    const zones: string[] = [];
-    if (tasks.some((task) => task.agent === AgentRole.TechnicalArchitect) && tasks.some((task) => task.agent === AgentRole.Finance)) {
-      zones.push("Technical scope vs budget feasibility");
-    }
-    if (tasks.some((task) => task.agent === AgentRole.MarketingStrategist) && tasks.some((task) => task.agent === AgentRole.RiskCritic)) {
-      zones.push("Launch speed vs risk controls");
-    }
-    if (tasks.some((task) => task.agent === AgentRole.ProductStrategist) && tasks.some((task) => task.agent === AgentRole.TechnicalArchitect)) {
-      zones.push("Product ambition vs implementation complexity");
-    }
-    return zones;
+    return tasks
+      .filter((task) => task.agent === AgentRole.RiskCritic)
+      .map((task) => sanitizeMissionText(task.title));
   }
 
   private shouldCreateGraphInterrupt(ctx: MissionContext, classification: MissionClassification) {
@@ -1004,18 +1016,12 @@ export class MissionEngine {
       return false;
     }
 
-    const completedAgents = new Set(ctx.executionTasks.filter((task) => task.status === "completed").map((task) => task.agent));
-    if (classification.isLearning) {
-      return completedAgents.has(AgentRole.ProductStrategist) && completedAgents.has(AgentRole.TechnicalArchitect);
-    }
-    if (classification.intent === "technical_debugging") {
-      return completedAgents.has(AgentRole.TechnicalArchitect);
-    }
-    return completedAgents.has(AgentRole.Researcher) && (
-      completedAgents.has(AgentRole.TechnicalArchitect) ||
-      completedAgents.has(AgentRole.MarketingStrategist) ||
-      completedAgents.has(AgentRole.Finance)
-    );
+    const signalText = ctx.executionTasks
+      .filter((task) => task.status === "completed" && task.agent === AgentRole.RiskCritic)
+      .map((task) => sanitizeMissionText(task.output ?? ""))
+      .join("\n")
+      .toLowerCase();
+    return Boolean(signalText && /(conflict_detected\s*:\s*true|incompatible|cannot both|blocked by|material disagreement|contradict)/i.test(signalText));
   }
 
   private async handleGraphInterrupt(
@@ -1378,42 +1384,43 @@ export class MissionEngine {
       const dependencies = this.extractDependencyNumbers(body);
       const nextStep = this.extractField(body, ["Next Step", "Next Action"]);
       const confidence = Number(this.extractField(body, ["Confidence"])?.match(/\d+/)?.[0] ?? Math.max(68, 86 - index * 3));
-      const title = sanitizeMissionText(match[3]);
+      const title = this.cleanWorkstreamTitle(sanitizeMissionText(match[3]), classification, index);
       const assignedAgent = this.agentFromOwner(owner) ?? this.agentForMissionWorkstream(classification, title, index);
+      const blueprint = this.semanticBlueprintAt(classification, index);
 
       return {
         id: generateId(),
-        title: title || `Workstream ${index + 1}`,
+        title,
         owner: sanitizeMissionText(owner) || missionDisplayRole(classification, assignedAgent),
         responsibleAgent: sanitizeMissionText(owner) || missionDisplayRole(classification, assignedAgent),
         displayRole: missionDisplayRole(classification, assignedAgent),
-        description: sanitizeMissionText(description),
+        description: this.cleanWorkstreamDescription(sanitizeMissionText(description), classification, index),
         status: "pending" as const,
         assignedAgent,
         confidence,
         dependencies: dependencies.map((dependencyIndex) => `workstream-${dependencyIndex}`),
         nextStep: sanitizeMissionText(nextStep),
-        deliverables: sanitizeMissionList(deliverables),
+        deliverables: sanitizeMissionList(deliverables).length ? sanitizeMissionList(deliverables) : blueprint?.deliverables ?? [],
+        acceptanceCriteria: blueprint?.acceptanceCriteria,
+        expectedOutputs: blueprint?.expectedOutputs,
       };
     }).filter((workstream) => workstream.title && workstream.description);
 
     if (workstreams.length === 0) {
       const fallback = this.fallbackWorkstreams(classification, brief);
-      console.warn("[MissionEngine] Planner parsing failed; using mission-specific fallback workstreams.", {
+      console.warn("[MissionEngine] Planner parsing failed; using semantic mission graph workstreams.", {
         extractionAttempted: jsonParse.extractionAttempted,
         extractionError: jsonParse.error,
         repairAttempted: true,
-        fallbackReason: "No valid JSON and markdown repair produced no usable workstreams.",
+        repairReason: "No valid JSON and markdown repair produced usable workstreams.",
         finalWorkstreams: fallback.length,
         selectedAgents: classification.selectedAgents,
-        classification,
-        text,
       });
-      devLog("fallback used", true);
+      devLog("semantic graph generated", true);
       return fallback;
     }
 
-    devLog("fallback used", false);
+    devLog("semantic graph generated", false);
     const repairedMarkdown = workstreams.map((workstream, _index, list) => ({
       ...workstream,
       dependencies: workstream.dependencies?.map((dependencyKey) => {
@@ -1495,19 +1502,22 @@ export class MissionEngine {
       idMap.set(stableId, id);
       idMap.set(String(item.id || index + 1), id);
       const assignedAgent = this.agentFromId(item.primaryAgentId) ?? this.agentForMissionWorkstream(classification, item.title ?? "", index);
+      const blueprint = this.semanticBlueprintAt(classification, index);
       return {
         id,
-        title: sanitizeMissionText(item.title || `Workstream ${index + 1}`),
+        title: this.cleanWorkstreamTitle(sanitizeMissionText(item.title || ""), classification, index),
         owner: missionDisplayRole(classification, assignedAgent),
         responsibleAgent: missionDisplayRole(classification, assignedAgent),
         displayRole: missionDisplayRole(classification, assignedAgent),
-        description: sanitizeMissionText(item.description || item.title || "Mission Graph workstream"),
+        description: this.cleanWorkstreamDescription(sanitizeMissionText(item.description || item.title || ""), classification, index),
         status: "pending" as const,
         assignedAgent,
-        supportingAgentIds: (item.supportingAgentIds ?? []).map((idValue) => this.agentFromId(idValue)).filter((role): role is AgentRole => Boolean(role)),
+        supportingAgentIds: this.filterUsefulSupportingAgents((item.supportingAgentIds ?? []).map((idValue) => this.agentFromId(idValue)).filter((role): role is AgentRole => Boolean(role)), assignedAgent, classification),
         confidence: clampConfidence(item.confidence ?? Math.max(70, 86 - index * 3)),
         dependencies: item.dependencies ?? [],
-        deliverables: sanitizeMissionList(item.expectedDeliverables ?? []),
+        deliverables: sanitizeMissionList(item.expectedDeliverables ?? []).length ? sanitizeMissionList(item.expectedDeliverables ?? []) : blueprint?.deliverables ?? [],
+        acceptanceCriteria: sanitizeMissionList(item.acceptanceCriteria ?? []).length ? sanitizeMissionList(item.acceptanceCriteria ?? []) : blueprint?.acceptanceCriteria,
+        expectedOutputs: sanitizeMissionList(item.expectedOutputs ?? []).length ? sanitizeMissionList(item.expectedOutputs ?? []) : blueprint?.expectedOutputs,
         nextStep: item.riskAreas?.length ? `Watch risk areas: ${item.riskAreas.join(", ")}` : "",
       };
     }).filter((workstream) => workstream.title && workstream.description);
@@ -1528,10 +1538,7 @@ export class MissionEngine {
     if (headingPattern.test(normalized)) return [];
 
     if (/\b(owner|agent|dependencies|deliverables|confidence)\b/i.test(normalized)) {
-      return this.fallbackWorkstreams(classification, brief).map((workstream, index) => ({
-        ...workstream,
-        description: index === 0 ? `${workstream.description} Planner repair note: Qwen returned prose instead of JSON, so this graph was rebuilt from the mission intent.` : workstream.description,
-      }));
+      return this.fallbackWorkstreams(classification, brief);
     }
 
     return [];
@@ -1550,21 +1557,24 @@ export class MissionEngine {
 
     return rows.slice(1).map((row, index) => {
       const cells = row.split("|").map((cell) => cell.trim()).filter(Boolean);
-      const title = sanitizeMissionText(cells[titleIndex] || `Workstream ${index + 1}`);
+      const title = this.cleanWorkstreamTitle(sanitizeMissionText(cells[titleIndex] || ""), classification, index);
       const assignedAgent = this.agentFromOwner(cells[ownerIndex] || "") ?? this.agentForMissionWorkstream(classification, title, index);
+      const blueprint = this.semanticBlueprintAt(classification, index);
       return {
         id: generateId(),
         title,
         owner: missionDisplayRole(classification, assignedAgent),
         responsibleAgent: missionDisplayRole(classification, assignedAgent),
         displayRole: missionDisplayRole(classification, assignedAgent),
-        description: sanitizeMissionText(cells[descriptionIndex] || title),
+        description: this.cleanWorkstreamDescription(sanitizeMissionText(cells[descriptionIndex] || title), classification, index),
         status: "pending" as const,
         assignedAgent,
-        supportingAgentIds: this.supportingAgentsFor(assignedAgent),
+        supportingAgentIds: this.filterUsefulSupportingAgents(this.supportingAgentsFor(assignedAgent), assignedAgent, classification),
         confidence: clampConfidence(Number(cells[confidenceIndex]?.match(/\d+/)?.[0] ?? Math.max(70, 84 - index * 2))),
         dependencies: [],
-        deliverables: extractActionItemsFromText(cells[descriptionIndex] || title, 3),
+        deliverables: blueprint?.deliverables ?? extractActionItemsFromText(cells[descriptionIndex] || title, 3),
+        acceptanceCriteria: blueprint?.acceptanceCriteria,
+        expectedOutputs: blueprint?.expectedOutputs,
       };
     }).filter((workstream) => workstream.title);
   }
@@ -1593,92 +1603,63 @@ export class MissionEngine {
     return sanitizeMissionText(body).split("\n").find((line) => !/^(Owner|Responsible|Confidence|Deliverables|Dependencies|Next Step):/i.test(line.trim())) ?? "";
   }
 
-  private fallbackWorkstreams(classification: MissionClassification, brief: string): Workstream[] {
-    const focus = brief.replace(/\s+/g, " ").trim();
-    const templates: Record<MissionIntent, Array<{ title: string; agent: AgentRole; supporting?: AgentRole[]; description: string; deliverables: string[]; dependencies?: number[] }>> = {
-      exam_preparation: [
-        { title: "Diagnostic Assessment", agent: AgentRole.Researcher, description: "Estimate current TOEFL level across Reading, Listening, Speaking, and Writing, then identify weak areas with a baseline practice test.", deliverables: ["baseline test plan", "section score tracker", "weak-area list"] },
-        { title: "30-Day Study Calendar", agent: AgentRole.ProductStrategist, description: "Create a week-by-week TOEFL calendar with daily routine, section rotation, review days, and mock exam days.", deliverables: ["30-day calendar", "daily routine", "weekly goals"], dependencies: [1] },
-        { title: "TOEFL Section Practice", agent: AgentRole.TechnicalArchitect, description: "Design Reading drills, Listening drills, Speaking templates, Writing templates, vocabulary review, and grammar practice.", deliverables: ["section drills", "speaking routine", "writing practice loop", "vocabulary routine"], dependencies: [1] },
-        { title: "Resources and Tools", agent: AgentRole.Researcher, description: "Choose official ETS resources, practice test sources, vocabulary tools, speaking recording methods, and writing feedback methods.", deliverables: ["ETS resource list", "practice tools", "feedback methods"], dependencies: [1] },
-        { title: "Mock Test and Score Improvement Plan", agent: AgentRole.TechnicalArchitect, description: "Schedule full TOEFL simulations, timing strategy, scoring review, weak-area loops, and final week adjustments.", deliverables: ["mock test schedule", "timing strategy", "score review loop"], dependencies: [2, 3] },
-        { title: "Risk Review", agent: AgentRole.RiskCritic, description: "Identify burnout risk, ignored speaking practice, template memorization, poor time management, and unrealistic score targets.", deliverables: ["risk register", "mitigation checklist", "plan adjustments"], dependencies: [2, 3, 5] },
-        { title: "Final Study Plan", agent: AgentRole.Finalizer, description: "Synthesize a clean 30-day TOEFL study plan with daily tasks, weekly goals, mock tests, resources, and success metrics.", deliverables: ["final TOEFL plan", "daily tasks", "success metrics"], dependencies: [2, 3, 4, 5, 6] },
-      ],
-      learning_plan: [
-        { title: "Diagnostic Assessment", agent: AgentRole.Researcher, description: `Clarify current level, goals, available time, and weak skills for: ${focus}.`, deliverables: ["baseline assessment", "skill gap list", "goal definition"] },
-        { title: "Learning Calendar", agent: AgentRole.ProductStrategist, description: "Create a practical week-by-week learning schedule with review days and checkpoints.", deliverables: ["study calendar", "weekly goals", "review cadence"], dependencies: [1] },
-        { title: "Practice Drills", agent: AgentRole.TechnicalArchitect, description: "Design deliberate practice exercises, feedback loops, and measurable repetitions.", deliverables: ["practice drills", "feedback loop", "progress tracker"], dependencies: [1] },
-        { title: "Risk Review", agent: AgentRole.RiskCritic, description: "Identify burnout, unrealistic pace, skipped fundamentals, and weak feedback mechanisms.", deliverables: ["risk list", "mitigations", "adjustments"], dependencies: [2, 3] },
-        { title: "Final Learning Plan", agent: AgentRole.Finalizer, description: "Synthesize the schedule, drills, checkpoints, resources, and success metrics.", deliverables: ["final plan", "daily actions", "success metrics"], dependencies: [2, 3, 4] },
-      ],
-      technical_debugging: [
-        { title: "Performance Profiling & Baseline Measurement", agent: AgentRole.TechnicalArchitect, description: `Measure current performance symptoms, reproduction paths, bottlenecks, and user-visible latency for: ${focus}.`, deliverables: ["Performance baseline", "Reproduction checklist", "Measurement plan"] },
-        { title: "Render & Re-render Analysis", agent: AgentRole.TechnicalArchitect, description: "Audit component render frequency, expensive calculations, memoization gaps, and state updates.", deliverables: ["Render trace findings", "Component hot spot list", "Memoization candidates"], dependencies: [1] },
-        { title: "Network/API/Data Fetching Audit", agent: AgentRole.RiskCritic, description: "Separate frontend render cost from API latency, data waterfalls, cache misses, and request duplication.", deliverables: ["Request waterfall map", "Latency split", "Data fetching fixes"], dependencies: [1] },
-        { title: "Bundle/Asset Optimization", agent: AgentRole.TechnicalArchitect, description: "Inspect bundle size, dynamic import opportunities, asset weight, and third-party script cost.", deliverables: ["Bundle report", "Code splitting plan", "Asset optimization list"], dependencies: [1] },
-        { title: "Prioritized Optimization Roadmap", agent: AgentRole.Finalizer, description: "Sequence fixes by impact, risk, and regression cost.", deliverables: ["Priority roadmap", "Regression checklist", "Monitoring plan"], dependencies: [2, 3, 4] },
-      ],
-      business_launch: [
-        { title: "Niche Research & Business Targeting", agent: AgentRole.Researcher, supporting: [AgentRole.MarketingStrategist, AgentRole.Finance], description: `Identify target business niches, buyer pain points, competitors, local demand, and first outreach segments for: ${focus}.`, deliverables: ["buyer personas", "competitor map", "niche shortlist", "demand validation script"] },
-        { title: "Website Production Workflow", agent: AgentRole.TechnicalArchitect, supporting: [AgentRole.ProductStrategist, AgentRole.Finance], description: "Design a repeatable website delivery system using templates, intake forms, hosting choices, revision limits, QA checks, and delivery timelines.", deliverables: ["production workflow", "template stack", "delivery checklist", "maintenance handoff"] },
-        { title: "Offer & Website Package Design", agent: AgentRole.ProductStrategist, supporting: [AgentRole.Researcher, AgentRole.TechnicalArchitect, AgentRole.Finance], description: "Turn market research and production constraints into clear website packages, scope boundaries, upsells, and client outcomes.", deliverables: ["starter package", "premium package", "upsell menu", "scope rules"], dependencies: [1, 2] },
-        { title: "Pricing, Payments & Revenue Model", agent: AgentRole.Finance, supporting: [AgentRole.TechnicalArchitect, AgentRole.MarketingStrategist], description: "Model setup fees, monthly maintenance, payment terms, sales targets, margins, and break-even assumptions.", deliverables: ["pricing ladder", "payment terms", "monthly recurring revenue model", "margin assumptions"], dependencies: [2, 3] },
-        { title: "Lead Generation & Outreach", agent: AgentRole.MarketingStrategist, supporting: [AgentRole.Researcher, AgentRole.Finance], description: "Create outreach channels, lead lists, cold email/DM scripts, proof assets, follow-up cadence, and first-week activation plan.", deliverables: ["lead sources", "outreach scripts", "follow-up sequence", "proof asset checklist"], dependencies: [1, 3] },
-        { title: "Sales Risk & Client Objection Review", agent: AgentRole.RiskCritic, supporting: [AgentRole.MarketingStrategist, AgentRole.Finance, AgentRole.ProductStrategist], description: "Challenge weak assumptions around pricing, trust, sales objections, fulfillment capacity, refunds, and difficult clients.", deliverables: ["objection map", "risk register", "mitigation plan", "go/no-go checklist"], dependencies: [4, 5] },
-        { title: "Final Execution Roadmap", agent: AgentRole.Finalizer, supporting: [AgentRole.Planner, AgentRole.Mediator], description: "Synthesize the workstreams into a practical 30-day execution roadmap for selling websites online to businesses.", deliverables: ["30-day roadmap", "daily actions", "sales targets", "quality checklist"], dependencies: [3, 4, 5, 6] },
-      ],
-      product_strategy: [
-        { title: "User & Problem Definition", agent: AgentRole.Researcher, description: `Clarify users, jobs-to-be-done, constraints, and decision criteria for: ${focus}.`, deliverables: ["User map", "Problem statement", "Evidence gaps"] },
-        { title: "Option & Scope Design", agent: AgentRole.ProductStrategist, description: "Compare solution options, define scope, and map tradeoffs.", deliverables: ["Option matrix", "Scope proposal", "Success metrics"], dependencies: [1] },
-        { title: "Architecture Feasibility Review", agent: AgentRole.TechnicalArchitect, description: "Assess technical implications and implementation complexity.", deliverables: ["Feasibility notes", "Dependency map", "Build risk list"], dependencies: [2] },
-        { title: "Cost, Risk & Decision Mediation", agent: AgentRole.RiskCritic, description: "Identify conflicting priorities and decision risks.", deliverables: ["Tradeoff summary", "Decision risks", "Recommendation guardrails"], dependencies: [2, 3] },
-      ],
-      research_analysis: [
-        { title: "Research Frame & Sources", agent: AgentRole.Researcher, description: `Define research questions, source quality, and evidence standards for: ${focus}.`, deliverables: ["Research questions", "Source plan", "Evidence rubric"] },
-        { title: "Evidence Synthesis", agent: AgentRole.Researcher, description: "Cluster findings, contradictions, and confidence levels.", deliverables: ["Finding clusters", "Contradiction map", "Confidence notes"], dependencies: [1] },
-        { title: "Implication & Risk Review", agent: AgentRole.RiskCritic, description: "Stress-test conclusions and flag uncertainty.", deliverables: ["Risk notes", "Assumption checks", "Open questions"], dependencies: [2] },
-        { title: "Decision Brief", agent: AgentRole.Finalizer, description: "Package findings into an actionable recommendation.", deliverables: ["Executive brief", "Action options", "Next steps"], dependencies: [2, 3] },
-      ],
-      financial_planning: [
-        { title: "Financial Baseline", agent: AgentRole.Finance, description: `Map current costs, revenue assumptions, and constraints for: ${focus}.`, deliverables: ["Baseline model", "Assumption list", "Constraint map"] },
-        { title: "Scenario Modeling", agent: AgentRole.Finance, description: "Compare conservative, expected, and aggressive scenarios.", deliverables: ["Scenario table", "Sensitivity analysis", "Breakpoints"], dependencies: [1] },
-        { title: "Risk & Governance Review", agent: AgentRole.RiskCritic, description: "Identify downside risk and controls.", deliverables: ["Risk register", "Controls", "Decision thresholds"], dependencies: [2] },
-      ],
-      content_strategy: [
-        { title: "Audience & Message Research", agent: AgentRole.Researcher, description: `Clarify audience intent, channels, and message fit for: ${focus}.`, deliverables: ["Audience segments", "Message pillars", "Channel assumptions"] },
-        { title: "Content System Design", agent: AgentRole.MarketingStrategist, description: "Design themes, formats, cadence, and distribution loop.", deliverables: ["Content calendar", "Format matrix", "Distribution plan"], dependencies: [1] },
-        { title: "Performance & Risk Review", agent: AgentRole.RiskCritic, description: "Define quality controls, measurement, and brand risks.", deliverables: ["Measurement plan", "Risk notes", "Review checklist"], dependencies: [2] },
-      ],
-      personal_planning: [
-        { title: "Operating Baseline", agent: AgentRole.Researcher, description: `Map current process, constraints, handoffs, and failure points for: ${focus}.`, deliverables: ["Process map", "Constraint list", "Stakeholder map"] },
-        { title: "Execution System Design", agent: AgentRole.ProductStrategist, description: "Create workflow, ownership, cadence, and decision rules.", deliverables: ["Operating model", "Ownership map", "Cadence plan"], dependencies: [1] },
-        { title: "Risk & Resource Review", agent: AgentRole.RiskCritic, description: "Stress-test capacity, quality, and change-management risk.", deliverables: ["Risk register", "Resource plan", "Control points"], dependencies: [2] },
-      ],
-      general_problem_solving: [
-        { title: "Problem Framing", agent: AgentRole.Researcher, description: `Clarify root problem, constraints, stakeholders, and decision criteria for: ${focus}.`, deliverables: ["Problem frame", "Assumption list", "Decision criteria"] },
-        { title: "Option Design", agent: AgentRole.ProductStrategist, description: "Generate options and evaluate tradeoffs.", deliverables: ["Option matrix", "Tradeoff notes", "Preferred path"], dependencies: [1] },
-        { title: "Risk Review", agent: AgentRole.RiskCritic, description: "Challenge assumptions and define safeguards.", deliverables: ["Risk register", "Mitigation plan", "Decision guardrails"], dependencies: [2] },
-      ],
-    };
+  private semanticBlueprintAt(classification: MissionClassification, index: number) {
+    return classification.semantic.naturalWorkstreams[index];
+  }
 
-    return templates[classification.intent].map((template, index, list) => ({
+  private cleanWorkstreamTitle(title: string, classification: MissionClassification, index: number) {
+    const cleaned = sanitizeMissionText(title);
+    const generic = /^(workstream|task)\s*\d*$|^problem framing$|^option design$|^risk review$|generated workstream|general mission analysis|execution roadmap/i;
+    return generic.test(cleaned) || !cleaned
+      ? this.semanticBlueprintAt(classification, index)?.title ?? `${classification.semantic.primaryDomain} Workstream ${index + 1}`
+      : cleaned;
+  }
+
+  private cleanWorkstreamDescription(description: string, classification: MissionClassification, index: number) {
+    const cleaned = sanitizeMissionText(description);
+    const generic = /mission graph workstream|generated workstream|general mission analysis|execution roadmap|clarify root problem|generate options/i;
+    return generic.test(cleaned) || cleaned.length < 18
+      ? this.semanticBlueprintAt(classification, index)?.description ?? `Create a useful ${classification.semantic.primaryDomain.toLowerCase()} output for "${classification.semantic.objective}".`
+      : cleaned;
+  }
+
+  private filterUsefulSupportingAgents(agents: AgentRole[], primaryAgent: AgentRole, classification: MissionClassification) {
+    const useful = new Set(classification.selectedAgents);
+    return Array.from(new Set(agents)).filter((agent) =>
+      agent !== primaryAgent &&
+      agent !== AgentRole.Planner &&
+      agent !== AgentRole.Mediator &&
+      useful.has(agent)
+    );
+  }
+
+  private fallbackWorkstreams(classification: MissionClassification, brief: string): Workstream[] {
+    const blueprints = classification.semantic.naturalWorkstreams.length
+      ? classification.semantic.naturalWorkstreams
+      : this.buildSemanticWorkstreams(classification.semantic);
+    const workstreams = blueprints.map((blueprint, index) => ({
       id: generateId(),
-      title: template.title,
-      owner: missionDisplayRole(classification, template.agent),
-      responsibleAgent: missionDisplayRole(classification, template.agent),
-      displayRole: missionDisplayRole(classification, template.agent),
-      description: template.description,
+      title: blueprint.title,
+      owner: missionDisplayRole(classification, blueprint.agent),
+      responsibleAgent: missionDisplayRole(classification, blueprint.agent),
+      displayRole: missionDisplayRole(classification, blueprint.agent),
+      description: blueprint.description,
       status: "pending" as const,
-      assignedAgent: template.agent,
-      supportingAgentIds: template.supporting ?? this.supportingAgentsFor(template.agent),
-      confidence: Math.max(68, 86 - index * 3),
-      dependencies: template.dependencies?.map((dependency) => list[dependency - 1]?.title).filter(Boolean) ?? [],
-      deliverables: template.deliverables,
-    })).map((workstream, _index, list) => ({
+      assignedAgent: blueprint.agent,
+      supportingAgentIds: this.filterUsefulSupportingAgents(blueprint.supportingAgents ?? this.supportingAgentsFor(blueprint.agent), blueprint.agent, classification),
+      confidence: Math.max(68, 88 - index * 3),
+      dependencies: blueprint.dependencies?.map((dependency) => `semantic-${dependency - 1}`) ?? [],
+      deliverables: blueprint.deliverables,
+      acceptanceCriteria: blueprint.acceptanceCriteria,
+      expectedOutputs: blueprint.expectedOutputs,
+    }));
+
+    return workstreams.map((workstream, _index, list) => ({
       ...workstream,
-      dependencies: workstream.dependencies?.map((title) => list.find((candidate) => candidate.title === title)?.id).filter((id): id is string => Boolean(id)) ?? [],
-      supportingAgentIds: workstream.supportingAgentIds ?? this.supportingAgentsFor(workstream.assignedAgent ?? AgentRole.Researcher),
+      dependencies: workstream.dependencies?.map((dependencyKey) => {
+        const dependencyIndex = Number(dependencyKey.replace("semantic-", ""));
+        return list[dependencyIndex]?.id;
+      }).filter((id): id is string => Boolean(id)) ?? [],
     }));
   }
 
@@ -1732,60 +1713,47 @@ export class MissionEngine {
   }
 
   private classifyMission(brief: string): MissionClassification {
+    const semantic = this.analyzeMissionSemantics(brief);
     const text = brief.toLowerCase();
     const has = (...terms: string[]) => terms.some((term) => text.includes(term));
     let intent: MissionIntent = "general_problem_solving";
 
-    if (has("toefl", "ielts", "sat", "gre", "gmat", "exam", "test prep", "practice test", "study plan")) {
+    if (has("toefl", "ielts", "sat", "gre", "gmat", "exam", "test prep", "practice test")) {
       intent = "exam_preparation";
     } else if (has("learn", "study", "course", "curriculum", "training", "practice routine", "skill plan")) {
       intent = "learning_plan";
-    } else if (has("slow", "performance", "render", "re-render", "rerender", "latency", "bundle", "memory", "react app", "debug", "optimiz")) {
+    } else if (has("debug", "slow", "performance", "latency", "error", "bug", "migrate", "architecture", "react", "next.js", "nextjs")) {
       intent = "technical_debugging";
-    } else if (has("launch", "go-to-market", "gtm", "startup", "customers", "sales", "selling", "sell", "money", "business", "businesses", "website", "websites", "clients", "online", "school", "schools", "market")) {
+    } else if (has("launch", "startup", "open a", "start a", "business plan", "go-to-market", "customers", "sales")) {
       intent = "business_launch";
-    } else if (has("rebuild", "next.js", "nextjs", "react spa", "architecture", "technical", "stack", "migrate")) {
+    } else if (has("product", "mvp", "feature", "roadmap", "positioning")) {
       intent = "product_strategy";
-    } else if (has("research", "analyze", "study", "compare", "report")) {
+    } else if (has("research", "analyze", "compare", "paper", "report")) {
       intent = "research_analysis";
     } else if (has("budget", "financial", "pricing", "runway", "cost", "revenue")) {
       intent = "financial_planning";
     } else if (has("content", "newsletter", "social", "campaign", "brand")) {
       intent = "content_strategy";
-    } else if (has("personal", "routine", "habit", "schedule", "life", "career", "fitness")) {
+    } else if (has("routine", "habit", "schedule", "life", "career", "fitness")) {
       intent = "personal_planning";
     }
 
-    const isLaunch = intent === "business_launch";
-    const isTechnical = intent === "technical_debugging" || has("api", "backend", "frontend", "database", "code", "component");
-    const isLearning = intent === "exam_preparation" || intent === "learning_plan";
-    const needsMarketing = isLaunch || intent === "content_strategy" || has("marketing", "campaign", "positioning", "sales");
-    const needsFinance = isLaunch || intent === "financial_planning" || has("budget", "cost", "pricing", "runway");
-    const needsProduct = isLaunch || intent === "product_strategy" || has("product", "mvp", "feature", "user experience", "ux");
-
     const agents = new Set<AgentRole>([AgentRole.Planner]);
-    if (isLearning) {
-      agents.add(AgentRole.Researcher);
-      agents.add(AgentRole.ProductStrategist);
-      agents.add(AgentRole.TechnicalArchitect);
-    } else if (intent === "technical_debugging") {
-      agents.add(AgentRole.TechnicalArchitect);
-      if (has("api", "backend", "data fetching", "network")) agents.add(AgentRole.RiskCritic);
-      if (has("user", "ux", "interface", "experience")) agents.add(AgentRole.ProductStrategist);
-    } else {
-      agents.add(AgentRole.Researcher);
-      if (isLaunch || needsProduct) agents.add(AgentRole.ProductStrategist);
-      if (isLaunch || isTechnical || has("website", "websites", "build", "production")) agents.add(AgentRole.TechnicalArchitect);
-      if (isLaunch || needsMarketing) agents.add(AgentRole.MarketingStrategist);
-      if (isLaunch || needsFinance || has("money", "revenue", "payment", "price", "pricing")) agents.add(AgentRole.Finance);
-    }
-    agents.add(AgentRole.RiskCritic);
-    if (isLaunch || agents.has(AgentRole.RiskCritic)) agents.add(AgentRole.Mediator);
+    semantic.usefulAgents.forEach((agent) => agents.add(agent));
     agents.add(AgentRole.Finalizer);
+
+    const selectedAgents = Array.from(agents).filter((agent) => agent !== AgentRole.Mediator);
+    const needsMarketing = selectedAgents.includes(AgentRole.MarketingStrategist);
+    const needsFinance = selectedAgents.includes(AgentRole.Finance);
+    const needsProduct = selectedAgents.includes(AgentRole.ProductStrategist);
+    const isTechnical = selectedAgents.includes(AgentRole.TechnicalArchitect) || /software|hardware|technical|engineering|architecture/i.test(semantic.primaryDomain);
+    const isLearning = /learning|education|exam|study|academic/i.test([semantic.primaryDomain, ...semantic.secondaryDomains, semantic.intent].join(" "));
+    const isLaunch = /launch|start|open|business|venture/i.test(semantic.intent) || /business|restaurant|startup/i.test(semantic.primaryDomain);
 
     return {
       intent,
-      selectedAgents: Array.from(agents),
+      selectedAgents,
+      semantic,
       needsMarketing,
       needsFinance,
       needsProduct,
@@ -1795,7 +1763,245 @@ export class MissionEngine {
     };
   }
 
+  private analyzeMissionSemantics(brief: string): SemanticMissionAnalysis {
+    const objective = sanitizeUserFacingText(brief.replace(/\s+/g, " ").trim());
+    const text = objective.toLowerCase();
+    const has = (...terms: string[]) => terms.some((term) => text.includes(term));
+    const matches = (terms: string[]) => terms.filter((term) => text.includes(term.toLowerCase()));
+    const domains = [
+      { name: "Computer Hardware", terms: ["pc", "computer", "cpu", "gpu", "motherboard", "ram", "psu", "cooling", "bios", "drivers", "build my own pc"] },
+      { name: "Software Architecture", terms: ["react", "next.js", "nextjs", "erp", "frontend", "backend", "api", "database", "migration", "migrate", "software", "code", "architecture", "deployment"] },
+      { name: "Business Planning", terms: ["business", "startup", "company", "restaurant", "open a", "launch", "customers", "operations", "revenue", "sales"] },
+      { name: "Academic Research", terms: ["paper", "research", "machine learning", "experiment", "statistics", "dataset", "literature", "methodology", "citation"] },
+      { name: "Learning and Exam Preparation", terms: ["study", "learn", "exam", "test", "toefl", "ielts", "course", "curriculum", "practice"] },
+      { name: "Marketing and Content", terms: ["marketing", "campaign", "brand", "social", "content", "newsletter", "audience", "positioning"] },
+      { name: "Financial Planning", terms: ["budget", "finance", "financial", "pricing", "cost", "runway", "profit", "margin"] },
+      { name: "Personal Planning", terms: ["fitness", "routine", "habit", "career", "schedule", "personal", "body", "training"] },
+    ];
+    const scoredDomains = domains
+      .map((domain) => ({ ...domain, score: matches(domain.terms).length }))
+      .filter((domain) => domain.score > 0)
+      .sort((a, b) => b.score - a.score);
+    const primaryDomain = scoredDomains[0]?.name ?? this.humanizeDomainFromObjective(objective);
+    const secondaryDomains = scoredDomains.slice(1, 4).map((domain) => domain.name);
+
+    if (primaryDomain === "Computer Hardware") {
+      secondaryDomains.push(...["Consumer Purchasing", "Technical Tutorial", "Compatibility Analysis"].filter((domain) => !secondaryDomains.includes(domain)));
+    }
+    if (primaryDomain === "Software Architecture" && has("migrate", "migration")) {
+      secondaryDomains.push(...["Frontend Engineering", "Deployment", "Migration Risk"].filter((domain) => !secondaryDomains.includes(domain)));
+    }
+    if (primaryDomain === "Business Planning" && has("restaurant")) {
+      secondaryDomains.push(...["Operations", "Finance", "Marketing", "Compliance"].filter((domain) => !secondaryDomains.includes(domain)));
+    }
+    if (primaryDomain === "Academic Research" && has("machine learning")) {
+      secondaryDomains.push(...["Machine Learning", "Statistics", "Experiment Design", "Academic Writing"].filter((domain) => !secondaryDomains.includes(domain)));
+    }
+
+    const relevantConcepts = this.extractRelevantConcepts(text, primaryDomain);
+    const intent = this.detectUserIntent(text, primaryDomain);
+    const skills = this.extractSkills(text, primaryDomain, secondaryDomains);
+    const requiredExpertise = this.detectRequiredExpertise(text, primaryDomain, secondaryDomains, skills);
+    const usefulAgents = requiredExpertise.map((item) => item.agent);
+    const riskThemes = this.detectRiskThemes(text, primaryDomain, secondaryDomains, skills);
+    const semantic: SemanticMissionAnalysis = {
+      objective,
+      primaryDomain,
+      secondaryDomains: Array.from(new Set(secondaryDomains)).slice(0, 6),
+      intent,
+      skills,
+      relevantConcepts,
+      requiredExpertise,
+      usefulAgents,
+      riskThemes,
+      naturalWorkstreams: [],
+    };
+    semantic.naturalWorkstreams = this.buildSemanticWorkstreams(semantic);
+    return semantic;
+  }
+
+  private humanizeDomainFromObjective(objective: string) {
+    const words = objective.toLowerCase().match(/[a-z0-9]+/g)?.filter((word) => word.length > 3 && !/^(tell|create|make|give|plan|want|need|with|from|into|about|help|build)$/i.test(word)) ?? [];
+    return words.slice(0, 2).map((word) => word[0].toUpperCase() + word.slice(1)).join(" ") || "General Advisory";
+  }
+
+  private extractRelevantConcepts(text: string, primaryDomain: string) {
+    const conceptBanks: Record<string, string[]> = {
+      "Computer Hardware": ["CPU", "GPU", "Motherboard", "RAM", "Storage", "PSU", "Cooling", "Case", "Assembly", "BIOS", "Drivers", "Compatibility"],
+      "Software Architecture": ["Current Architecture", "Target Architecture", "Routing", "Data Fetching", "Deployment", "Testing", "Migration Plan", "Rollback", "Performance"],
+      "Business Planning": ["Customers", "Offer", "Operations", "Budget", "Pricing", "Staffing", "Suppliers", "Compliance", "Launch Plan"],
+      "Academic Research": ["Research Question", "Literature Review", "Methodology", "Dataset", "Experiments", "Statistics", "Results", "Limitations", "Writing"],
+      "Learning and Exam Preparation": ["Diagnostic", "Practice Routine", "Resources", "Mock Tests", "Weak Areas", "Review Loop", "Progress Metrics"],
+      "Marketing and Content": ["Audience", "Positioning", "Channels", "Message", "Cadence", "Conversion", "Measurement"],
+      "Financial Planning": ["Costs", "Revenue", "Margin", "Cash Flow", "Scenario Model", "Break-even", "Controls"],
+    };
+    const bank = conceptBanks[primaryDomain] ?? [];
+    const explicit = bank.filter((concept) => text.includes(concept.toLowerCase()) || primaryDomain !== "General Advisory");
+    const objectiveTerms = text.match(/[a-z0-9.+#-]+/g)?.filter((term) => term.length > 3 && !/^(tell|give|create|make|want|need|with|from|into|that|this|plan|build)$/i.test(term)) ?? [];
+    return Array.from(new Set([...explicit, ...objectiveTerms.slice(0, 8)])).slice(0, 14);
+  }
+
+  private detectUserIntent(text: string, primaryDomain: string) {
+    if (/(migrate|migration|move from|convert)/.test(text)) return `Plan a ${primaryDomain.toLowerCase()} migration with sequencing, validation, and risk controls`;
+    if (/(open|start|launch|create a business|restaurant)/.test(text)) return `Create a practical ${primaryDomain.toLowerCase()} launch plan`;
+    if (/(write|paper|publish)/.test(text)) return `Produce a rigorous ${primaryDomain.toLowerCase()} writing and research plan`;
+    if (/(build|assemble|setup|set up)/.test(text)) return `Create a practical ${primaryDomain.toLowerCase()} build guide`;
+    if (/(study|learn|prepare|exam)/.test(text)) return `Create a focused ${primaryDomain.toLowerCase()} learning plan`;
+    if (/(compare|analyze|research)/.test(text)) return `Analyze ${primaryDomain.toLowerCase()} options and recommend a path`;
+    return `Solve the user's ${primaryDomain.toLowerCase()} objective directly`;
+  }
+
+  private extractSkills(text: string, primaryDomain: string, secondaryDomains: string[]) {
+    const skills = new Set<string>();
+    if (/hardware|computer|pc|cpu|gpu|motherboard|ram|psu|bios/.test(`${primaryDomain} ${text}`.toLowerCase())) {
+      ["Compatibility Analysis", "Component Selection", "Assembly Sequencing", "Troubleshooting"].forEach((skill) => skills.add(skill));
+    }
+    if (/software|react|next|erp|frontend|backend|api|deployment|migration|architecture/.test(`${primaryDomain} ${secondaryDomains.join(" ")} ${text}`.toLowerCase())) {
+      ["Architecture Design", "Migration Planning", "Testing Strategy", "Deployment Planning"].forEach((skill) => skills.add(skill));
+    }
+    if (/business|restaurant|startup|operations|customers|sales/.test(`${primaryDomain} ${secondaryDomains.join(" ")} ${text}`.toLowerCase())) {
+      ["Market Research", "Operations Planning", "Financial Modeling", "Go-to-Market Planning"].forEach((skill) => skills.add(skill));
+    }
+    if (/paper|research|machine learning|statistics|experiment|dataset/.test(`${primaryDomain} ${secondaryDomains.join(" ")} ${text}`.toLowerCase())) {
+      ["Research Design", "Evidence Synthesis", "Experiment Planning", "Academic Writing"].forEach((skill) => skills.add(skill));
+    }
+    if (/study|learn|exam|course|practice/.test(`${primaryDomain} ${text}`.toLowerCase())) {
+      ["Diagnostic Assessment", "Curriculum Planning", "Practice Design", "Progress Tracking"].forEach((skill) => skills.add(skill));
+    }
+    if (skills.size === 0) ["Context Analysis", "Solution Design", "Action Planning"].forEach((skill) => skills.add(skill));
+    return Array.from(skills);
+  }
+
+  private detectRequiredExpertise(text: string, primaryDomain: string, secondaryDomains: string[], skills: string[]) {
+    const haystack = `${primaryDomain} ${secondaryDomains.join(" ")} ${skills.join(" ")} ${text}`.toLowerCase();
+    const expertise: SemanticMissionAnalysis["requiredExpertise"] = [];
+    const add = (agent: AgentRole, reason: string, priority: "core" | "support" | "review" = "core") => {
+      if (!expertise.some((item) => item.agent === agent)) expertise.push({ agent, reason, priority });
+    };
+
+    add(AgentRole.Researcher, "establish evidence, constraints, and real-world context", "core");
+    if (/hardware|software|technical|architecture|engineering|migration|assembly|compatibility|deployment|experiment/.test(haystack)) {
+      add(AgentRole.TechnicalArchitect, "turn domain constraints into an executable technical plan", "core");
+    }
+    if (/product|mvp|feature|user experience|ux|scope|roadmap|offer|customer journey/.test(haystack)) {
+      add(AgentRole.ProductStrategist, "shape scope, user outcomes, and tradeoffs", "support");
+    }
+    if (/marketing|campaign|brand|audience|positioning|sales|go-to-market|customers|restaurant|startup/.test(haystack)) {
+      add(AgentRole.MarketingStrategist, "define audience, positioning, channels, and demand generation", "support");
+    }
+    if (/finance|budget|pricing|cost|revenue|profit|margin|cash flow|runway|restaurant|startup|business/.test(haystack)) {
+      add(AgentRole.Finance, "model costs, budget, resources, and financial constraints", "support");
+    }
+    if (/risk|migration|compatibility|compliance|security|legal|medical|financial|investment|restaurant|hardware|deployment|experiment|failure|safety/.test(haystack)) {
+      add(AgentRole.RiskCritic, "challenge assumptions and prevent mission-specific failure modes", "review");
+    }
+    return expertise;
+  }
+
+  private detectRiskThemes(text: string, primaryDomain: string, secondaryDomains: string[], skills: string[]) {
+    const haystack = `${primaryDomain} ${secondaryDomains.join(" ")} ${skills.join(" ")} ${text}`.toLowerCase();
+    const risks: string[] = [];
+    if (/hardware|pc|compatibility|motherboard|psu|cooling/.test(haystack)) risks.push("component compatibility, power capacity, thermal limits, and purchasing mistakes");
+    if (/migration|deployment|software|architecture|react|next/.test(haystack)) risks.push("migration regressions, data-flow changes, deployment failures, and rollback readiness");
+    if (/business|restaurant|startup|operations/.test(haystack)) risks.push("cash flow, operations capacity, compliance, demand validation, and supplier risk");
+    if (/research|paper|experiment|statistics|machine learning/.test(haystack)) risks.push("weak research question, invalid experiment design, data leakage, and unsupported claims");
+    if (/study|exam|learn/.test(haystack)) risks.push("unrealistic schedule, weak feedback loops, skipped practice, and burnout");
+    if (/finance|budget|pricing|cost/.test(haystack)) risks.push("budget overrun and weak assumptions");
+    return Array.from(new Set(risks));
+  }
+
+  private buildSemanticWorkstreams(semantic: SemanticMissionAnalysis): SemanticWorkstreamBlueprint[] {
+    const blueprints: SemanticWorkstreamBlueprint[] = [];
+    const concepts = semantic.relevantConcepts.slice(0, 5).join(", ") || semantic.primaryDomain;
+    const add = (blueprint: SemanticWorkstreamBlueprint) => blueprints.push(blueprint);
+    const hasAgent = (agent: AgentRole) => semantic.usefulAgents.includes(agent);
+
+    if (hasAgent(AgentRole.Researcher)) {
+      add({
+        title: `${semantic.primaryDomain} Requirements and Evidence Baseline`,
+        agent: AgentRole.Researcher,
+        description: `Clarify the objective, constraints, context, and evidence needed to solve "${semantic.objective}" in ${semantic.primaryDomain}.`,
+        deliverables: ["objective constraints", "evidence checklist", "decision criteria"],
+        acceptanceCriteria: ["constraints are specific", "missing information is named", "recommendations are grounded in the objective"],
+        expectedOutputs: ["baseline findings", "assumptions", "open questions"],
+      });
+    }
+    if (hasAgent(AgentRole.TechnicalArchitect)) {
+      add({
+        title: `${semantic.primaryDomain} Technical Plan for ${concepts}`,
+        agent: AgentRole.TechnicalArchitect,
+        supportingAgents: [AgentRole.Researcher],
+        description: `Design the practical technical sequence, compatibility checks, implementation steps, and validation path for ${concepts}.`,
+        deliverables: ["technical sequence", "compatibility or feasibility checks", "validation checklist"],
+        acceptanceCriteria: ["steps are actionable", "dependencies are explicit", "validation catches likely failures"],
+        expectedOutputs: ["technical plan", "checklist", "implementation notes"],
+        dependencies: [1],
+      });
+    }
+    if (hasAgent(AgentRole.ProductStrategist)) {
+      add({
+        title: `${semantic.primaryDomain} Scope and User Outcome Design`,
+        agent: AgentRole.ProductStrategist,
+        supportingAgents: [AgentRole.Researcher, AgentRole.TechnicalArchitect],
+        description: `Define the useful scope, user-facing outcomes, tradeoffs, and success boundaries for the objective.`,
+        deliverables: ["scope boundaries", "outcome map", "tradeoff notes"],
+        acceptanceCriteria: ["scope matches the user's objective", "tradeoffs are concrete", "success criteria are measurable"],
+        expectedOutputs: ["scope recommendation", "success metrics"],
+        dependencies: [1],
+      });
+    }
+    if (hasAgent(AgentRole.Finance)) {
+      add({
+        title: `${semantic.primaryDomain} Budget and Resource Model`,
+        agent: AgentRole.Finance,
+        supportingAgents: [AgentRole.Researcher],
+        description: `Estimate costs, budget constraints, resource needs, and financial assumptions that affect the mission outcome.`,
+        deliverables: ["cost drivers", "budget assumptions", "resource plan"],
+        acceptanceCriteria: ["major costs are visible", "assumptions are testable", "budget advice matches the objective"],
+        expectedOutputs: ["resource model", "budget notes"],
+        dependencies: [1],
+      });
+    }
+    if (hasAgent(AgentRole.MarketingStrategist)) {
+      add({
+        title: `${semantic.primaryDomain} Audience and Adoption Plan`,
+        agent: AgentRole.MarketingStrategist,
+        supportingAgents: [AgentRole.Researcher],
+        description: `Define the audience, positioning, channels, adoption path, or demand signals only where they matter to the objective.`,
+        deliverables: ["audience definition", "positioning notes", "channel or adoption plan"],
+        acceptanceCriteria: ["audience is specific", "channels fit the domain", "claims are realistic"],
+        expectedOutputs: ["audience plan", "messaging notes"],
+        dependencies: [1],
+      });
+    }
+    if (hasAgent(AgentRole.RiskCritic)) {
+      add({
+        title: `${semantic.primaryDomain} Failure Mode and Assumption Review`,
+        agent: AgentRole.RiskCritic,
+        supportingAgents: [AgentRole.Researcher, AgentRole.TechnicalArchitect, AgentRole.Finance],
+        description: `Stress-test the plan against ${semantic.riskThemes.join("; ") || "mission-specific risks"} without fabricating disagreements.`,
+        deliverables: ["risk register", "assumption checks", "mitigation steps"],
+        acceptanceCriteria: ["risks are specific to the objective", "mitigations are actionable", "no conflict is fabricated"],
+        expectedOutputs: ["risk review", "mitigation checklist"],
+        dependencies: blueprints.length ? [Math.max(1, blueprints.length)] : undefined,
+      });
+    }
+    add({
+      title: `${semantic.primaryDomain} Final User Deliverable`,
+      agent: AgentRole.Finalizer,
+      supportingAgents: semantic.usefulAgents,
+      description: `Synthesize the completed work into a direct answer for "${semantic.objective}" with orchestration details kept secondary.`,
+      deliverables: ["final user-facing answer", "prioritized next steps", "quality checklist"],
+      acceptanceCriteria: ["answers the user objective directly", "contains no raw JSON or parser/debug text", "uses the same MissionContext as all tabs"],
+      expectedOutputs: ["final deliverable", "next steps"],
+      dependencies: blueprints.map((_item, index) => index + 1),
+    });
+    return blueprints;
+  }
+
   private agentForMissionWorkstream(classification: MissionClassification, title: string, index: number): AgentRole {
+    const blueprint = this.semanticBlueprintAt(classification, index);
+    if (blueprint?.agent) return blueprint.agent;
     const text = title.toLowerCase();
     if (classification.intent === "technical_debugging") {
       if (/(risk|regression|monitor|security|api|network|audit)/.test(text)) return AgentRole.RiskCritic;
@@ -1822,21 +2028,19 @@ export class MissionEngine {
 
   private ensureRequiredWorkstreams(ctx: MissionContext, classification: MissionClassification) {
     const hasRisk = ctx.workstreams.some((workstream) => workstream.assignedAgent === AgentRole.RiskCritic);
-    if (classification.selectedAgents.includes(AgentRole.RiskCritic) && !hasRisk) {
+    if (classification.selectedAgents.includes(AgentRole.RiskCritic) && classification.semantic.riskThemes.length > 0 && !hasRisk) {
       ctx.workstreams = [...ctx.workstreams, {
         id: generateId(),
-        title: classification.intent === "technical_debugging" ? "Regression, Risk & Monitoring Review" : classification.isLearning ? "Risk Review" : "Risk Critic Review",
+        title: `${classification.semantic.primaryDomain} Failure Mode and Assumption Review`,
         owner: missionDisplayRole(classification, AgentRole.RiskCritic),
         responsibleAgent: missionDisplayRole(classification, AgentRole.RiskCritic),
         displayRole: missionDisplayRole(classification, AgentRole.RiskCritic),
-        description: classification.intent === "technical_debugging"
-          ? "Challenge the optimization plan for regressions, measurement blind spots, dependency risk, and premature refactors."
-          : classification.isLearning
-            ? "Challenge the study plan for burnout, unrealistic timing, missing practice sections, weak review loops, and test-day readiness."
-          : "Challenge the plan for tradeoffs, hidden assumptions, quality risks, and execution failure points.",
+        description: `Challenge the plan for ${classification.semantic.riskThemes.join("; ")} without fabricating disagreement.`,
         status: "pending",
         assignedAgent: AgentRole.RiskCritic,
-        deliverables: ["Risk register", "Tradeoff objections", "Mitigation checklist"],
+        deliverables: ["Risk register", "Assumption checks", "Mitigation checklist"],
+        acceptanceCriteria: ["risks are specific to the objective", "no conflict is fabricated", "mitigations are actionable"],
+        expectedOutputs: ["risk review", "mitigation plan"],
         confidence: 76,
         dependencies: ctx.workstreams.map((workstream) => workstream.id),
       }];
@@ -1852,6 +2056,8 @@ export class MissionEngine {
       agent: workstream.assignedAgent ?? this.agentForMissionWorkstream(classification, workstream.title, index),
       displayRole: workstream.displayRole ?? missionDisplayRole(classification, workstream.assignedAgent ?? this.agentForMissionWorkstream(classification, workstream.title, index)),
       supportingAgents: workstream.supportingAgentIds ?? [],
+      acceptanceCriteria: workstream.acceptanceCriteria,
+      expectedOutputs: workstream.expectedOutputs,
       dependencies: [] as string[],
       status: "pending" as const,
       confidence: workstream.confidence ?? Math.max(68, 86 - index * 3),
@@ -1938,66 +2144,31 @@ export class MissionEngine {
 
   private detectConflicts(ctx: MissionContext, classification: MissionClassification) {
     const conflicts: ConflictInfo[] = [];
-    const allOutput = sanitizeMissionText([
-      ctx.researchSummary,
-      ctx.productStrategy,
-      ctx.technicalArchitecture,
-      ctx.marketingStrategy,
-      ctx.financialPlan,
-      ctx.riskReview,
-    ].join("\n\n")).toLowerCase();
-
-    if (classification.intent === "technical_debugging") {
-      conflicts.push({
-        id: generateId(),
-        title: "Quick fixes vs deeper architecture correction",
-        agents: this.agentNamesFromRoles([AgentRole.TechnicalArchitect, AgentRole.RiskCritic]),
-        riskLevel: "high",
-        description: "The optimization plan must choose between fast memoization-level fixes and deeper render/data-flow architecture work.",
-        disagreementSummary: "Technical analysis favors deeper profiling and architecture review, while delivery pressure favors quick local optimizations.",
-        resolved: false,
-      });
-      if (/api|network|latency|data fetching|backend/.test(ctx.missionBrief.toLowerCase() + allOutput)) {
+    ctx.dialogue.forEach((entry) => {
+      const structured = this.tryParseAgentOutput(entry.content);
+      structured?.conflictSignals?.forEach((signal) => {
+        const otherAgent = this.agentFromOwner(signal.withAgent);
         conflicts.push({
           id: generateId(),
-          title: "Frontend-only optimization vs API latency investigation",
-          agents: this.agentNamesFromRoles([AgentRole.TechnicalArchitect, AgentRole.RiskCritic]),
-          riskLevel: "moderate",
-          description: "The team must avoid blaming React rendering before separating frontend, network, and API latency.",
-          disagreementSummary: "One path focuses on component rendering; the risk review requires network/API measurement before prioritizing fixes.",
+          title: signal.topic || `${entry.agentName} disagreement`,
+          agents: this.agentNamesFromRoles([entry.agentRole, otherAgent].filter((agent): agent is AgentRole => Boolean(agent))),
+          riskLevel: signal.severity === "high" ? "high" : signal.severity === "moderate" ? "moderate" : "low",
+          description: sanitizeMissionText(signal.disagreement),
+          disagreementSummary: sanitizeMissionText(signal.disagreement),
           resolved: false,
         });
-      }
-    } else if (classification.isLaunch) {
-      conflicts.push({
-        id: generateId(),
-        title: "Launch speed vs validated positioning",
-        agents: this.agentNamesFromRoles([AgentRole.MarketingStrategist, AgentRole.ProductStrategist, AgentRole.Finance, AgentRole.RiskCritic]),
-        riskLevel: "high",
-        description: "The launch plan must balance fast market entry with validated customer, budget, and product assumptions.",
-        disagreementSummary: "Marketing pressure favors speed, while product/finance/risk outputs require validation gates before scaling spend.",
-        resolved: false,
       });
-    } else if (/rebuild|migrate|next\.?js|architecture|keep react spa/.test(ctx.missionBrief.toLowerCase())) {
-      conflicts.push({
-        id: generateId(),
-        title: "Rebuild complexity vs incremental improvement",
-        agents: this.agentNamesFromRoles([AgentRole.TechnicalArchitect, AgentRole.ProductStrategist, AgentRole.RiskCritic]),
-        riskLevel: "high",
-        description: "The decision requires balancing technical debt reduction against migration cost, user disruption, and delivery speed.",
-        disagreementSummary: "Architecture may favor Next.js capabilities, while product/risk concerns may favor preserving the SPA and improving selectively.",
-        resolved: false,
-      });
-    }
+    });
 
-    if (/CONFLICT_DETECTED:\s*true/i.test(ctx.riskReview) && conflicts.length === 0) {
+    const riskText = sanitizeMissionText(ctx.riskReview);
+    if (/CONFLICT_DETECTED:\s*true/i.test(riskText) && conflicts.length === 0) {
       conflicts.push({
         id: generateId(),
-        title: "Risk Critic objection",
+        title: `${classification.semantic.primaryDomain} assumption conflict`,
         agents: this.agentNamesFromRoles([AgentRole.RiskCritic]),
         riskLevel: "moderate",
         description: "Risk Critic flagged a material objection that requires mediation.",
-        disagreementSummary: sanitizeMissionText(ctx.riskReview).slice(0, 500),
+        disagreementSummary: riskText.slice(0, 500),
         resolved: false,
       });
     }
@@ -2090,20 +2261,34 @@ export class MissionEngine {
 
   private generateReport(ctx: MissionContext): MissionReport {
     const classification = this.classifyMission(ctx.missionBrief);
-    if (classification.isLearning) return this.generateLearningReport(ctx, classification);
     const metrics = ctx.efficiencyMetrics ?? this.generateEfficiencyMetrics(ctx, ctx.conflicts.length > 0);
     const parallelGroups = ctx.missionGraph?.parallelGroups ?? this.buildNamedParallelGroups(ctx.executionTasks);
     const revisedTasks = ctx.executionTasks.filter((task) => task.status === "revised" || task.revisionNote);
+    const semantic = classification.semantic;
     const workstreamLines = ctx.workstreams.map((workstream) =>
       `- ${sanitizeMissionText(workstream.title)} (${getAgentByRole(workstream.assignedAgent ?? AgentRole.Planner)?.name ?? workstream.owner ?? "Owner pending"}, ${workstream.confidence ?? 80}% confidence): ${sanitizeMissionText(workstream.description)}`
     ).join("\n");
-    const contributionLines = ctx.dialogue.map((entry) => `- ${entry.agentName}: ${sanitizeMissionText(entry.content).split("\n").find(Boolean)?.replace(/^#+\s*/, "") ?? "Contribution captured."}`).join("\n");
-    return {
-      executiveSummary: `Agent Society analyzed "${ctx.missionBrief}" as a ${MISSION_TYPE_LABELS[ctx.configuration.missionType]} mission using ${DEPTH_LABELS[ctx.configuration.depth]} depth. The Planner created a Mission Graph with ${ctx.executionTasks.length} task nodes across ${parallelGroups.length} named collaboration waves. Agents completed ${ctx.workstreams.length} workstreams, resolved ${metrics.conflictsResolved} conflict, synchronized before final synthesis, and produced a ${OUTPUT_FORMAT_LABELS[ctx.configuration.outputFormat]} aligned to a ${TIME_HORIZON_LABELS[ctx.configuration.timeHorizon]} horizon.`,
+    const parsedContributions = ctx.dialogue
+      .map((entry) => ({ entry, parsed: this.tryParseAgentOutput(entry.content) }))
+      .filter(({ entry }) => entry.agentRole !== AgentRole.Planner || ctx.workstreams.length === 0);
+    const contributionLines = parsedContributions.map(({ entry, parsed }) => {
+      const useful = parsed?.summary || parsed?.usefulOutput?.recommendations?.[0] || parsed?.usefulOutput?.keyFindings?.[0];
+      return `- ${entry.displayRole ?? entry.agentName}: ${sanitizeUserFacingText(useful ?? entry.content).split("\n").find(Boolean)?.replace(/^#+\s*/, "") ?? "Contribution captured."}`;
+    }).join("\n");
+    const finalDeliverable = this.composeObjectiveAnswer(ctx, classification);
+    const report: MissionReport = {
+      executiveSummary: finalDeliverable,
       missionObjective: ctx.missionBrief,
       selectedMissionConfiguration: configSummary(ctx.configuration),
       workstreams: workstreamLines,
       roleAssignments: [
+        `Primary domain: ${semantic.primaryDomain}`,
+        semantic.secondaryDomains.length ? `Related domains: ${semantic.secondaryDomains.join(", ")}` : "Related domains: none required.",
+        `User intent: ${semantic.intent}`,
+        "",
+        "Expertise used:",
+        ...semantic.requiredExpertise.map((item) => `${missionDisplayRole(classification, item.agent)}: ${item.reason}`),
+        "",
         "Mission Graph assignments:",
         ...ctx.workstreams.map((workstream) => `${workstream.title}: ${getAgentByRole(workstream.assignedAgent ?? AgentRole.Planner)?.name ?? "Unassigned"}${workstream.dependencies?.length ? ` (depends on ${workstream.dependencies.length} node${workstream.dependencies.length > 1 ? "s" : ""})` : " (parallel start eligible)"}`),
         "",
@@ -2113,15 +2298,68 @@ export class MissionEngine {
         revisedTasks.length ? `Planner revisions: ${revisedTasks.map((task) => `${task.title} - ${task.revisionNote}`).join("; ")}` : "Planner revisions: none required after synchronization.",
       ].join("\n"),
       agentContributions: contributionLines,
-      keyDisagreements: ctx.conflicts.map((conflict) => `${conflict.title}: ${conflict.disagreementSummary}`).join("\n") || "No material disagreement was detected.",
+      keyDisagreements: ctx.conflicts.map((conflict) => `${conflict.title}: ${conflict.disagreementSummary}`).join("\n") || "No conflicts generated.",
       mediatorDecisions: ctx.mediatorDecisions || "No mediator decision was required. The graph reached synthesis readiness without mediation.",
       executionRoadmap: this.generateExecutionRoadmap(ctx, classification),
       timeline: ctx.timeline.map((entry) => `- ${entry.label}: ${entry.description ?? entry.state}`).join("\n"),
       budgetEstimate: this.generateResourceEstimate(ctx, classification),
-      riskAssessment: ctx.riskReview || "Risk review was not completed.",
+      riskAssessment: ctx.riskReview || (semantic.riskThemes.length ? semantic.riskThemes.map((risk) => `- ${risk}`).join("\n") : "No mission-specific risk review was required."),
       successMetrics: `Task coverage: ${metrics.taskCoverage}%. Confidence score: ${metrics.finalConfidenceScore}%. Perspectives considered: ${metrics.perspectivesConsidered}. Parallel waves: ${parallelGroups.map((group) => group.title).join(", ")}. Synchronization status: ${ctx.missionGraph?.finalizationReadiness.status ?? "ready_for_synthesis"}.`,
       finalRecommendations: this.generateFinalRecommendations(ctx, classification),
-      singleAgentComparison: `Single-agent baseline: ${metrics.singleAgentBaseline}%. Agent Society quality score: ${metrics.qualityScore}%. Estimated efficiency gain: ${Math.max(0, metrics.qualityScore - metrics.singleAgentBaseline)} points. The Mission Graph improves coverage by decomposing the brief, assigning specialists, running compatible workstreams in parallel, allowing Risk Critic interrupts, resolving conflicts through Mediator, letting Planner revise dependencies, and synchronizing before Finalizer synthesis.`,
+      singleAgentComparison: `Single-agent baseline: ${metrics.singleAgentBaseline}%. Agent Society quality score: ${metrics.qualityScore}%. Estimated efficiency gain: ${Math.max(0, metrics.qualityScore - metrics.singleAgentBaseline)} points.`,
+    };
+    return this.validateFinalReport(report, classification);
+  }
+
+  private composeObjectiveAnswer(ctx: MissionContext, classification: MissionClassification) {
+    const semantic = classification.semantic;
+    const parsedOutputs = ctx.dialogue
+      .map((entry) => this.tryParseAgentOutput(entry.content))
+      .filter((output): output is AgentStructuredOutput => Boolean(output));
+    const recommendations = parsedOutputs.flatMap((output) => output.usefulOutput?.recommendations ?? []);
+    const actionItems = parsedOutputs.flatMap((output) => output.usefulOutput?.actionItems ?? []);
+    const findings = parsedOutputs.flatMap((output) => output.usefulOutput?.keyFindings ?? []);
+    const scheduleItems = parsedOutputs.flatMap((output) => output.usefulOutput?.scheduleItems ?? []);
+    const risks = parsedOutputs.flatMap((output) => output.usefulOutput?.risks ?? []);
+    const sections = [
+      `${semantic.primaryDomain} answer for "${semantic.objective}"`,
+      "",
+      "What to do:",
+      ...sanitizeMissionList(recommendations.length ? recommendations : ctx.workstreams.flatMap((workstream) => workstream.deliverables)).slice(0, 8).map((item) => `- ${item}`),
+      "",
+      "Practical steps:",
+      ...sanitizeMissionList(actionItems.length ? actionItems : ctx.workstreams.map((workstream) => workstream.description)).slice(0, 10).map((item, index) => `${index + 1}. ${item}`),
+    ];
+    if (findings.length) sections.push("", "Key context:", ...sanitizeMissionList(findings).slice(0, 6).map((item) => `- ${item}`));
+    if (scheduleItems.length) sections.push("", "Timing:", ...sanitizeMissionList(scheduleItems).slice(0, 6).map((item) => `- ${item}`));
+    if (risks.length || semantic.riskThemes.length) sections.push("", "Watch-outs:", ...sanitizeMissionList(risks.length ? risks : semantic.riskThemes).slice(0, 6).map((item) => `- ${item}`));
+    return sanitizeUserFacingText(sections.join("\n"));
+  }
+
+  private validateFinalReport(report: MissionReport, classification: MissionClassification): MissionReport {
+    const badPattern = /\b(undefined|null|empty arrays?|developer notes?|parser repair|internal debugging|fallback activated|no client available|generated workstream derived|general mission analysis)\b|```json|^\s*[{[]/i;
+    const sanitizeField = (value: string, replacement: string) => {
+      const cleaned = sanitizeUserFacingText(value);
+      if (!cleaned || badPattern.test(cleaned)) return replacement;
+      return cleaned.replace(/\bundefined\b|\bnull\b/gi, "").trim();
+    };
+    const semantic = classification.semantic;
+    const defaultAnswer = `${semantic.primaryDomain} deliverable for "${semantic.objective}": follow the mission workstreams, complete the highest-confidence actions first, validate assumptions, and use the final recommendations as the user-facing answer.`;
+    return {
+      ...report,
+      executiveSummary: sanitizeField(report.executiveSummary, defaultAnswer),
+      workstreams: sanitizeField(report.workstreams, semantic.naturalWorkstreams.map((workstream) => `- ${workstream.title}: ${workstream.description}`).join("\n")),
+      roleAssignments: sanitizeField(report.roleAssignments, semantic.requiredExpertise.map((item) => `${missionDisplayRole(classification, item.agent)}: ${item.reason}`).join("\n")),
+      agentContributions: sanitizeField(report.agentContributions, "Agent contributions were captured as mission-specific workstream outputs."),
+      keyDisagreements: sanitizeField(report.keyDisagreements, "No conflicts generated."),
+      mediatorDecisions: sanitizeField(report.mediatorDecisions, "No mediator decision was required."),
+      executionRoadmap: sanitizeField(report.executionRoadmap, semantic.naturalWorkstreams.map((workstream, index) => `${index + 1}. ${workstream.title}`).join("\n")),
+      timeline: sanitizeField(report.timeline, "Timeline entries were captured from the mission execution events."),
+      budgetEstimate: sanitizeField(report.budgetEstimate, "Resource posture: None specified."),
+      riskAssessment: sanitizeField(report.riskAssessment, semantic.riskThemes.length ? semantic.riskThemes.join("\n") : "No mission-specific risk review was required."),
+      successMetrics: sanitizeField(report.successMetrics, "Success metrics are based on completed workstreams, confidence, consensus, and final validation."),
+      finalRecommendations: sanitizeField(report.finalRecommendations, defaultAnswer),
+      singleAgentComparison: sanitizeField(report.singleAgentComparison ?? "", "Multi-agent comparison unavailable for this mission."),
     };
   }
 
@@ -2190,39 +2428,23 @@ export class MissionEngine {
   }
 
   private generateExecutionRoadmap(ctx: MissionContext, classification: MissionClassification) {
-    const lines = ctx.workstreams.map((workstream, index) => `${index + 1}. ${sanitizeMissionText(workstream.nextStep || workstream.title)} - ${sanitizeMissionText(workstream.deliverables[0] ?? workstream.description)}`);
-    if (classification.intent === "technical_debugging") {
-      return [
-        "1. Establish performance baselines before changing code.",
-        ...ctx.workstreams.map((workstream, index) => `${index + 2}. ${sanitizeMissionText(workstream.title)}: ${sanitizeMissionText(workstream.nextStep || workstream.description)}`),
-        `${ctx.workstreams.length + 2}. Validate improvements with regression tests and monitoring.`,
-      ].join("\n");
-    }
-    return lines.join("\n");
+    return ctx.workstreams.map((workstream, index) =>
+      `${index + 1}. ${sanitizeMissionText(workstream.nextStep || workstream.title)} - ${sanitizeMissionText(workstream.deliverables[0] ?? workstream.description)}`
+    ).join("\n");
   }
 
   private generateResourceEstimate(ctx: MissionContext, classification: MissionClassification) {
-    if (classification.intent === "technical_debugging") {
-      return `Resource posture: ${BUDGET_RANGE_LABELS[ctx.configuration.budgetRange]}. Prioritize profiling, render tracing, network timing, and regression validation before broad refactors.`;
-    }
-    if (classification.isLaunch || classification.needsFinance) {
-      return `Budget posture: ${BUDGET_RANGE_LABELS[ctx.configuration.budgetRange]}. Finance-related workstreams should govern spend, staffing, and timeline tradeoffs.`;
-    }
-    return `Resource posture: ${BUDGET_RANGE_LABELS[ctx.configuration.budgetRange]}. Allocate effort according to workstream confidence and unresolved risks.`;
+    const financeOutput = sanitizeUserFacingText(ctx.financialPlan).split("\n").find((line) => line.trim().length > 20);
+    if (financeOutput) return financeOutput;
+    return `Resource posture: ${BUDGET_RANGE_LABELS[ctx.configuration.budgetRange]}. Apply it to ${classification.semantic.primaryDomain.toLowerCase()} decisions, and prioritize the workstreams with the highest impact on "${classification.semantic.objective}".`;
   }
 
   private generateFinalRecommendations(ctx: MissionContext, classification: MissionClassification) {
-    const topWorkstreams = ctx.workstreams.slice(0, 3).map((workstream) => sanitizeMissionText(workstream.title)).join(", ");
-    if (classification.intent === "technical_debugging") {
-      return `Start with measurement, then fix the highest-impact bottlenecks found in ${topWorkstreams}. Avoid cosmetic memoization until profiling proves it matters. Validate every optimization with before/after metrics and regression monitoring.`;
-    }
-    if (classification.isLaunch) {
-      return `Proceed through validation, positioning, campaign execution, and risk gates. Use ${topWorkstreams} as the launch backbone and do not scale spend until the validation workstream is complete.`;
-    }
-    if (classification.intent === "product_strategy") {
-      return `Use the workstream outputs to compare options against user impact, implementation cost, and risk. Make the decision only after the mediator resolves the highest-impact tradeoff.`;
-    }
-    return `Proceed with the highest-confidence workstreams first: ${topWorkstreams}. Revisit lower-confidence areas before committing irreversible resources.`;
+    const parsedOutputs = ctx.dialogue.map((entry) => this.tryParseAgentOutput(entry.content)).filter((output): output is AgentStructuredOutput => Boolean(output));
+    const recommendations = sanitizeMissionList(parsedOutputs.flatMap((output) => output.usefulOutput?.recommendations ?? []));
+    if (recommendations.length) return recommendations.slice(0, 8).map((item, index) => `${index + 1}. ${item}`).join("\n");
+    const topWorkstreams = ctx.workstreams.slice(0, 4).map((workstream) => sanitizeMissionText(workstream.title)).join(", ");
+    return `Use ${topWorkstreams} as the backbone for solving "${classification.semantic.objective}". Complete the domain-specific validation checks before spending money, changing systems, or treating the answer as final.`;
   }
 
   private timelineDescription(phase: MissionState) {
