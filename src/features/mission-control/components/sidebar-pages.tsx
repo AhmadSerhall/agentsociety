@@ -263,7 +263,7 @@ function AgentsPage() {
       <div className={cardClass()}>
         <h3 className="text-sm font-semibold text-white">Agent Society Collaboration Map</h3>
         <div className="mt-5 grid gap-3 lg:grid-cols-[1fr_1.2fr_1fr]">
-          <div className="space-y-10">
+          <div className="space-y-8">
             {AGENT_DEFINITIONS.slice(0, 4).map((agent) => <AgentMapNode key={agent.id} agent={agent} />)}
           </div>
           <div className="grid min-h-48 place-items-center rounded-3xl border border-cyan-200/15 bg-cyan-300/[0.055] p-5 text-center shadow-[0_0_60px_rgba(34,211,238,0.12)]">
