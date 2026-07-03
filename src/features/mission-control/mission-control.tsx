@@ -79,6 +79,29 @@ export function MissionControl() {
   const involvedAgents = useMemo(() => {
     const roles = new Set<AgentRole>();
     const currentContext = context;
+
+    if (replayMode === "replay") {
+      currentContext?.replayEvents.forEach((event) => {
+        if (
+          event.agentRole &&
+          event.relativeTimestamp > 0 &&
+          event.relativeTimestamp <= replayTime &&
+          (event.type === "PLANNER_STARTED" ||
+            event.type === "AGENT_STARTED" ||
+            event.type === "MEDIATOR_STARTED" ||
+            event.type === "MEDIATION_STARTED" ||
+            event.type === "FINALIZER_STARTED")
+        ) {
+          roles.add(event.agentRole);
+        }
+      });
+      return Array.from(roles).sort((left, right) => {
+        const leftIndex = AGENT_ORDER.indexOf(left);
+        const rightIndex = AGENT_ORDER.indexOf(right);
+        return (leftIndex === -1 ? 99 : leftIndex) - (rightIndex === -1 ? 99 : rightIndex);
+      });
+    }
+
     if (currentContext && currentContext.status !== MissionState.Idle) roles.add(AgentRole.Planner);
     currentContext?.workstreams.forEach((workstream) => {
       if (workstream.assignedAgent) roles.add(workstream.assignedAgent);
@@ -107,7 +130,7 @@ export function MissionControl() {
       const rightIndex = AGENT_ORDER.indexOf(right);
       return (leftIndex === -1 ? 99 : leftIndex) - (rightIndex === -1 ? 99 : rightIndex);
     });
-  }, [context]);
+  }, [context, replayMode, replayTime]);
   const previousReplayMode = useRef(replayMode);
   const fadeUp = useFadeInUp();
   const stagger = useStaggerContainer();

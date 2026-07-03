@@ -71,6 +71,7 @@ export function ReplayControlBar() {
   const [pip, setPip] = useState(false);
   const [position, setPosition] = useState({ x: 24, y: 220 });
   const positionInitializedRef = useRef(false);
+  const replayFrameRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<{ originX: number; originY: number; startX: number; startY: number } | null>(null);
 
   const duration = getReplayDuration(events);
@@ -82,11 +83,16 @@ export function ReplayControlBar() {
       return;
     }
     if (positionInitializedRef.current || typeof window === "undefined") return;
-    const width = Math.min(window.innerWidth - 32, 1440);
-    setPosition({
-      x: Math.max(16, (window.innerWidth - width) / 2),
-      y: Math.max(24, window.innerHeight - 405),
-    });
+    const placeAtBottom = () => {
+      const width = Math.min(window.innerWidth - 32, 1440);
+      const height = replayFrameRef.current?.getBoundingClientRect().height ?? 360;
+      setPosition({
+        x: Math.max(16, (window.innerWidth - width) / 2),
+        y: Math.max(8, window.innerHeight - height - 8),
+      });
+    };
+    placeAtBottom();
+    window.requestAnimationFrame(placeAtBottom);
     positionInitializedRef.current = true;
   }, [mode]);
 
@@ -185,6 +191,7 @@ export function ReplayControlBar() {
 
   return (
     <motion.div
+      ref={replayFrameRef}
       initial={{ opacity: 0, y: 24, scale: 0.98 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       className={`fixed z-50 cursor-grab select-none text-white active:cursor-grabbing ${overlayWidthClass}`}
