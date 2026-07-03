@@ -2,13 +2,12 @@
 
 import { useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Download, Eye, Network, PlayCircle, RotateCcw, Sparkles } from "lucide-react";
+import { Eye, Network, PlayCircle, RotateCcw, Sparkles } from "lucide-react";
 import { AGENT_DEFINITIONS } from "@/agents";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useMissionStore } from "@/store";
 import { MissionState, type AgentDialogueEntry, type ExecutionTask } from "@/types";
-import { downloadText, reportToMarkdown } from "@/utils";
 import { AgentContributionDrawer } from "./agent-contribution-drawer";
 import { AgentRoster } from "./agent-roster";
 import { AgentSpeechBubble } from "./agent-speech-bubble";
@@ -85,13 +84,12 @@ export function AgentCouncilRoom({
             <div>
               <Badge className="bg-emerald-300/15 text-emerald-100 hover:bg-emerald-300/15">Mission Report Ready</Badge>
               <h3 className="mt-3 text-2xl font-bold text-white">The council has synchronized the final synthesis.</h3>
-              <p className="mt-1 max-w-3xl text-sm leading-relaxed text-white/60">Review the detailed report, export the result, replay recorded events, or start a fresh objective.</p>
+              <p className="mt-1 max-w-3xl text-sm leading-relaxed text-white/60">Review the detailed report, replay recorded events, or start a fresh objective.</p>
             </div>
             <div className="flex flex-wrap gap-2">
               <Button onClick={onViewReport} className="gap-2 bg-cyan-300 text-[#06101f] shadow-[0_0_28px_rgba(34,211,238,0.22)] hover:bg-cyan-200 focus-visible:ring-cyan-200"><Eye className="h-4 w-4" /> View Full Report</Button>
-              {context.finalReport && <Button variant="outline" onClick={() => downloadText("agent-society-report.md", reportToMarkdown(context.finalReport!), "text/markdown")} className="gap-2 border-white/10 bg-white/[0.04] text-white/70 hover:bg-white/[0.08] hover:text-white"><Download className="h-4 w-4" /> Export Markdown</Button>}
               <Button variant="outline" onClick={onReplayMission} className="gap-2 border-white/10 bg-white/[0.04] text-white/70 hover:bg-white/[0.08] hover:text-white"><PlayCircle className="h-4 w-4" /> Replay Mission</Button>
-              <Button variant="outline" onClick={onStartNew} className="gap-2 border-purple-300/20 bg-purple-400/10 text-purple-100 hover:bg-purple-400/15"><RotateCcw className="h-4 w-4" /> Start New Mission</Button>
+              <Button variant="outline" onClick={onStartNew} className="gap-2 border-purple-300/20 bg-purple-400/10 text-purple-100 hover:bg-purple-400/15"><RotateCcw className="h-4 w-4" /> New Mission</Button>
             </div>
           </div>
         </motion.div>

@@ -18,7 +18,7 @@ export function DialoguePanel() {
     <div className="min-h-[260px]">
       <div className="space-y-4">
         {dialogue.map((entry, index) => {
-          const def = AGENT_DEFINITIONS.find((agent) => agent.id === entry.agentId);
+          const def = AGENT_DEFINITIONS.find((agent) => agent.id === entry.agentId || agent.role === entry.agentRole);
           const color = def?.color ?? "#22d3ee";
           const output = normalizeDialogueEntry(entry);
           return (

@@ -55,6 +55,19 @@ function isImportantReplayEvent(event?: MissionReplayEvent) {
     event.type === "SYNCHRONIZATION_POINT_REACHED";
 }
 
+function normalizeReplayStart(events: MissionReplayEvent[]) {
+  const sorted = [...events].sort((a, b) => a.relativeTimestamp - b.relativeTimestamp || a.timestamp.localeCompare(b.timestamp));
+  const missionStart = sorted.find((event) => event.type === "MISSION_STARTED");
+  const baseTime = missionStart?.relativeTimestamp ?? 0;
+
+  return sorted
+    .map((event) => ({
+      ...event,
+      relativeTimestamp: Math.max(0, event.relativeTimestamp - baseTime),
+    }))
+    .sort((a, b) => a.relativeTimestamp - b.relativeTimestamp || a.timestamp.localeCompare(b.timestamp));
+}
+
 export const useReplayStore = create<ReplayState>((set, get) => ({
   mode: "live",
   replayStatus: "idle",
@@ -69,15 +82,15 @@ export const useReplayStore = create<ReplayState>((set, get) => ({
 
   startReplay: (events) => {
     setReplayGuard(true);
-    const sorted = [...events].sort((a, b) => a.relativeTimestamp - b.relativeTimestamp);
-    applyReplayState(sorted, 0);
+    const normalized = normalizeReplayStart(events);
+    applyReplayState(normalized, 0);
     set({
       mode: "replay",
       replayStatus: "paused",
       replayTime: 0,
-      replayEvents: sorted,
-      bookmarks: createReplayBookmarks(sorted),
-      selectedReplayEvent: null,
+      replayEvents: normalized,
+      bookmarks: createReplayBookmarks(normalized),
+      selectedReplayEvent: normalized.filter((event) => event.relativeTimestamp <= 0).at(-1) ?? null,
     });
   },
   exitReplay: () => {

@@ -20,7 +20,7 @@ import { useMissionStore } from "@/store";
 import { useHistoryStore, useRuntimeSettingsStore, useReplayStore } from "@/store";
 import { useFadeInUp, useStaggerContainer } from "@/hooks";
 import { getQwenRuntimeInfo } from "@/services/qwen";
-import { MISSION_TYPE_LABELS, DEPTH_LABELS, TIME_HORIZON_LABELS, BUDGET_RANGE_LABELS, RISK_TOLERANCE_LABELS, OUTPUT_FORMAT_LABELS, MissionState, type MissionConfiguration, type MissionType, type Depth, type TimeHorizon, type BudgetRange, type RiskTolerance, type OutputFormat } from "@/types";
+import { MISSION_TYPE_LABELS, DEPTH_LABELS, TIME_HORIZON_LABELS, BUDGET_RANGE_LABELS, RISK_TOLERANCE_LABELS, OUTPUT_FORMAT_LABELS, MissionState, AgentRole, type MissionConfiguration, type MissionType, type Depth, type TimeHorizon, type BudgetRange, type RiskTolerance, type OutputFormat } from "@/types";
 import {
   AgentWorkflowPanel, WorkstreamsPanel, DialoguePanel,
   ConflictPanel, ReportPanel, TimelinePanel, EfficiencyPanel,
@@ -30,13 +30,24 @@ import { SpaceBackground } from "@/components/space-background";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { MissionBriefComposer } from "./components/mission-brief-composer";
 import { MissionSidebar, MissionSidebarContent, type MissionView } from "./components/mission-sidebar";
-import { MissionStatusBar } from "./components/mission-status-bar";
 import { SidebarPageView } from "./components/sidebar-pages";
 import { ReplayControlBar } from "./components/replay-control-bar";
 import { AgentCouncilRoom } from "./components/council/agent-council-room";
 import { CompactMissionHeader } from "./components/council/compact-mission-header";
 import { downloadText, generateId, reportToMarkdown } from "@/utils";
 import { toast } from "@/hooks/use-toast";
+
+const AGENT_ORDER: AgentRole[] = [
+  AgentRole.Planner,
+  AgentRole.Researcher,
+  AgentRole.ProductStrategist,
+  AgentRole.TechnicalArchitect,
+  AgentRole.MarketingStrategist,
+  AgentRole.Finance,
+  AgentRole.RiskCritic,
+  AgentRole.Mediator,
+  AgentRole.Finalizer,
+];
 
 export function MissionControl() {
   const [brief, setBrief] = useState("");
@@ -47,9 +58,11 @@ export function MissionControl() {
   const [apiKeyRequiredOpen, setApiKeyRequiredOpen] = useState(false);
   const [replayComingOpen, setReplayComingOpen] = useState(false);
   const [highlightReportTab, setHighlightReportTab] = useState(false);
+  const [completionToastOpen, setCompletionToastOpen] = useState(false);
   const [activeView, setActiveView] = useState<MissionView>("mission-control");
   const [activeMissionTab, setActiveMissionTab] = useState("workflow");
   const tabsRef = useRef<HTMLDivElement | null>(null);
+  const previousStatus = useRef<MissionState | undefined>(undefined);
   const { context, isRunning, launch, cancel } = useMissionEngine();
   const loadHistory = useHistoryStore((s) => s.load);
   const loadRuntimeSettings = useRuntimeSettingsStore((s) => s.load);
@@ -57,17 +70,44 @@ export function MissionControl() {
   const progress = useMissionStore((s) => s.context?.progress ?? 0);
   const status = useMissionStore((s) => s.context?.status);
   const resetMission = useMissionStore((s) => s.reset);
-  const activeAgents = useMissionStore((s) => {
-    const runningTaskAgents = new Set(s.context?.executionTasks.filter((task) => task.status === "running").map((task) => task.agent) ?? []);
-    if (runningTaskAgents.size > 0) return runningTaskAgents.size;
-    return s.context?.currentAgent ? 1 : 0;
-  });
   const replayMode = useReplayStore((s) => s.mode);
   const replayEvents = useReplayStore((s) => s.replayEvents);
   const replayTime = useReplayStore((s) => s.replayTime);
   const autoFollow = useReplayStore((s) => s.autoFollowEnabled);
   const tickReplay = useReplayStore((s) => s.tick);
   const startReplay = useReplayStore((s) => s.startReplay);
+  const involvedAgents = useMemo(() => {
+    const roles = new Set<AgentRole>();
+    const currentContext = context;
+    if (currentContext && currentContext.status !== MissionState.Idle) roles.add(AgentRole.Planner);
+    currentContext?.workstreams.forEach((workstream) => {
+      if (workstream.assignedAgent) roles.add(workstream.assignedAgent);
+    });
+    currentContext?.executionTasks.forEach((task) => {
+      roles.add(task.agent);
+    });
+    currentContext?.replayEvents.forEach((event) => {
+      if (
+        event.agentRole &&
+        (event.type === "PLANNER_STARTED" ||
+          event.type === "AGENT_STARTED" ||
+          event.type === "MEDIATOR_STARTED" ||
+          event.type === "MEDIATION_STARTED" ||
+          event.type === "FINALIZER_STARTED")
+      ) {
+        roles.add(event.agentRole);
+      }
+    });
+    if (currentContext?.currentAgent) roles.add(currentContext.currentAgent);
+    if (currentContext?.finalReport || currentContext?.status === MissionState.Completed || currentContext?.status === MissionState.Finalizing) {
+      roles.add(AgentRole.Finalizer);
+    }
+    return Array.from(roles).sort((left, right) => {
+      const leftIndex = AGENT_ORDER.indexOf(left);
+      const rightIndex = AGENT_ORDER.indexOf(right);
+      return (leftIndex === -1 ? 99 : leftIndex) - (rightIndex === -1 ? 99 : rightIndex);
+    });
+  }, [context]);
   const previousReplayMode = useRef(replayMode);
   const fadeUp = useFadeInUp();
   const stagger = useStaggerContainer();
@@ -79,6 +119,16 @@ export function MissionControl() {
     loadHistory();
     loadRuntimeSettings();
   }, [loadHistory, loadRuntimeSettings]);
+
+  useEffect(() => {
+    if (previousStatus.current && previousStatus.current !== MissionState.Completed && status === MissionState.Completed && replayMode === "live") {
+      setCompletionToastOpen(true);
+      const timeout = window.setTimeout(() => setCompletionToastOpen(false), 3600);
+      previousStatus.current = status;
+      return () => window.clearTimeout(timeout);
+    }
+    previousStatus.current = status;
+  }, [replayMode, status]);
 
   useEffect(() => {
     if (replayMode !== "replay") return;
@@ -162,7 +212,7 @@ export function MissionControl() {
   const handleReplayMission = () => {
     if (context?.replayEvents?.length) {
       startReplay(context.replayEvents);
-      tabsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      window.setTimeout(() => document.querySelector("[data-compact-mission-header]")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
       return;
     }
     setReplayComingOpen(true);
@@ -205,12 +255,6 @@ export function MissionControl() {
               </div>
               <div className="h-2.5 w-2.5 rounded-full bg-emerald-300 shadow-[0_0_18px_rgba(110,231,183,0.8)]" />
             </div>
-
-            <MissionStatusBar
-              activeAgents={activeAgents}
-              status={status}
-              mode={runtimeInfo.provider}
-            />
 
             {activeView === "mission-control" ? (
               <>
@@ -268,7 +312,7 @@ export function MissionControl() {
                       exit={{ opacity: 0 }}
                       className="space-y-4"
                     >
-                      <CompactMissionHeader activeAgents={activeAgents} onCancel={cancel} onStartNew={handleStartNewMission} />
+                      <CompactMissionHeader involvedAgents={involvedAgents} onCancel={cancel} />
                       <AgentCouncilRoom onViewReport={handleViewFullReport} onReplayMission={handleReplayMission} onStartNew={handleStartNewMission} />
                     </motion.div>
                   )}
@@ -309,6 +353,7 @@ export function MissionControl() {
                   startReplay(events);
                   setActiveView("mission-control");
                   setActiveMissionTab("workflow");
+                  window.setTimeout(() => document.querySelector("[data-compact-mission-header]")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
                 }}
               />
             )}
@@ -316,6 +361,29 @@ export function MissionControl() {
           </motion.div>
         </main>
       </div>
+
+      <AnimatePresence>
+        {completionToastOpen && (
+          <motion.div
+            initial={{ opacity: 0, x: 36, scale: 0.96 }}
+            animate={{ opacity: 1, x: 0, scale: 1 }}
+            exit={{ opacity: 0, x: 36, scale: 0.96 }}
+            transition={{ type: "spring", stiffness: 360, damping: 28 }}
+            className="fixed right-5 top-5 z-[80] overflow-hidden rounded-2xl border border-emerald-200/25 bg-[#07111f]/92 px-4 py-3 text-white shadow-[0_24px_90px_rgba(16,185,129,0.28)] backdrop-blur-2xl"
+          >
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-emerald-300 to-transparent" />
+            <div className="flex items-center gap-3">
+              <div className="grid h-10 w-10 place-items-center rounded-2xl border border-emerald-200/25 bg-emerald-300/12 text-emerald-100 shadow-[0_0_28px_rgba(16,185,129,0.35)]">
+                <CheckCircle2 className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-[0.22em] text-emerald-100/65">Mission Status</p>
+                <p className="text-sm font-semibold text-white">Completed</p>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Validation Dialog */}
       <Dialog open={validationOpen} onOpenChange={setValidationOpen}>
@@ -441,8 +509,11 @@ function MissionOutcomeCard({
       configuration: context.configuration,
       timestamp: new Date().toISOString(),
       savedAt: new Date().toISOString(),
+      startedAt: context.startedAt,
+      completedAt: context.completedAt,
       workstreams: context.workstreams,
-      dialogue: context.dialogue.map((entry) => ({ agentName: entry.agentName, content: entry.content })),
+      dialogue: context.dialogue,
+      timeline: context.timeline,
       conflicts: context.conflicts.map((conflict) => ({ description: conflict.description, resolution: conflict.resolution ?? conflict.mediatorDecision })),
       finalReport: context.finalReport,
       efficiencyMetrics: context.efficiencyMetrics,

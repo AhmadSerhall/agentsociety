@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { motion } from "framer-motion";
 import { AGENT_DEFINITIONS } from "@/agents";
@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
-import { computeReplayStats, getReplayDuration } from "@/services/replay/replay-engine";
+import { getReplayDuration } from "@/services/replay/replay-engine";
 import { useReplayStore } from "@/store";
 import type { MissionReplayEvent } from "@/types";
 import { ChevronLeft, ChevronRight, Eye, Gauge, Maximize2, Minimize2, Pause, PictureInPicture2, Play, RotateCcw, Search, Square, X } from "lucide-react";
@@ -75,7 +75,6 @@ export function ReplayControlBar() {
 
   const duration = getReplayDuration(events);
   const activeEvent = selectedEvent ?? currentEvent(events, replayTime);
-  const stats = useMemo(() => computeReplayStats(events, duration / Math.max(0.1, speed)), [duration, events, speed]);
 
   useEffect(() => {
     if (mode !== "replay") {
@@ -86,7 +85,7 @@ export function ReplayControlBar() {
     const width = Math.min(window.innerWidth - 32, 1440);
     setPosition({
       x: Math.max(16, (window.innerWidth - width) / 2),
-      y: Math.max(24, window.innerHeight - 460),
+      y: Math.max(24, window.innerHeight - 405),
     });
     positionInitializedRef.current = true;
   }, [mode]);
@@ -264,14 +263,6 @@ export function ReplayControlBar() {
                     {bookmark.label}
                   </button>
                 ))}
-              </div>
-
-              <div className="grid gap-2 text-xs text-white/52 sm:grid-cols-2 xl:grid-cols-5">
-                <span>Events: {stats.totalEventsProcessed}</span>
-                <span>Messages: {stats.agentMessages}</span>
-                <span>Conflicts: {stats.resolvedConflicts}/{stats.conflicts}</span>
-                <span>Peak parallelism: {stats.peakParallelism}</span>
-                <span>Avg confidence: {stats.averageConfidence}%</span>
               </div>
             </div>
 

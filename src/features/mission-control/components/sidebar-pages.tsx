@@ -43,14 +43,18 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "@/hooks/use-toast";
 import { getQwenRuntimeInfo } from "@/services/qwen";
+import { buildMissionStateFromEvents, getReplayDuration } from "@/services/replay/replay-engine";
 import { useHistoryStore, useMissionStore, useRuntimeSettingsStore } from "@/store";
 import {
   AgentRole,
   MissionState,
+  type AgentDialogueEntry,
+  type AgentThinkingState,
   type MissionConfiguration,
   type MissionContext,
   type MissionHistoryEntry,
   type MissionReplayEvent,
+  type TimelineEntry,
 } from "@/types";
 import { downloadText, generateId, historyEntryToMarkdown, sanitizeMissionText } from "@/utils";
 import type { MissionView } from "./mission-sidebar";
@@ -80,6 +84,24 @@ function filenameSafe(text: string) {
 }
 
 function contextFromHistory(entry: MissionHistoryEntry): MissionContext {
+  if (entry.replayEvents?.length) {
+    const reconstructed = buildMissionStateFromEvents(entry.replayEvents, getReplayDuration(entry.replayEvents));
+    const completedAt = reconstructed.completedAt ?? entry.completedAt ?? entry.timestamp;
+    return {
+      ...reconstructed,
+      missionId: entry.id,
+      missionBrief: entry.missionBrief,
+      configuration: entry.configuration,
+      finalReport: entry.finalReport ?? reconstructed.finalReport,
+      efficiencyMetrics: entry.efficiencyMetrics ?? reconstructed.efficiencyMetrics,
+      status: entry.finalReport ? MissionState.Completed : reconstructed.status,
+      progress: entry.finalReport ? 1 : reconstructed.progress,
+      startedAt: reconstructed.startedAt ?? entry.startedAt ?? startFromDuration(completedAt, entry.efficiencyMetrics?.executionDurationMs),
+      completedAt,
+      replayEvents: entry.replayEvents,
+    };
+  }
+
   const workstreamTaskIds = new Map(entry.workstreams.map((workstream, index) => [workstream.id, `${entry.id}-task-${index}`]));
   const executionTasks = entry.workstreams.map((workstream, index) => ({
     id: `${entry.id}-task-${index}`,
@@ -96,6 +118,9 @@ function contextFromHistory(entry: MissionHistoryEntry): MissionContext {
     startedAt: workstream.startedAt,
     completedAt: workstream.completedAt,
   }));
+  const workedRoles = workedRolesFromEntry(entry, executionTasks.map((task) => task.agent));
+  const completedAt = entry.completedAt ?? entry.timestamp;
+  const startedAt = entry.startedAt ?? startFromDuration(completedAt, entry.efficiencyMetrics?.executionDurationMs);
 
   return {
     missionId: entry.id,
@@ -117,35 +142,92 @@ function contextFromHistory(entry: MissionHistoryEntry): MissionContext {
     })),
     mediatorDecisions: entry.conflicts.map((conflict) => conflict.resolution).filter(Boolean).join("\n\n"),
     finalReport: entry.finalReport,
-    dialogue: entry.dialogue.map((dialogue, index) => ({
-      agentId: `history-${index}`,
-      agentName: dialogue.agentName,
-      agentRole: agentRoleFromName(dialogue.agentName) ?? AGENT_DEFINITIONS[index]?.role ?? AGENT_DEFINITIONS[0].role,
-      content: dialogue.content,
-      timestamp: entry.timestamp,
-    })),
-    timeline: [],
+    dialogue: entry.dialogue.map((dialogue, index) => normalizeHistoryDialogue(dialogue, index, entry.timestamp)),
+    timeline: entry.timeline?.length ? entry.timeline : timelineFromHistory(entry, startedAt, completedAt),
     efficiencyMetrics: entry.efficiencyMetrics,
     currentAgent: null,
-    agentStates: {
-      planner: "complete",
-      researcher: "complete",
-      "product-strategist": "complete",
-      "technical-architect": "complete",
-      "marketing-strategist": "complete",
-      finance: "complete",
-      "risk-critic": "complete",
-      mediator: "complete",
-      finalizer: "complete",
-    },
+    agentStates: agentStatesFromWorkedRoles(workedRoles),
     executionTasks,
     missionGraph: null,
     progress: entry.finalReport ? 1 : 0.5,
     status: entry.finalReport ? MissionState.Completed : MissionState.Cancelled,
-    startedAt: entry.timestamp,
-    completedAt: entry.timestamp,
+    startedAt,
+    completedAt,
     replayEvents: entry.replayEvents ?? [],
   };
+}
+
+function startFromDuration(completedAt: string | null | undefined, durationMs?: number) {
+  if (!completedAt || !durationMs) return completedAt ?? null;
+  const end = new Date(completedAt).getTime();
+  if (!Number.isFinite(end)) return completedAt;
+  return new Date(Math.max(0, end - durationMs)).toISOString();
+}
+
+function workedRolesFromEntry(entry: MissionHistoryEntry, taskAgents: AgentRole[]) {
+  const roles = new Set<AgentRole>([AgentRole.Planner, AgentRole.Finalizer, ...taskAgents]);
+  entry.workstreams.forEach((workstream) => {
+    if (workstream.assignedAgent) roles.add(workstream.assignedAgent);
+  });
+  return roles;
+}
+
+function agentStatesFromWorkedRoles(workedRoles: Set<AgentRole>): Record<AgentRole, AgentThinkingState> {
+  return Object.fromEntries(
+    AGENT_DEFINITIONS.map((agent) => [agent.role, workedRoles.has(agent.role) ? "complete" : "waiting"]),
+  ) as Record<AgentRole, AgentThinkingState>;
+}
+
+function normalizeHistoryDialogue(dialogue: MissionHistoryEntry["dialogue"][number], index: number, fallbackTimestamp: string): AgentDialogueEntry {
+  if ("agentRole" in dialogue) {
+    const definition = AGENT_DEFINITIONS.find((agent) => agent.role === dialogue.agentRole);
+    return {
+      ...dialogue,
+      agentId: dialogue.agentId || definition?.id || `history-${index}`,
+      timestamp: dialogue.timestamp || fallbackTimestamp,
+    };
+  }
+  const role = agentRoleFromName(dialogue.agentName) ?? AgentRole.Planner;
+  const definition = AGENT_DEFINITIONS.find((agent) => agent.role === role);
+  return {
+    agentId: definition?.id ?? `history-${index}`,
+    agentName: dialogue.agentName,
+    displayRole: definition?.name,
+    agentRole: role,
+    content: dialogue.content,
+    timestamp: fallbackTimestamp,
+  };
+}
+
+function timelineFromHistory(entry: MissionHistoryEntry, startedAt: string | null, completedAt: string | null): TimelineEntry[] {
+  const firstTask = entry.workstreams.find((workstream) => workstream.assignedAgent);
+  return [
+    {
+      agent: AgentRole.Planner,
+      state: MissionState.Planning,
+      label: "Planner completed mission graph",
+      description: `${entry.workstreams.length} workstreams were assigned.`,
+      timestamp: startedAt ?? entry.timestamp,
+      kind: "agent",
+    },
+    ...entry.workstreams.map((workstream) => ({
+      agent: workstream.assignedAgent ?? AgentRole.Researcher,
+      state: MissionState.Completed,
+      label: `${workstream.title} completed`,
+      description: workstream.description || workstream.output || "Workstream completed.",
+      timestamp: workstream.completedAt ?? completedAt ?? entry.timestamp,
+      duration: workstream.startedAt && workstream.completedAt ? Math.max(0, new Date(workstream.completedAt).getTime() - new Date(workstream.startedAt).getTime()) : undefined,
+      kind: "agent" as const,
+    })),
+    {
+      agent: AgentRole.Finalizer,
+      state: MissionState.Completed,
+      label: "Final report generated",
+      description: firstTask ? "Finalizer synthesized completed workstreams into the mission report." : "Finalizer produced the mission report.",
+      timestamp: completedAt ?? entry.timestamp,
+      kind: "report",
+    },
+  ];
 }
 
 function agentRoleFromName(name: string): AgentRole | null {
