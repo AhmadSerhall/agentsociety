@@ -7,6 +7,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import type { ConflictInfo, ExecutionTask } from "@/types";
 import { sanitizeUserFacingText } from "@/utils";
 import { displayRoleForTask, displayTaskOutput, displayWorkstreamTitle } from "./agent-output-formatter";
+import { renderConflict } from "./presentation-renderer";
 
 export function WorkstreamInspector({ task, conflicts, open, onOpenChange }: { task: ExecutionTask | null; conflicts: ConflictInfo[]; open: boolean; onOpenChange: (open: boolean) => void }) {
   return (
@@ -34,12 +35,15 @@ export function WorkstreamInspector({ task, conflicts, open, onOpenChange }: { t
               <p className="whitespace-pre-wrap text-sm leading-relaxed text-white/64">{displayTaskOutput(task.output)}</p>
             </Section>
             <Section title="Conflicts">
-              {conflicts.length ? conflicts.map((conflict) => (
-                <div key={conflict.id} className="rounded-xl border border-amber-200/15 bg-amber-300/[0.055] p-3">
-                  <p className="text-sm font-medium text-amber-100">{sanitizeUserFacingText(conflict.title ?? "Active disagreement")}</p>
-                  <p className="mt-1 text-sm leading-relaxed text-white/58">{sanitizeUserFacingText(conflict.summary ?? conflict.description)}</p>
-                </div>
-              )) : <p className="text-sm text-white/45">No conflicts attached to this workstream.</p>}
+              {conflicts.length ? conflicts.map((conflict) => {
+                const rendered = renderConflict(conflict);
+                return (
+                  <div key={conflict.id} className="rounded-xl border border-amber-200/15 bg-amber-300/[0.055] p-3">
+                    <p className="text-sm font-medium text-amber-100">{rendered.title}</p>
+                    <p className="mt-1 text-sm leading-relaxed text-white/58">{rendered.summary}</p>
+                  </div>
+                );
+              }) : <p className="text-sm text-white/45">No conflicts attached to this workstream.</p>}
             </Section>
           </div>
         ) : null}

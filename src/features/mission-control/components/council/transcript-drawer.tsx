@@ -6,13 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { useRuntimeSettingsStore } from "@/store";
 import type { AgentDialogueEntry } from "@/types";
 import { sanitizeUserFacingText } from "@/utils";
 import { normalizeDialogueEntry } from "./agent-output-formatter";
 
 export function TranscriptDrawer({ dialogue, open, onOpenChange, focusEntry }: { dialogue: AgentDialogueEntry[]; open: boolean; onOpenChange: (open: boolean) => void; focusEntry?: AgentDialogueEntry | null }) {
-  const debugMode = useRuntimeSettingsStore((s) => s.developerDebugMode);
   const [query, setQuery] = useState("");
   const [agent, setAgent] = useState("all");
   const [type, setType] = useState("all");
@@ -80,12 +78,6 @@ export function TranscriptDrawer({ dialogue, open, onOpenChange, focusEntry }: {
                       </div>
                     ))}
                   </div>
-                )}
-                {debugMode && (
-                  <details className="mt-3 rounded-xl border border-purple-200/10 bg-purple-300/[0.045] p-3">
-                    <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.16em] text-purple-100">Raw Output</summary>
-                    <pre className="mt-3 max-h-80 overflow-y-auto whitespace-pre-wrap break-words text-xs text-white/58">{output.raw}</pre>
-                  </details>
                 )}
               </article>
             );

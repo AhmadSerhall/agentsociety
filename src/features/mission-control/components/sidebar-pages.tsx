@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   Copy,
   Download,
-  FileJson,
   FileText,
   History,
   KeyRound,
@@ -57,6 +56,7 @@ import {
   type TimelineEntry,
 } from "@/types";
 import { downloadText, generateId, historyEntryToMarkdown, sanitizeMissionText } from "@/utils";
+import { composeReportSections } from "./council/presentation-renderer";
 import type { MissionView } from "./mission-sidebar";
 
 function cardClass() {
@@ -580,7 +580,7 @@ function ReportsPage() {
         <div className="space-y-3">
           {reports.map((entry) => {
             const markdown = historyEntryToMarkdown(entry);
-            const readableReport = sanitizeMissionText(markdown);
+            const sections = entry.finalReport ? composeReportSections(entry.finalReport) : [];
             return (
               <article key={entry.id} className={cardClass()}>
                 <div>
@@ -591,14 +591,19 @@ function ReportsPage() {
                   <div className="mt-5 flex flex-wrap justify-end gap-2">
                     <Button size="sm" variant="outline" onClick={() => copyText(markdown)} className="gap-1 border-white/10 bg-white/[0.04] text-white/70"><Copy className="h-3.5 w-3.5" /> Copy Markdown</Button>
                     <Button size="sm" variant="outline" onClick={() => downloadText(`${filenameSafe(entry.missionBrief)}.md`, markdown, "text/markdown")} className="gap-1 border-white/10 bg-white/[0.04] text-white/70"><Download className="h-3.5 w-3.5" /> Markdown</Button>
-                    <Button size="sm" variant="outline" onClick={() => downloadText(`${filenameSafe(entry.missionBrief)}.json`, JSON.stringify(entry, null, 2), "application/json")} className="gap-1 border-white/10 bg-white/[0.04] text-white/70"><FileJson className="h-3.5 w-3.5" /> JSON</Button>
                   </div>
                 </div>
                 <details className="mt-4 rounded-xl border border-white/10 bg-black/20 p-3">
                   <summary className="cursor-pointer text-sm font-medium text-cyan-100">View report</summary>
-                  <pre className="mt-3 max-h-[52vh] overflow-y-auto whitespace-pre-wrap break-words text-sm leading-relaxed text-white/64">
-                    {readableReport}
-                  </pre>
+                  <div className="mt-3 max-h-[52vh] space-y-3 overflow-y-auto pr-1">
+                    {sections.map((section) => (
+                      <section key={section.title} className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                        <p className="text-[0.65rem] uppercase tracking-[0.16em] text-cyan-100/50">{section.kicker}</p>
+                        <h4 className="mt-1 text-sm font-semibold text-white">{section.title}</h4>
+                        <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-white/64">{section.body}</p>
+                      </section>
+                    ))}
+                  </div>
                 </details>
               </article>
             );

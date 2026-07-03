@@ -6,7 +6,6 @@ import { AlertTriangle, GitBranch, ShieldCheck, Sparkles } from "lucide-react";
 import { AGENT_DEFINITIONS } from "@/agents";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { useRuntimeSettingsStore } from "@/store";
 import type { AgentDialogueEntry, AgentRole, MissionContext } from "@/types";
 import { sanitizeUserFacingText } from "@/utils";
 import { normalizeDialogueEntry } from "./agent-output-formatter";
@@ -22,7 +21,6 @@ export function AgentContributionDrawer({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const debugMode = useRuntimeSettingsStore((s) => s.developerDebugMode);
   const agentRole = entry?.agentRole;
   const definition = AGENT_DEFINITIONS.find((agent) => agent.role === agentRole);
 
@@ -68,7 +66,7 @@ export function AgentContributionDrawer({
               </section>
 
               <ContributionSection title="Selected Contribution" icon={<Sparkles className="h-4 w-4" />}>
-                <ContributionMessage message={entry} debugMode={debugMode} />
+                <ContributionMessage message={entry} />
               </ContributionSection>
 
               <ContributionSection title="Related Workstreams" icon={<GitBranch className="h-4 w-4" />}>
@@ -100,7 +98,7 @@ export function AgentContributionDrawer({
               )}
 
               <ContributionSection title={`${entry.agentName} Messages`}>
-                {agentMessages.length ? agentMessages.map((message) => <ContributionMessage key={`${message.agentId}-${message.timestamp}`} message={message} debugMode={debugMode} />) : <EmptyCopy>No messages found for this agent.</EmptyCopy>}
+                {agentMessages.length ? agentMessages.map((message) => <ContributionMessage key={`${message.agentId}-${message.timestamp}`} message={message} />) : <EmptyCopy>No messages found for this agent.</EmptyCopy>}
               </ContributionSection>
             </>
           )}
@@ -122,7 +120,7 @@ function ContributionSection({ title, icon, children }: { title: string; icon?: 
   );
 }
 
-function ContributionMessage({ message, debugMode }: { message: AgentDialogueEntry; debugMode: boolean }) {
+function ContributionMessage({ message }: { message: AgentDialogueEntry }) {
   const output = normalizeDialogueEntry(message);
   return (
     <article className="rounded-xl border border-white/10 bg-black/20 p-3">
@@ -138,12 +136,6 @@ function ContributionMessage({ message, debugMode }: { message: AgentDialogueEnt
           <SectionLabel>Key Findings and Actions</SectionLabel>
           <ul className="mt-1 space-y-1 text-sm text-white/54">{output.bullets.map((bullet) => <li key={bullet}>- {bullet}</li>)}</ul>
         </>
-      )}
-      {debugMode && (
-        <details className="mt-3 rounded-xl border border-purple-200/10 bg-purple-300/[0.045] p-3">
-          <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.16em] text-purple-100">Raw Output</summary>
-          <pre className="mt-3 max-h-72 overflow-y-auto whitespace-pre-wrap break-words text-xs text-white/58">{output.raw}</pre>
-        </details>
       )}
     </article>
   );

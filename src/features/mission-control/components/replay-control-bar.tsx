@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
+import { renderReplayEvent } from "@/features/mission-control/components/council/presentation-renderer";
 import { getReplayDuration } from "@/services/replay/replay-engine";
 import { useReplayStore } from "@/store";
 import type { MissionReplayEvent } from "@/types";
@@ -260,7 +261,7 @@ export function ReplayControlBar() {
                 <div className="flex flex-wrap items-center gap-4 text-xs text-white/55">
                   <label className="flex items-center gap-2"><Switch checked={autoFollow} onCheckedChange={setAutoFollowEnabled} /> Follow</label>
                   <label className="flex items-center gap-2"><Switch checked={adaptive} onCheckedChange={setAdaptiveSpeedEnabled} /> Adaptive</label>
-                  <label className="flex items-center gap-2"><Switch checked={inspector} onCheckedChange={setInspectorEnabled} /> Raw</label>
+                  <label className="flex items-center gap-2"><Switch checked={inspector} onCheckedChange={setInspectorEnabled} /> Details</label>
                 </div>
               </div>
 
@@ -374,6 +375,7 @@ function Timeline({ events, replayTime, duration, onSeek }: { events: MissionRep
 }
 
 function EventInspector({ events, selectedEvent, showRaw, onSelect }: { events: MissionReplayEvent[]; selectedEvent: MissionReplayEvent | null; showRaw: boolean; onSelect: (event: MissionReplayEvent) => void }) {
+  const rendered = renderReplayEvent(selectedEvent);
   return (
     <aside className="rounded-2xl border border-cyan-200/12 bg-cyan-300/[0.045] p-4">
       <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-100/70">
@@ -390,17 +392,22 @@ function EventInspector({ events, selectedEvent, showRaw, onSelect }: { events: 
         </SelectContent>
       </Select>
       <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-3">
-        <p className="text-sm font-semibold text-white">{eventLabel(selectedEvent)}</p>
+        <p className="text-sm font-semibold text-white">{rendered.title || eventLabel(selectedEvent)}</p>
         <p className="mt-1 text-xs text-white/45">{selectedEvent?.type.replace(/_/g, " ") ?? "No event selected"}</p>
         {selectedEvent?.workstreamTitle && <p className="mt-3 text-sm text-white/58">Workstream: {selectedEvent.workstreamTitle}</p>}
         {selectedEvent?.agentName && <p className="mt-1 text-sm text-white/58">Agent: {selectedEvent.agentName}</p>}
       </div>
       {showRaw && (
-        <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-xl border border-purple-200/10 bg-purple-300/[0.045] p-3 text-[0.7rem] leading-relaxed text-white/58">
-          {selectedEvent ? JSON.stringify(selectedEvent, null, 2) : "Select an event to inspect raw replay metadata."}
-        </pre>
+        <div className="mt-3 rounded-xl border border-purple-200/10 bg-purple-300/[0.045] p-3 text-sm leading-relaxed text-white/58">
+          <p>{rendered.summary}</p>
+          {rendered.details.length > 0 && (
+            <ul className="mt-2 space-y-1 text-xs text-white/48">
+              {rendered.details.map((detail) => <li key={detail}>- {detail}</li>)}
+            </ul>
+          )}
+        </div>
       )}
-      {!showRaw && <p className="mt-3 text-xs leading-relaxed text-white/42">Raw metadata is hidden unless the Raw switch is enabled.</p>}
+      {!showRaw && <p className="mt-3 text-xs leading-relaxed text-white/42">Enable Details to see a readable summary of this replay moment.</p>}
     </aside>
   );
 }

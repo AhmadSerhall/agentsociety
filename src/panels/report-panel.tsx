@@ -1,10 +1,11 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { composeReportSections } from "@/features/mission-control/components/council/presentation-renderer";
 import { toast } from "@/hooks/use-toast";
 import { useMissionStore } from "@/store";
 import { CheckCircle2, Copy, Download } from "lucide-react";
-import { downloadText, reportToMarkdown, sanitizeMissionText } from "@/utils";
+import { downloadText, reportToMarkdown } from "@/utils";
 
 export function ReportPanel() {
   const report = useMissionStore((s) => s.context?.finalReport);
@@ -13,22 +14,7 @@ export function ReportPanel() {
     return <p className="text-sm italic text-white/45">The final report will appear once all agents finish or the mission is synthesized.</p>;
   }
 
-  const sections = [
-    { title: "Executive Summary", content: report.executiveSummary },
-    { title: "Mission Objective", content: report.missionObjective },
-    { title: "Selected Mission Configuration", content: report.selectedMissionConfiguration },
-    { title: "Workstreams", content: report.workstreams },
-    { title: "Agent Contributions", content: report.agentContributions },
-    { title: "Key Disagreements", content: report.keyDisagreements },
-    { title: "Mediator Decisions", content: report.mediatorDecisions },
-    { title: "Execution Roadmap", content: report.executionRoadmap },
-    { title: "Timeline", content: report.timeline },
-    { title: "Budget / Resource Estimate", content: report.budgetEstimate },
-    { title: "Risk Assessment", content: report.riskAssessment },
-    { title: "Success Metrics", content: report.successMetrics },
-    { title: "Single-Agent vs Multi-Agent Comparison", content: report.singleAgentComparison },
-    { title: "Final Recommendations", content: report.finalRecommendations },
-  ];
+  const sections = composeReportSections(report);
   const markdown = reportToMarkdown(report);
 
   return (
@@ -56,13 +42,21 @@ export function ReportPanel() {
       </div>
       <div className="min-h-[320px]">
         <div className="space-y-5">
-          {sections.filter((section) => section.content).map((section) => (
+          {sections.map((section) => (
             <section key={section.title} className="overflow-hidden rounded-2xl border border-white/10 bg-black/20 p-4">
               <h4 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.22em] text-cyan-100/60">
                 <CheckCircle2 className="h-3.5 w-3.5 text-cyan-200/60" />
-                {section.title}
+                <span className="text-cyan-100/45">{section.kicker}</span>
               </h4>
-              <div className="mt-3 whitespace-pre-wrap break-words text-sm leading-relaxed text-white/68">{sanitizeMissionText(section.content)}</div>
+              <h3 className="mt-2 text-lg font-semibold text-white">
+                {section.title}
+              </h3>
+              <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-relaxed text-white/68">{section.body}</p>
+              {section.bullets.length > 0 && (
+                <ul className="mt-3 space-y-1.5 text-sm text-white/58">
+                  {section.bullets.map((bullet) => <li key={bullet} className="flex gap-2"><span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-cyan-300" />{bullet}</li>)}
+                </ul>
+              )}
             </section>
           ))}
         </div>

@@ -6,9 +6,10 @@ import { getAgentByRole } from "@/agents";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { renderAgentMessage, renderConflict, renderTimelineEntry, renderWorkstream } from "@/features/mission-control/components/council/presentation-renderer";
 import { useMissionStore, useReplayStore } from "@/store";
 import { AgentRole, MissionState } from "@/types";
-import { formatDuration, formatRelativeTime, sanitizeMissionText } from "@/utils";
+import { formatDuration, formatRelativeTime } from "@/utils";
 import { AlertTriangle, CheckCircle2, CircleDashed, Clock3, Loader2, RadioTower, Shield, X } from "lucide-react";
 import { NetworkGraphPanel } from "@/panels";
 
@@ -114,17 +115,19 @@ export function MissionWarRoom({ onCancel }: { onCancel: () => void }) {
 
           <WarCard title="Mission Graph Workstreams" icon={<Shield className="h-4 w-4" />}>
             <div className="space-y-2">
-              {workstreams.slice(0, 7).map((ws) => (
+              {workstreams.slice(0, 7).map((ws) => {
+                const rendered = renderWorkstream(ws);
+                return (
                 <div key={ws.id} className={`rounded-xl border p-3 ${ws.status === "in_progress" || ws.status === "ready" ? "border-cyan-200/35 bg-cyan-300/10" : ws.status === "blocked" ? "border-amber-200/35 bg-amber-400/10" : ws.status === "revised" ? "border-blue-200/25 bg-blue-400/10" : "border-white/10 bg-black/15"}`}>
                   <div className="flex items-start justify-between gap-2">
-                    <p className="text-sm font-medium text-white">{sanitizeMissionText(ws.title)}</p>
+                    <p className="text-sm font-medium text-white">{rendered.title}</p>
                     <Badge variant="outline" className="shrink-0 border-white/10 bg-white/[0.04] text-[0.62rem] capitalize text-white/60">{ws.status.replace("_", " ")}</Badge>
                   </div>
                   <p className="mt-1 text-xs text-white/42">{getAgentByRole(ws.assignedAgent ?? AgentRole.Planner)?.name ?? ws.owner ?? "Owner pending"}</p>
                   <p className="mt-1 text-[0.65rem] text-white/32">{ws.dependencies?.length || 0} dependencies {ws.nextStep ? " · planner revised" : ""}</p>
                   <Progress value={ws.confidence ?? 60} className="mt-2 h-1 bg-white/10" />
                 </div>
-              ))}
+              );})}
             </div>
           </WarCard>
         </div>
@@ -134,6 +137,7 @@ export function MissionWarRoom({ onCancel }: { onCancel: () => void }) {
             <AnimatePresence initial={false}>
               {dialogue.slice(-6).map((entry, index) => {
                 const def = getAgentByRole(entry.agentRole);
+                const rendered = renderAgentMessage(entry, 260);
                 return (
                   <motion.article
                     key={`${entry.agentId}-${entry.timestamp}-${index}`}
@@ -149,7 +153,12 @@ export function MissionWarRoom({ onCancel }: { onCancel: () => void }) {
                         <p className="text-xs text-white/35">{formatRelativeTime(entry.timestamp)} · {entry.status ?? "complete"}</p>
                       </div>
                     </div>
-                    <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-relaxed text-white/64">{sanitizeMissionText(entry.content)}</p>
+                    <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-relaxed text-white/64">{rendered.summary}</p>
+                    {rendered.bullets.length > 0 && (
+                      <ul className="mt-2 space-y-1 text-xs text-white/50">
+                        {rendered.bullets.slice(0, 3).map((bullet) => <li key={bullet}>- {bullet}</li>)}
+                      </ul>
+                    )}
                   </motion.article>
                 );
               })}
@@ -181,15 +190,18 @@ export function MissionWarRoom({ onCancel }: { onCancel: () => void }) {
           <WarCard title="Conflict / Mediator" icon={<AlertTriangle className="h-4 w-4" />}>
             {conflicts.length ? (
               <div className="space-y-3">
-                {conflicts.slice(-2).map((conflict) => (
+                {conflicts.slice(-2).map((conflict) => {
+                  const rendered = renderConflict(conflict);
+                  return (
                   <motion.div key={conflict.id} animate={{ boxShadow: conflict.resolved ? "0 0 0 rgba(16,185,129,0)" : "0 0 28px rgba(251,191,36,0.16)" }} className="rounded-xl border border-amber-300/20 bg-amber-400/10 p-3">
                     <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-semibold text-white">{conflict.title ?? "Mission conflict"}</p>
-                      <Badge className={conflict.resolved ? "bg-emerald-400/15 text-emerald-100" : "bg-amber-400/15 text-amber-100"}>{conflict.resolved ? "Resolved" : "Active"}</Badge>
+                      <p className="text-sm font-semibold text-white">{rendered.title}</p>
+                      <Badge className={conflict.resolved ? "bg-emerald-400/15 text-emerald-100" : "bg-amber-400/15 text-amber-100"}>{rendered.status}</Badge>
                     </div>
-                    <p className="mt-2 text-xs leading-relaxed text-white/58">{sanitizeMissionText(conflict.disagreementSummary ?? conflict.description)}</p>
+                    <p className="mt-2 text-xs leading-relaxed text-white/58">{rendered.summary}</p>
                   </motion.div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <p className="text-sm italic text-white/42">Risk Critic has not raised a conflict yet.</p>
@@ -198,12 +210,15 @@ export function MissionWarRoom({ onCancel }: { onCancel: () => void }) {
 
           <WarCard title="Mini Timeline" icon={<Clock3 className="h-4 w-4" />}>
             <div className="space-y-2">
-              {timeline.slice(-5).map((entry, index) => (
+              {timeline.slice(-5).map((entry, index) => {
+                const rendered = renderTimelineEntry(entry, index);
+                return (
                 <div key={`${entry.timestamp}-${index}`} className="rounded-xl border border-white/10 bg-black/15 p-3">
-                  <p className="text-sm font-medium text-white">{sanitizeMissionText(entry.label)}</p>
-                  <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-white/45">{sanitizeMissionText(entry.description)}</p>
+                  <p className="text-sm font-medium text-white">{rendered.title}</p>
+                  <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-white/45">{rendered.body}</p>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </WarCard>
 

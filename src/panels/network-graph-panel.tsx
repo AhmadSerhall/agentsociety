@@ -136,7 +136,9 @@ function buildGraph(
     ...(context?.executionTasks.map((task) => task.agent) ?? []),
     ...(context?.dialogue.map((entry) => entry.agentRole) ?? []),
   ]);
-  if (context?.conflicts.length) roles.add(AgentRole.Mediator);
+  if (context?.conflicts.some((conflict) => !conflict.resolved && conflict.status !== "resolved") || context?.dialogue.some((entry) => entry.agentRole === AgentRole.Mediator)) {
+    roles.add(AgentRole.Mediator);
+  }
 
   const tasksByRole = new Map<AgentRole, number>();
   const confidenceByRole = new Map<AgentRole, number[]>();
@@ -155,7 +157,7 @@ function buildGraph(
     const state = context?.agentStates?.[agent.role] ?? "waiting";
     const active = currentAgent === agent.role || state === "thinking" || state === "analyzing" || state === "reviewing";
     const complete = completedRoles.has(agent.role) || state === "complete";
-    const conflicted = conflictRoleHints.has(agent.role) || (agent.role === AgentRole.Mediator && Boolean(context?.conflicts.some((conflict) => !conflict.resolved)));
+    const conflicted = conflictRoleHints.has(agent.role) || (agent.role === AgentRole.Mediator && Boolean(context?.conflicts.some((conflict) => !conflict.resolved && conflict.status !== "resolved")));
     return {
       id: agent.role,
       type: "agent",

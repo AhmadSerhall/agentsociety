@@ -2,6 +2,7 @@
 
 import type { AgentDialogueEntry, AgentRole, ExecutionTask, Workstream } from "@/types";
 import { sanitizeMissionList, sanitizeUserFacingText } from "@/utils";
+import { renderAgentMessage, renderStructuredText } from "./presentation-renderer";
 
 export type DisplayMessageType =
   | "planning"
@@ -141,7 +142,24 @@ function fromPlannerObject(parsed: Record<string, unknown>, raw: string, type: D
 }
 
 export function normalizeAgentOutputForDisplay(output: unknown, options?: { agentRole?: AgentRole; isConflict?: boolean; maxLength?: number }): NormalizedAgentOutput {
-  const raw = typeof output === "string" ? output : JSON.stringify(output, null, 2);
+  const human = renderStructuredText(output, {
+    toneHint: options?.agentRole,
+    isConflict: options?.isConflict,
+    maxLength: options?.maxLength ?? 280,
+  });
+  if (human.summary || human.bullets.length || human.cards.length) {
+    return {
+      title: human.title,
+      summary: human.summary,
+      bullets: human.bullets,
+      workstreams: human.cards.map((card) => ({ title: card.title, description: card.body, deliverables: card.meta ? [card.meta] : [] })),
+      type: human.tone === "risk" ? "conflict" : human.tone === "analysis" || human.tone === "update" ? "answer" : human.tone,
+      raw: "",
+      wasJson: human.wasStructured,
+      truncated: false,
+    };
+  }
+  const raw = typeof output === "string" ? output : "The agent completed a structured contribution.";
   const parsed = typeof output === "string" ? tryParseJson(output) : output;
   const type = inferType(raw, options?.agentRole, options?.isConflict);
 
@@ -191,11 +209,17 @@ export function normalizeAgentOutputForDisplay(output: unknown, options?: { agen
 }
 
 export function normalizeDialogueEntry(entry: AgentDialogueEntry) {
-  return normalizeAgentOutputForDisplay(entry.content, {
-    agentRole: entry.agentRole,
-    isConflict: entry.isConflict,
-    maxLength: 280,
-  });
+  const human = renderAgentMessage(entry, 280);
+  return {
+    title: human.title,
+    summary: human.summary,
+    bullets: human.bullets,
+    workstreams: human.cards.map((card) => ({ title: card.title, description: card.body, deliverables: card.meta ? [card.meta] : [] })),
+    type: human.tone === "risk" ? "conflict" : human.tone === "analysis" || human.tone === "update" ? "answer" : human.tone,
+    raw: "",
+    wasJson: human.wasStructured,
+    truncated: false,
+  } satisfies NormalizedAgentOutput;
 }
 
 export function displayWorkstreamTitle(task: ExecutionTask | Workstream) {

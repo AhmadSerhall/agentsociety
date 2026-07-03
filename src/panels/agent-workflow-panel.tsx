@@ -55,7 +55,6 @@ export function AgentWorkflowPanel() {
                 <GitBranch className="h-3.5 w-3.5 text-cyan-200/70" />
                 {group.title || `Collaboration Wave ${groupIndex + 1}`}
               </div>
-              <span className="text-xs text-white/38">{group.description}</span>
             </div>
             <div className="grid gap-3 lg:grid-cols-2">
               {groupTasks.map((task) => {

@@ -1714,29 +1714,7 @@ export class MissionEngine {
 
   private classifyMission(brief: string): MissionClassification {
     const semantic = this.analyzeMissionSemantics(brief);
-    const text = brief.toLowerCase();
-    const has = (...terms: string[]) => terms.some((term) => text.includes(term));
-    let intent: MissionIntent = "general_problem_solving";
-
-    if (has("toefl", "ielts", "sat", "gre", "gmat", "exam", "test prep", "practice test")) {
-      intent = "exam_preparation";
-    } else if (has("learn", "study", "course", "curriculum", "training", "practice routine", "skill plan")) {
-      intent = "learning_plan";
-    } else if (has("debug", "slow", "performance", "latency", "error", "bug", "migrate", "architecture", "react", "next.js", "nextjs")) {
-      intent = "technical_debugging";
-    } else if (has("launch", "startup", "open a", "start a", "business plan", "go-to-market", "customers", "sales")) {
-      intent = "business_launch";
-    } else if (has("product", "mvp", "feature", "roadmap", "positioning")) {
-      intent = "product_strategy";
-    } else if (has("research", "analyze", "compare", "paper", "report")) {
-      intent = "research_analysis";
-    } else if (has("budget", "financial", "pricing", "runway", "cost", "revenue")) {
-      intent = "financial_planning";
-    } else if (has("content", "newsletter", "social", "campaign", "brand")) {
-      intent = "content_strategy";
-    } else if (has("routine", "habit", "schedule", "life", "career", "fitness")) {
-      intent = "personal_planning";
-    }
+    const intent: MissionIntent = "general_problem_solving";
 
     const agents = new Set<AgentRole>([AgentRole.Planner]);
     semantic.usefulAgents.forEach((agent) => agents.add(agent));
@@ -1746,9 +1724,9 @@ export class MissionEngine {
     const needsMarketing = selectedAgents.includes(AgentRole.MarketingStrategist);
     const needsFinance = selectedAgents.includes(AgentRole.Finance);
     const needsProduct = selectedAgents.includes(AgentRole.ProductStrategist);
-    const isTechnical = selectedAgents.includes(AgentRole.TechnicalArchitect) || /software|hardware|technical|engineering|architecture/i.test(semantic.primaryDomain);
-    const isLearning = /learning|education|exam|study|academic/i.test([semantic.primaryDomain, ...semantic.secondaryDomains, semantic.intent].join(" "));
-    const isLaunch = /launch|start|open|business|venture/i.test(semantic.intent) || /business|restaurant|startup/i.test(semantic.primaryDomain);
+    const isTechnical = selectedAgents.includes(AgentRole.TechnicalArchitect);
+    const isLearning = false;
+    const isLaunch = false;
 
     return {
       intent,
@@ -1766,39 +1744,10 @@ export class MissionEngine {
   private analyzeMissionSemantics(brief: string): SemanticMissionAnalysis {
     const objective = sanitizeUserFacingText(brief.replace(/\s+/g, " ").trim());
     const text = objective.toLowerCase();
-    const has = (...terms: string[]) => terms.some((term) => text.includes(term));
-    const matches = (terms: string[]) => terms.filter((term) => text.includes(term.toLowerCase()));
-    const domains = [
-      { name: "Computer Hardware", terms: ["pc", "computer", "cpu", "gpu", "motherboard", "ram", "psu", "cooling", "bios", "drivers", "build my own pc"] },
-      { name: "Software Architecture", terms: ["react", "next.js", "nextjs", "erp", "frontend", "backend", "api", "database", "migration", "migrate", "software", "code", "architecture", "deployment"] },
-      { name: "Business Planning", terms: ["business", "startup", "company", "restaurant", "open a", "launch", "customers", "operations", "revenue", "sales"] },
-      { name: "Academic Research", terms: ["paper", "research", "machine learning", "experiment", "statistics", "dataset", "literature", "methodology", "citation"] },
-      { name: "Learning and Exam Preparation", terms: ["study", "learn", "exam", "test", "toefl", "ielts", "course", "curriculum", "practice"] },
-      { name: "Marketing and Content", terms: ["marketing", "campaign", "brand", "social", "content", "newsletter", "audience", "positioning"] },
-      { name: "Financial Planning", terms: ["budget", "finance", "financial", "pricing", "cost", "runway", "profit", "margin"] },
-      { name: "Personal Planning", terms: ["fitness", "routine", "habit", "career", "schedule", "personal", "body", "training"] },
-    ];
-    const scoredDomains = domains
-      .map((domain) => ({ ...domain, score: matches(domain.terms).length }))
-      .filter((domain) => domain.score > 0)
-      .sort((a, b) => b.score - a.score);
-    const primaryDomain = scoredDomains[0]?.name ?? this.humanizeDomainFromObjective(objective);
-    const secondaryDomains = scoredDomains.slice(1, 4).map((domain) => domain.name);
-
-    if (primaryDomain === "Computer Hardware") {
-      secondaryDomains.push(...["Consumer Purchasing", "Technical Tutorial", "Compatibility Analysis"].filter((domain) => !secondaryDomains.includes(domain)));
-    }
-    if (primaryDomain === "Software Architecture" && has("migrate", "migration")) {
-      secondaryDomains.push(...["Frontend Engineering", "Deployment", "Migration Risk"].filter((domain) => !secondaryDomains.includes(domain)));
-    }
-    if (primaryDomain === "Business Planning" && has("restaurant")) {
-      secondaryDomains.push(...["Operations", "Finance", "Marketing", "Compliance"].filter((domain) => !secondaryDomains.includes(domain)));
-    }
-    if (primaryDomain === "Academic Research" && has("machine learning")) {
-      secondaryDomains.push(...["Machine Learning", "Statistics", "Experiment Design", "Academic Writing"].filter((domain) => !secondaryDomains.includes(domain)));
-    }
-
-    const relevantConcepts = this.extractRelevantConcepts(text, primaryDomain);
+    const objectiveTerms = this.extractObjectiveTerms(objective);
+    const primaryDomain = this.humanizeDomainFromObjective(objective);
+    const secondaryDomains = objectiveTerms.slice(2, 5).map((term) => this.titleCase(term));
+    const relevantConcepts = this.extractRelevantConcepts(objective, primaryDomain);
     const intent = this.detectUserIntent(text, primaryDomain);
     const skills = this.extractSkills(text, primaryDomain, secondaryDomains);
     const requiredExpertise = this.detectRequiredExpertise(text, primaryDomain, secondaryDomains, skills);
@@ -1821,93 +1770,68 @@ export class MissionEngine {
   }
 
   private humanizeDomainFromObjective(objective: string) {
-    const words = objective.toLowerCase().match(/[a-z0-9]+/g)?.filter((word) => word.length > 3 && !/^(tell|create|make|give|plan|want|need|with|from|into|about|help|build)$/i.test(word)) ?? [];
-    return words.slice(0, 2).map((word) => word[0].toUpperCase() + word.slice(1)).join(" ") || "General Advisory";
+    const words = this.extractObjectiveTerms(objective);
+    return words.slice(0, 2).map((word) => this.titleCase(word)).join(" ") || "Mission";
+  }
+
+  private extractObjectiveTerms(text: string) {
+    const counts = new Map<string, number>();
+    text.toLowerCase().match(/[a-z0-9.+#-]+/g)?.forEach((word) => {
+      if (word.length < 3) return;
+      counts.set(word, (counts.get(word) ?? 0) + 1);
+    });
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([word]) => word)
+      .slice(0, 12);
+  }
+
+  private titleCase(text: string) {
+    return text.replace(/[-_]/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
   }
 
   private extractRelevantConcepts(text: string, primaryDomain: string) {
-    const conceptBanks: Record<string, string[]> = {
-      "Computer Hardware": ["CPU", "GPU", "Motherboard", "RAM", "Storage", "PSU", "Cooling", "Case", "Assembly", "BIOS", "Drivers", "Compatibility"],
-      "Software Architecture": ["Current Architecture", "Target Architecture", "Routing", "Data Fetching", "Deployment", "Testing", "Migration Plan", "Rollback", "Performance"],
-      "Business Planning": ["Customers", "Offer", "Operations", "Budget", "Pricing", "Staffing", "Suppliers", "Compliance", "Launch Plan"],
-      "Academic Research": ["Research Question", "Literature Review", "Methodology", "Dataset", "Experiments", "Statistics", "Results", "Limitations", "Writing"],
-      "Learning and Exam Preparation": ["Diagnostic", "Practice Routine", "Resources", "Mock Tests", "Weak Areas", "Review Loop", "Progress Metrics"],
-      "Marketing and Content": ["Audience", "Positioning", "Channels", "Message", "Cadence", "Conversion", "Measurement"],
-      "Financial Planning": ["Costs", "Revenue", "Margin", "Cash Flow", "Scenario Model", "Break-even", "Controls"],
-    };
-    const bank = conceptBanks[primaryDomain] ?? [];
-    const explicit = bank.filter((concept) => text.includes(concept.toLowerCase()) || primaryDomain !== "General Advisory");
-    const objectiveTerms = text.match(/[a-z0-9.+#-]+/g)?.filter((term) => term.length > 3 && !/^(tell|give|create|make|want|need|with|from|into|that|this|plan|build)$/i.test(term)) ?? [];
-    return Array.from(new Set([...explicit, ...objectiveTerms.slice(0, 8)])).slice(0, 14);
+    const objectiveTerms = this.extractObjectiveTerms(text).map((term) => this.titleCase(term));
+    return Array.from(new Set([primaryDomain, ...objectiveTerms])).slice(0, 14);
   }
 
   private detectUserIntent(text: string, primaryDomain: string) {
-    if (/(migrate|migration|move from|convert)/.test(text)) return `Plan a ${primaryDomain.toLowerCase()} migration with sequencing, validation, and risk controls`;
-    if (/(open|start|launch|create a business|restaurant)/.test(text)) return `Create a practical ${primaryDomain.toLowerCase()} launch plan`;
-    if (/(write|paper|publish)/.test(text)) return `Produce a rigorous ${primaryDomain.toLowerCase()} writing and research plan`;
-    if (/(build|assemble|setup|set up)/.test(text)) return `Create a practical ${primaryDomain.toLowerCase()} build guide`;
-    if (/(study|learn|prepare|exam)/.test(text)) return `Create a focused ${primaryDomain.toLowerCase()} learning plan`;
-    if (/(compare|analyze|research)/.test(text)) return `Analyze ${primaryDomain.toLowerCase()} options and recommend a path`;
-    return `Solve the user's ${primaryDomain.toLowerCase()} objective directly`;
+    const terms = this.extractObjectiveTerms(text);
+    const action = terms[0] ?? "solve";
+    return `${this.titleCase(action)} the user's ${primaryDomain.toLowerCase()} objective directly`;
   }
 
   private extractSkills(text: string, primaryDomain: string, secondaryDomains: string[]) {
-    const skills = new Set<string>();
-    if (/hardware|computer|pc|cpu|gpu|motherboard|ram|psu|bios/.test(`${primaryDomain} ${text}`.toLowerCase())) {
-      ["Compatibility Analysis", "Component Selection", "Assembly Sequencing", "Troubleshooting"].forEach((skill) => skills.add(skill));
-    }
-    if (/software|react|next|erp|frontend|backend|api|deployment|migration|architecture/.test(`${primaryDomain} ${secondaryDomains.join(" ")} ${text}`.toLowerCase())) {
-      ["Architecture Design", "Migration Planning", "Testing Strategy", "Deployment Planning"].forEach((skill) => skills.add(skill));
-    }
-    if (/business|restaurant|startup|operations|customers|sales/.test(`${primaryDomain} ${secondaryDomains.join(" ")} ${text}`.toLowerCase())) {
-      ["Market Research", "Operations Planning", "Financial Modeling", "Go-to-Market Planning"].forEach((skill) => skills.add(skill));
-    }
-    if (/paper|research|machine learning|statistics|experiment|dataset/.test(`${primaryDomain} ${secondaryDomains.join(" ")} ${text}`.toLowerCase())) {
-      ["Research Design", "Evidence Synthesis", "Experiment Planning", "Academic Writing"].forEach((skill) => skills.add(skill));
-    }
-    if (/study|learn|exam|course|practice/.test(`${primaryDomain} ${text}`.toLowerCase())) {
-      ["Diagnostic Assessment", "Curriculum Planning", "Practice Design", "Progress Tracking"].forEach((skill) => skills.add(skill));
-    }
-    if (skills.size === 0) ["Context Analysis", "Solution Design", "Action Planning"].forEach((skill) => skills.add(skill));
-    return Array.from(skills);
+    const terms = this.extractObjectiveTerms(`${primaryDomain} ${secondaryDomains.join(" ")} ${text}`);
+    const skills = terms.slice(0, 4).map((term) => `${this.titleCase(term)} Analysis`);
+    return skills.length ? skills : [`${primaryDomain} Analysis`];
   }
 
   private detectRequiredExpertise(text: string, primaryDomain: string, secondaryDomains: string[], skills: string[]) {
-    const haystack = `${primaryDomain} ${secondaryDomains.join(" ")} ${skills.join(" ")} ${text}`.toLowerCase();
+    const missionTerms = new Set(this.extractObjectiveTerms(`${primaryDomain} ${secondaryDomains.join(" ")} ${skills.join(" ")} ${text}`));
     const expertise: SemanticMissionAnalysis["requiredExpertise"] = [];
     const add = (agent: AgentRole, reason: string, priority: "core" | "support" | "review" = "core") => {
       if (!expertise.some((item) => item.agent === agent)) expertise.push({ agent, reason, priority });
     };
-
-    add(AgentRole.Researcher, "establish evidence, constraints, and real-world context", "core");
-    if (/hardware|software|technical|architecture|engineering|migration|assembly|compatibility|deployment|experiment/.test(haystack)) {
-      add(AgentRole.TechnicalArchitect, "turn domain constraints into an executable technical plan", "core");
-    }
-    if (/product|mvp|feature|user experience|ux|scope|roadmap|offer|customer journey/.test(haystack)) {
-      add(AgentRole.ProductStrategist, "shape scope, user outcomes, and tradeoffs", "support");
-    }
-    if (/marketing|campaign|brand|audience|positioning|sales|go-to-market|customers|restaurant|startup/.test(haystack)) {
-      add(AgentRole.MarketingStrategist, "define audience, positioning, channels, and demand generation", "support");
-    }
-    if (/finance|budget|pricing|cost|revenue|profit|margin|cash flow|runway|restaurant|startup|business/.test(haystack)) {
-      add(AgentRole.Finance, "model costs, budget, resources, and financial constraints", "support");
-    }
-    if (/risk|migration|compatibility|compliance|security|legal|medical|financial|investment|restaurant|hardware|deployment|experiment|failure|safety/.test(haystack)) {
-      add(AgentRole.RiskCritic, "challenge assumptions and prevent mission-specific failure modes", "review");
-    }
+    const scoredAgents = AGENT_DEFINITIONS
+      .filter((agent) => ![AgentRole.Planner, AgentRole.Mediator, AgentRole.Finalizer].includes(agent.role))
+      .map((agent) => {
+        const agentTerms = new Set(this.extractObjectiveTerms(`${agent.name} ${agent.capabilities.join(" ")} ${agent.systemPrompt}`));
+        const score = Array.from(missionTerms).filter((term) => agentTerms.has(term)).length;
+        return { agent, score };
+      })
+      .sort((a, b) => b.score - a.score);
+    scoredAgents.filter((item) => item.score > 0).slice(0, 4).forEach((item, index) => {
+      add(item.agent.role, `${item.agent.name} matched the mission language through its role and capabilities`, index === 0 ? "core" : "support");
+    });
+    if (expertise.length === 0) add(AgentRole.Researcher, "establish evidence, constraints, and mission context", "core");
     return expertise;
   }
 
   private detectRiskThemes(text: string, primaryDomain: string, secondaryDomains: string[], skills: string[]) {
-    const haystack = `${primaryDomain} ${secondaryDomains.join(" ")} ${skills.join(" ")} ${text}`.toLowerCase();
-    const risks: string[] = [];
-    if (/hardware|pc|compatibility|motherboard|psu|cooling/.test(haystack)) risks.push("component compatibility, power capacity, thermal limits, and purchasing mistakes");
-    if (/migration|deployment|software|architecture|react|next/.test(haystack)) risks.push("migration regressions, data-flow changes, deployment failures, and rollback readiness");
-    if (/business|restaurant|startup|operations/.test(haystack)) risks.push("cash flow, operations capacity, compliance, demand validation, and supplier risk");
-    if (/research|paper|experiment|statistics|machine learning/.test(haystack)) risks.push("weak research question, invalid experiment design, data leakage, and unsupported claims");
-    if (/study|exam|learn/.test(haystack)) risks.push("unrealistic schedule, weak feedback loops, skipped practice, and burnout");
-    if (/finance|budget|pricing|cost/.test(haystack)) risks.push("budget overrun and weak assumptions");
-    return Array.from(new Set(risks));
+    const terms = this.extractObjectiveTerms(`${primaryDomain} ${secondaryDomains.join(" ")} ${skills.join(" ")} ${text}`);
+    if (terms.length < 3) return [];
+    return [`Validate assumptions around ${terms.slice(0, 4).map((term) => this.titleCase(term)).join(", ")}`];
   }
 
   private buildSemanticWorkstreams(semantic: SemanticMissionAnalysis): SemanticWorkstreamBlueprint[] {
@@ -2002,27 +1926,16 @@ export class MissionEngine {
   private agentForMissionWorkstream(classification: MissionClassification, title: string, index: number): AgentRole {
     const blueprint = this.semanticBlueprintAt(classification, index);
     if (blueprint?.agent) return blueprint.agent;
-    const text = title.toLowerCase();
-    if (classification.intent === "technical_debugging") {
-      if (/(risk|regression|monitor|security|api|network|audit)/.test(text)) return AgentRole.RiskCritic;
-      if (/(roadmap|priorit|final|plan)/.test(text)) return AgentRole.Finalizer;
-      if (/(ux|user|experience)/.test(text)) return AgentRole.ProductStrategist;
-      return AgentRole.TechnicalArchitect;
-    }
-    if (classification.isLearning) {
-      if (/(diagnostic|baseline|level|weak|assessment)/.test(text)) return AgentRole.Researcher;
-      if (/(calendar|curriculum|study|section|routine|schedule)/.test(text)) return AgentRole.ProductStrategist;
-      if (/(practice|drill|speaking|writing|reading|listening|vocabulary|mock|simulation|test)/.test(text)) return AgentRole.TechnicalArchitect;
-      if (/(risk|burnout|unrealistic|avoid|concern)/.test(text)) return AgentRole.RiskCritic;
-      if (/(final|plan|synthesis)/.test(text)) return AgentRole.Finalizer;
-      return [AgentRole.Researcher, AgentRole.ProductStrategist, AgentRole.TechnicalArchitect, AgentRole.RiskCritic, AgentRole.Finalizer][index % 5];
-    }
-    if (/(market|campaign|content|position|launch|gtm|sales)/.test(text)) return AgentRole.MarketingStrategist;
-    if (/(budget|finance|cost|pricing|runway|resource)/.test(text)) return AgentRole.Finance;
-    if (/(technical|architecture|api|backend|frontend|code|implementation)/.test(text)) return AgentRole.TechnicalArchitect;
-    if (/(risk|governance|security|compliance|tradeoff)/.test(text)) return AgentRole.RiskCritic;
-    if (/(product|scope|mvp|feature|user|experience|option)/.test(text)) return AgentRole.ProductStrategist;
-    if (/(research|validation|evidence|analysis|baseline|discovery)/.test(text)) return AgentRole.Researcher;
+    const titleTerms = new Set(this.extractObjectiveTerms(title));
+    const capabilityMatch = AGENT_DEFINITIONS
+      .filter((agent) => classification.selectedAgents.includes(agent.role))
+      .map((agent) => {
+        const terms = new Set(this.extractObjectiveTerms(`${agent.name} ${agent.capabilities.join(" ")}`));
+        return { role: agent.role, score: Array.from(titleTerms).filter((term) => terms.has(term)).length };
+      })
+      .sort((a, b) => b.score - a.score)
+      .find((item) => item.score > 0)?.role;
+    if (capabilityMatch) return capabilityMatch;
     return classification.selectedAgents.filter((agent) => agent !== AgentRole.Planner && agent !== AgentRole.Finalizer)[index % Math.max(1, classification.selectedAgents.length - 2)] ?? AgentRole.Researcher;
   }
 
