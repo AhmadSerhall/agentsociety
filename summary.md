@@ -444,7 +444,7 @@ API key priority is:
 2. Local developer env key from `VITE_QWEN_API_KEY`
 3. Missing key
 
-The full API key is never displayed. Saved keys override local env keys, and clearing the saved browser key falls back to the local env key if one exists.
+The full API key is never displayed. Long keys are masked in the Qwen API Key field using the first 14 characters, bullets, and the last 14 characters. Saved keys override local env keys, and clearing the saved browser key falls back to the local env key if one exists.
 
 Fresh installs without a saved or env key show a first-run onboarding modal explaining that users must bring their own Qwen/DashScope API key. Mission launch is blocked until a key is saved or available through local env configuration.
 

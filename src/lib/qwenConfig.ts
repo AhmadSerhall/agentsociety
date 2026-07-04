@@ -2,7 +2,7 @@ export const QWEN_SETTINGS_STORAGE_KEY = "agent-society-runtime-settings";
 export const API_KEY_ONBOARDING_HIDE_KEY = "agentSociety_hideApiKeyOnboarding";
 export const DEFAULT_QWEN_BASE_URL = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1";
 export const DEFAULT_QWEN_MODEL = "qwen-turbo";
-export const QWEN_API_KEY_URL = "https://bailian.console.aliyun.com/?apiKey=1#/api-key";
+export const QWEN_API_KEY_URL = "https://home.qwencloud.com/";
 
 export type QwenKeySource = "saved" | "env" | "none";
 
@@ -44,7 +44,8 @@ export function maskApiKey(key: string): string {
   const trimmed = key.trim();
   if (!trimmed) return "";
   if (trimmed.length <= 10) return `${trimmed.slice(0, 2)}••••••••`;
-  return `${trimmed.slice(0, 6)}••••••••${trimmed.slice(-4)}`;
+  if (trimmed.length <= 28) return `${trimmed.slice(0, 6)}••••••••${trimmed.slice(-4)}`;
+  return `${trimmed.slice(0, 15)}********${trimmed.slice(-15)}`;
 }
 
 export function getSavedQwenSettings(): QwenSettings {

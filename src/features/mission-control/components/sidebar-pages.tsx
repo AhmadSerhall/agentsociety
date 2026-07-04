@@ -603,13 +603,17 @@ function SettingsPage() {
   const qwenModel = useRuntimeSettingsStore((state) => state.qwenModel);
   const setQwenCredentials = useRuntimeSettingsStore((state) => state.setQwenCredentials);
   const clearQwenCredentials = useRuntimeSettingsStore((state) => state.clearQwenCredentials);
-  const [apiKeyDraft, setApiKeyDraft] = useState(qwenApiKey);
+  const [apiKeyDraft, setApiKeyDraft] = useState("");
+  const [apiKeyEditing, setApiKeyEditing] = useState(false);
   const [baseUrlDraft, setBaseUrlDraft] = useState(qwenBaseUrl);
   const [modelDraft, setModelDraft] = useState(qwenModel);
   const hasSavedKey = Boolean(qwenApiKey.trim());
   const hasEnvKey = Boolean(envSettings.qwenApiKey.trim());
+  const hasActiveKey = resolved.source !== "none";
+  const hasWorkingKey = runtime.hasUsableApiKey;
   const activeKeyLabel = resolved.source === "saved" ? "Using saved browser key" : resolved.source === "env" ? "Using local env key" : "No API key configured";
   const keyInputPlaceholder = !hasSavedKey && hasEnvKey ? "Using local env key - paste a key to override" : "Paste your Qwen API key";
+  const apiKeyInputValue = apiKeyEditing ? apiKeyDraft : resolved.maskedApiKey;
 
   return (
     <section className="space-y-5">
@@ -636,16 +640,25 @@ function SettingsPage() {
           <div className="space-y-2">
             <label className="text-xs uppercase tracking-[0.18em] text-white/38">Qwen API Key</label>
             <Input
-              type="password"
-              value={apiKeyDraft}
-              onChange={(event) => setApiKeyDraft(event.target.value)}
+              type="text"
+              value={apiKeyInputValue}
+              onFocus={() => {
+                if (hasActiveKey && !apiKeyEditing) {
+                  setApiKeyEditing(true);
+                  setApiKeyDraft("");
+                }
+              }}
+              onChange={(event) => {
+                setApiKeyEditing(true);
+                setApiKeyDraft(event.target.value);
+              }}
               placeholder={keyInputPlaceholder}
-              className="h-11 border-cyan-200/15 bg-black/25 text-white placeholder:text-white/28 focus-visible:border-cyan-200/45"
+              className="h-11 border-cyan-200/15 bg-black/25 font-mono text-white placeholder:font-sans placeholder:text-white/28 focus-visible:border-cyan-200/45"
             />
-            <div className="flex flex-wrap items-center gap-2 text-xs">
+            {/* <div className="flex flex-wrap items-center gap-2 text-xs">
               <span className={resolved.source === "none" ? "text-amber-100/80" : "text-emerald-100/80"}>{activeKeyLabel}</span>
               {resolved.maskedApiKey && <span className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 font-mono text-white/56">{resolved.maskedApiKey}</span>}
-            </div>
+            </div> */}
           </div>
           <div className="space-y-2">
             <label className="text-xs uppercase tracking-[0.18em] text-white/38">Base URL</label>
@@ -673,21 +686,24 @@ function SettingsPage() {
             Stored in localStorage on this device only. The key is never displayed in full.
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => window.open(QWEN_API_KEY_URL, "_blank", "noopener,noreferrer")}
-              className="gap-2 border-cyan-200/15 bg-cyan-300/[0.08] text-cyan-100 hover:bg-cyan-300/[0.14] hover:text-cyan-50"
-            >
-              <ExternalLink className="h-4 w-4" />
-              Get Qwen API Key
-            </Button>
+            {!hasWorkingKey && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => window.open(QWEN_API_KEY_URL, "_blank", "noopener,noreferrer")}
+                className="gap-2 border-cyan-200/15 bg-cyan-300/[0.08] text-cyan-100 hover:bg-cyan-300/[0.14] hover:text-cyan-50"
+              >
+                <ExternalLink className="h-4 w-4" />
+                Get Qwen API Key
+              </Button>
+            )}
             <Button
               type="button"
               variant="outline"
               onClick={() => {
                 clearQwenCredentials();
                 setApiKeyDraft("");
+                setApiKeyEditing(false);
                 window.dispatchEvent(new Event("agentSociety:qwenKeyCleared"));
                 toast({
                   title: "Saved key cleared",
@@ -706,6 +722,8 @@ function SettingsPage() {
                   return;
                 }
                 setQwenCredentials({ apiKey: apiKeyDraft, baseUrl: baseUrlDraft, model: modelDraft });
+                setApiKeyDraft("");
+                setApiKeyEditing(false);
                 toast({ title: "Qwen API key saved locally.", description: "Agent Society will use your saved browser key for missions." });
               }}
               className="gap-2 bg-gradient-to-r from-cyan-300 to-purple-400 text-[#06101f] shadow-[0_0_34px_rgba(34,211,238,0.22)] hover:from-cyan-200 hover:to-purple-300"
