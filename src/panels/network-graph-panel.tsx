@@ -19,9 +19,8 @@ import {
   type NodeProps,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { BrainCircuit, Lightbulb, Megaphone, Network, PackageCheck, Scale, Search, ShieldAlert, WalletCards } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
 import { AGENT_DEFINITIONS } from "@/agents";
+import { AgentIconGlyph } from "@/features/mission-control/components/agent-icons";
 import { cn } from "@/lib/utils";
 import { useMissionStore } from "@/store";
 import { AgentRole, type AgentDefinition, type AgentThinkingState } from "@/types";
@@ -39,18 +38,6 @@ type AgentNodeData = {
 
 type NetworkEdgeData = {
   tone: "dependency" | "dialogue" | "conflict" | "mediator";
-};
-
-const agentIconMap: Record<string, LucideIcon> = {
-  "agent-planner": BrainCircuit,
-  "agent-researcher": Search,
-  "agent-product": Lightbulb,
-  "agent-technical": Network,
-  "agent-marketing": Megaphone,
-  "agent-finance": WalletCards,
-  "agent-risk": ShieldAlert,
-  "agent-mediator": Scale,
-  "agent-finalizer": PackageCheck,
 };
 
 const defaultPositions: Record<AgentRole, { x: number; y: number }> = {
@@ -261,7 +248,6 @@ function latestDisplayRole(context: ReturnType<typeof useMissionStore.getState>[
 }
 
 function AgentNode({ data }: NodeProps<Node<AgentNodeData>>) {
-  const Icon = agentIconMap[data.agent.id] ?? BrainCircuit;
   const activityLabel = data.active ? "Active" : data.complete ? "Complete" : data.state === "waiting" ? "Waiting" : data.state;
   const ringColor = data.agent.color;
   const statusGlow = data.conflicted ? "0 0 36px rgba(245,158,11,0.30)" : data.active ? `0 0 40px ${ringColor}66` : data.complete ? `0 0 30px ${ringColor}42` : `0 22px 70px rgba(0,0,0,0.38), 0 0 18px ${ringColor}22`;
@@ -282,7 +268,7 @@ function AgentNode({ data }: NodeProps<Node<AgentNodeData>>) {
           className={cn("grid h-12 w-12 shrink-0 place-items-center rounded-2xl border", (data.active || data.conflicted) && "animate-pulse")}
           style={{ borderColor: `${ringColor}aa`, backgroundColor: `${ringColor}24`, boxShadow: `0 0 24px ${ringColor}44` }}
         >
-          <Icon className="h-5 w-5" style={{ color: ringColor }} />
+          <AgentIconGlyph agentId={data.agent.id} className="h-5 w-5" style={{ color: ringColor }} />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">

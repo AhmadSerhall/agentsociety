@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import {
-  BrainCircuit,
   Bot,
   CheckCircle2,
   Copy,
@@ -10,20 +9,13 @@ import {
   FileText,
   History,
   KeyRound,
-  Lightbulb,
-  Megaphone,
   Network,
-  PackageCheck,
-  Scale,
-  Search,
-  ShieldAlert,
   Sparkles,
   PlayCircle,
   Save,
   Settings,
   ShieldCheck,
   Trash2,
-  WalletCards,
 } from "lucide-react";
 import {
   AlertDialog,
@@ -56,24 +48,13 @@ import {
   type TimelineEntry,
 } from "@/types";
 import { downloadText, generateId, historyEntryToMarkdown, sanitizeMissionText } from "@/utils";
+import { AgentIconGlyph } from "./agent-icons";
 import { composeReportSections } from "./council/presentation-renderer";
 import type { MissionView } from "./mission-sidebar";
 
 function cardClass() {
   return "rounded-2xl border border-cyan-200/10 bg-black/20 p-4 shadow-[0_18px_60px_rgba(0,0,0,0.22)]";
 }
-
-const agentIconMap = {
-  "agent-planner": BrainCircuit,
-  "agent-researcher": Search,
-  "agent-product": Lightbulb,
-  "agent-technical": Network,
-  "agent-marketing": Megaphone,
-  "agent-finance": WalletCards,
-  "agent-risk": ShieldAlert,
-  "agent-mediator": Scale,
-  "agent-finalizer": PackageCheck,
-};
 
 function copyText(text: string) {
   void navigator.clipboard.writeText(text);
@@ -297,7 +278,6 @@ function AgentsPage() {
         {AGENT_DEFINITIONS.map((agent) => {
           const active = context?.currentAgent === agent.role;
           const complete = completedRoles.has(agent.role);
-          const AgentIcon = agentIconMap[agent.id as keyof typeof agentIconMap] ?? Bot;
           const meta = agentCollaborationMeta(agent.id);
           return (
             <article
@@ -314,7 +294,7 @@ function AgentsPage() {
                     className="relative grid h-12 w-12 place-items-center rounded-2xl border text-white shadow-[0_0_30px_rgba(255,255,255,0.06)] transition-transform duration-300 group-hover:scale-105"
                     style={{ borderColor: `${agent.color}88`, backgroundColor: `${agent.color}22` }}
                   >
-                    <AgentIcon className="h-5 w-5" style={{ color: agent.color }} />
+                    <AgentIconGlyph agentId={agent.id} className="h-5 w-5" style={{ color: agent.color }} />
                     <Sparkles className="absolute -right-1 -top-1 h-3.5 w-3.5 text-cyan-100/50 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
                   </div>
                   <div>
@@ -356,11 +336,10 @@ function AgentsPage() {
 }
 
 function AgentMapNode({ agent }: { agent: (typeof AGENT_DEFINITIONS)[number] }) {
-  const AgentIcon = agentIconMap[agent.id as keyof typeof agentIconMap] ?? Bot;
   return (
     <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.035] p-3">
       <span className="grid h-10 w-10 place-items-center rounded-2xl border" style={{ borderColor: `${agent.color}88`, backgroundColor: `${agent.color}22` }}>
-        <AgentIcon className="h-4 w-4" style={{ color: agent.color }} />
+        <AgentIconGlyph agentId={agent.id} className="h-4 w-4" style={{ color: agent.color }} />
       </span>
       <div className="min-w-0">
         <p className="truncate text-sm font-medium text-white">{agent.name}</p>

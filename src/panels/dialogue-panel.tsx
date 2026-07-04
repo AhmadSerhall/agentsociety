@@ -3,24 +3,11 @@
 import { AGENT_DEFINITIONS } from "@/agents";
 import { Badge } from "@/components/ui/badge";
 import { normalizeDialogueEntry } from "@/features/mission-control/components/council/agent-output-formatter";
+import { AgentIconGlyph } from "@/features/mission-control/components/agent-icons";
 import { useMissionStore } from "@/store";
 import { formatRelativeTime } from "@/utils";
-import { BrainCircuit, Lightbulb, Megaphone, Network, Rocket, Scale, Search, ShieldAlert, WalletCards } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
 import { useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
-
-const agentIconMap: Record<string, LucideIcon> = {
-  "agent-planner": BrainCircuit,
-  "agent-researcher": Search,
-  "agent-product": Lightbulb,
-  "agent-technical": Network,
-  "agent-marketing": Megaphone,
-  "agent-finance": WalletCards,
-  "agent-risk": ShieldAlert,
-  "agent-mediator": Scale,
-  "agent-finalizer": Rocket,
-};
 
 export function DialoguePanel() {
   const dialogue = useMissionStore(useShallow((s) => s.context?.dialogue ?? []));
@@ -46,14 +33,13 @@ export function DialoguePanel() {
           const def = AGENT_DEFINITIONS.find((agent) => agent.id === entry.agentId || agent.role === entry.agentRole);
           const color = def?.color ?? "#22d3ee";
           const output = normalizeDialogueEntry(entry);
-          const Icon = def ? agentIconMap[def.id] ?? BrainCircuit : BrainCircuit;
           return (
             <article key={`${entry.agentId}-${entry.timestamp}-${index}`} className="flex min-w-0 gap-3 overflow-hidden rounded-2xl border border-white/10 bg-black/20 p-4">
               <div
                 className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-xs font-bold text-white shadow-[0_0_24px_rgba(255,255,255,0.08)]"
                 style={{ backgroundColor: color }}
               >
-                <Icon className="h-4 w-4" />
+                <AgentIconGlyph agentId={def?.id} className="h-4 w-4" />
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">

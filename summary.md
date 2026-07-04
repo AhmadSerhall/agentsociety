@@ -2,21 +2,11 @@
 
 ## Short Brief
 
-Agent Society is a futuristic AI Mission Control application built with Next.js, React, TypeScript, Tailwind, Zustand, Framer Motion, shadcn/Radix UI, and a frontend Mission Engine.
+Agent Society is a futuristic AI Mission Control application built with Next.js, React, TypeScript, Tailwind CSS, Zustand, Framer Motion, shadcn/Radix UI, Lucide icons, and a frontend Mission Engine.
 
-The product lets a user enter a complex mission brief, launch a multi-agent collaboration, and watch an AI society plan, divide work, collaborate, challenge assumptions, resolve conflicts, and synthesize a final report.
+The product lets a user enter a complex mission brief, configure execution style, launch a multi-agent collaboration, watch the mission run, inspect the graph, replay execution, and receive a polished final deliverable.
 
-The project is no longer a simple linear pipeline. It now behaves like a Mission Graph driven agent society:
-
-- The Planner creates dynamic workstreams.
-- Specialist agents work on assigned tasks.
-- Some workstreams can run in parallel.
-- Risk and specialist agents can challenge assumptions.
-- Conflicts can pause affected workstreams.
-- The Mediator resolves disagreements.
-- The Planner can revise the Mission Graph.
-- The Finalizer waits for synchronization before producing the final report.
-- Mission events are recorded and can be replayed through a floating replay control system.
+The project is now a Mission Graph driven agent society with a dedicated presentation layer.
 
 ## Current App Type
 
@@ -24,11 +14,12 @@ The current workspace is a frontend-first Next.js application.
 
 Important:
 
-- There is no active backend/database in this current workspace.
+- There is no active backend/database in this workspace.
 - Missions run through the frontend Mission Engine.
 - The app supports mock mode and Qwen mode.
-- Qwen calls are guarded during replay so replay does not regenerate missions.
-- Local browser state is used for runtime settings and mission history.
+- Qwen is not called during replay.
+- Runtime settings and mission history are stored locally in the browser.
+- Presentation renderers prevent raw internal payloads from appearing in normal UI.
 
 ## Main Technologies
 
@@ -47,34 +38,37 @@ Important:
 
 ### Mission Control
 
-Mission Control is the main experience. It includes:
+Mission Control is the main user experience.
 
-- Dark futuristic UI.
-- Space/mission-control visual style.
-- Sticky desktop sidebar.
-- Mobile navigation drawer.
-- Mission brief composer.
-- Mission configuration controls.
-- Runtime status bar.
-- Compact mission header during execution.
-- Agent Council Room during running/completed missions.
-- Detailed inspection tabs after completion.
+It includes:
+
+- Dark futuristic mission-control UI
+- Sticky desktop sidebar
+- Mobile navigation drawer
+- Mission brief composer
+- Mission configuration controls
+- Compact mission header during execution
+- Agent Council Room
+- Completed mission summary
+- Detailed inspection tabs
+- Floating replay overlay
 
 ### Mission Brief Composer
 
-Before launch, the user sees a large mission composer where they can:
+Before launch, the user can:
 
-- Enter the mission brief.
-- Choose or adjust mission configuration.
-- Launch the mission.
-- Cancel a running mission if needed.
-- Use example prompts/configurations.
+- Enter a mission brief
+- Adjust mission configuration
+- Launch the mission
+- Use recommended mission prompts
 
-After launch, the composer collapses into a compact mission header so the live Council Room appears immediately.
+When the user types in the mission brief, the Mission Config button can draw attention so the user remembers to configure parameters.
+
+Configuration includes options such as mission type, depth, time horizon, budget range, risk tolerance, and output format. Time horizon and risk tolerance support a "None specified" style state.
 
 ## Agent Society Model
 
-The system currently uses these agent identities:
+The system uses these agent identities:
 
 - Planner
 - Research Agent
@@ -86,47 +80,46 @@ The system currently uses these agent identities:
 - Mediator
 - Finalizer
 
-### How The Agents Work
+### Agent Participation
 
-The agents are not meant to be a fixed linear chain anymore. They form a dynamic society around the Mission Graph.
+Planner and Finalizer are expected in completed missions.
 
-The Planner:
+Other agents participate because the mission graph assigns them meaningful work. The system should not force Product, Marketing, Finance, Risk, or Mediator into every mission.
 
-- Reads the mission brief.
-- Creates a Mission Graph.
-- Defines workstreams.
-- Assigns primary and supporting agents.
-- Defines dependencies and parallel waves.
-- Identifies possible conflict zones.
-- Can revise the graph after conflicts.
+Mediator participates only when a real conflict needs mediation.
 
-Specialist agents:
+## Mission Engine
 
-- Work on assigned workstreams.
-- Produce task-specific outputs.
-- Collaborate with supporting agents.
-- Can challenge weak assumptions.
-- Can create conflicts when assumptions, scope, costs, strategy, or risks do not align.
+The Mission Engine owns orchestration.
 
-The Risk Critic:
+It manages:
 
-- Monitors assumptions throughout execution.
-- Flags weak logic, unrealistic plans, missing constraints, and contradictions.
-- Can trigger conflicts before final synthesis.
+- Mission context
+- Agent state
+- Workstreams
+- Execution tasks
+- Dependencies
+- Parallel task groups
+- Dialogue entries
+- Conflicts
+- Replay events
+- Timeline entries
+- Final report
+- Efficiency metrics
 
-The Mediator:
+## Semantic Mission Context
 
-- Receives conflict context.
-- Compares both sides of the disagreement.
-- Produces a decision, rationale, and resolved action.
-- Can cause graph revisions or unblock tasks.
+Mission Type is an execution preference, not a domain category.
 
-The Finalizer:
+The mission engine no longer relies on hardcoded domain catalogs for mission understanding. Semantic context is derived from:
 
-- Waits until workstreams are complete enough.
-- Waits until important conflicts are resolved.
-- Synthesizes all agent outputs into a final report.
-- Explains workstreams, collaboration, conflicts, mediator decisions, planner revisions, and efficiency gain versus a single-agent approach.
+- The user's objective text
+- Extracted objective terms
+- Agent definitions
+- Agent capabilities
+- Planner graph output
+
+This keeps the system domain-agnostic and avoids adding new mission-type templates for every possible user request.
 
 ## Mission Graph
 
@@ -134,35 +127,36 @@ The Mission Graph is the core execution model.
 
 It contains:
 
-- missionId
-- workstreams
-- agents
-- task nodes
-- dependencies
-- assignments
-- statuses
-- outputs
-- conflicts
-- synchronization points
-- finalization readiness
-- parallel groups
-- conflict zones
-- synthesis readiness criteria
+- Mission id
+- Workstreams
+- Agents
+- Task nodes
+- Dependencies
+- Assignments
+- Statuses
+- Outputs
+- Conflicts
+- Synchronization points
+- Finalization readiness
+- Parallel groups
+- Conflict zones
+- Synthesis readiness criteria
 
-Each workstream/task can include:
+Each task can include:
 
-- id
-- title
-- description
-- assigned primary agent
-- supporting agents
-- dependencies
-- status
-- output
-- confidence
-- started/completed timestamps
+- Title
+- Description
+- Primary agent
+- Supporting agents
+- Dependencies
+- Status
+- Confidence
+- Output
+- Acceptance criteria
+- Expected outputs
+- Started/completed timestamps
 
-Supported task statuses include:
+Supported task statuses:
 
 - pending
 - ready
@@ -172,302 +166,303 @@ Supported task statuses include:
 - revised
 - cancelled
 
-## Planner JSON Reliability
+## Planner Output Handling
 
-The Planner prompt now requires strict JSON output.
+The Planner is expected to return structured JSON.
 
-The system also includes robust parsing and repair logic:
+The system can:
 
-- Attempts normal JSON parsing.
-- Extracts JSON from markdown/code fences if needed.
-- Extracts the first valid object when possible.
-- Attempts to repair planner output.
-- Falls back to mission-specific fallback workstreams only if repair fails.
+- Parse normal JSON.
+- Extract JSON from markdown/code fences.
+- Extract the first valid JSON object when possible.
+- Repair planner output when possible.
+- Rebuild workstreams from semantic mission context if parsing fails.
 
-Fallback workstreams are now more mission-specific and no longer collapse into a tiny generic 3-step pipeline.
-
-For example, business/money/website-selling prompts create workstreams like:
-
-- Niche Research and Business Targeting
-- Offer and Website Package Design
-- Website Production Workflow
-- Lead Generation and Outreach
-- Pricing, Payments and Revenue Model
-- Sales Risk and Client Objection Review
-- Final Execution Roadmap
+The recovery path is not a domain-template catalog. It uses the same semantic context and agent capability matching to keep the UI coherent.
 
 ## Agent Council Room
 
-The old log-heavy War Room has been transformed into a premium Agent Council Room.
+The Council Room is the main running/completed mission surface.
 
-During running missions it shows:
+It includes:
 
-- Agent roster.
-- Circular council discussion area.
-- Mission Engine center node.
-- Active speaking agents with glow/pulse.
-- Latest 3-5 speech bubbles only.
-- Full Transcript drawer for older messages.
-- Mission Intelligence panel.
-- Workstream Strip.
-- Workstream Inspector drawer.
+- Agent roster
+- Circular council area
+- Mission Engine center node
+- Active speaking agents with glow/pulse
+- Latest speech bubbles
+- Full Transcript drawer
+- Mission Intelligence panel
+- Workstream Strip
+- Workstream Inspector drawer
+- Completed mission summary
 
-This makes the mission feel like watching agents collaborate instead of reading a giant log.
+The experience is designed to feel like watching a small AI council collaborate, not reading raw logs.
 
-## Completed Mission UX
+Agent visual identity is centralized in `src/features/mission-control/components/agent-icons.ts`, so the Agents page, Agent Roster, Dialogue tab, and Network graph use the same Lucide icon and agent color for each role. Runtime state is shown as secondary badges, overlays, glow, or pulse rather than replacing the agent's identity icon.
 
-The completed state was cleaned up to avoid clutter and overlapping cards.
+## Humanize Agent Society Presentation Layer
 
-After completion, the Council Room switches to a calmer 3-column summary layout:
+The UI now has a dedicated presentation renderer:
 
-- Left: Agent roster summary.
-- Center: Council Summary / Final Synthesis Preview.
-- Right: Mission Intelligence summary.
+`src/features/mission-control/components/council/presentation-renderer.ts`
 
-The completed summary includes:
+This renderer converts structured mission data into:
 
-- Mission Report Ready / Council Synchronized state.
-- Saved to history badge.
-- Final report objective/title.
-- Executive summary.
-- Key decision.
-- Workstream count.
-- Resolved conflict count.
-- Confidence score.
-- CTA buttons:
-  - View Full Report
-  - Export Markdown
-  - Replay Mission
-  - Start New Mission
+- Human-readable agent summaries
+- Bullet lists
+- Workstream cards
+- Conflict cards
+- Timeline narration
+- Replay event summaries
+- Final report sections
 
-## Detailed Tabs
+Normal UI should not display:
 
-Detailed tabs remain available after completion for inspection:
+- Raw JSON
+- Object literals
+- Arrays
+- `null`
+- `undefined`
+- Parser output
+- Internal payloads
+- Developer notes
+- Raw replay metadata
 
-- Workflow
+The older agent output formatter delegates to the presentation renderer.
+
+## Dialogue Presentation
+
+The Dialogue tab now:
+
+- Uses each agent's real icon, matching the Agents/Network page
+- Uses agent-specific colors
+- Shows message type only when useful
+- Shows conflict badges only for actual conflict entries
+- Dedupes identical repeated messages
+- Renders structured payloads into summaries, bullets, and cards
+
+This prevents repeated Finalizer/Mediator messages and avoids misleading conflict labels.
+
+## Final Report Presentation
+
+The Final Report tab uses a report composer style renderer.
+
+It displays polished sections such as:
+
+- Consulting Summary
+- Objective
+- Expert Contributions
 - Workstreams
-- Dialogue
-- Conflicts
-- Final Report
-- Timeline
-- Efficiency
-- Network
+- Decision Notes
+- Action Plan
+- Risk Summary
+- Resources
+- Success Measures
+- Final Recommendations
 
-The View Full Report button now:
+The renderer:
 
-- Selects the Final Report tab.
-- Smooth-scrolls to the tabs section.
-- Briefly highlights the detailed tabs.
-- Does not open transcript.
-- Does not trigger replay.
+- Avoids short preview truncation for the Consulting Summary
+- Dedupes repeated specialist contribution lines
+- Hides empty/no-op sections
+- Hides Risk Summary when no meaningful risk content exists
+- Hides Resources when no meaningful resource content exists
+- Keeps orchestration details secondary to the user-facing answer
 
-## Transcript And Contribution Drawers
+## Workflow Tab
 
-### Full Transcript Drawer
+The Workflow tab shows graph execution structure.
 
-The Full Transcript button opens only the transcript drawer.
+It displays:
 
-It supports:
+- Task nodes
+- Parallel waves
+- Conflict count
+- Synthesis readiness
+- Task cards inside each wave
 
-- All agent messages.
-- Filter by agent.
-- Filter by message type.
-- Search.
-- Timestamps.
-- Clean formatted summaries.
-- Optional raw output only when Developer Debug Mode is enabled.
+The gray helper text in workflow wave headers has been removed. Task cards still show useful task details.
 
-### Agent Contribution Drawer
+## Workstreams Tab
 
-Expanding a message opens a specific agent contribution drawer instead of the full transcript.
+The Workstreams tab shows concise workstream cards.
 
-It shows:
+Each card can show:
 
-- Selected agent contribution.
-- Related workstreams.
-- Agent-specific messages.
-- Confidence/context where available.
-- For Risk Critic: challenged assumptions/conflicts.
-- For Mediator: decisions and resolved actions.
-- Raw output only in Developer Debug Mode.
+- Title
+- Subtitle/description
+- Owner
+- Status
+- Confidence
+- Dependencies
+- Supporting agents
+- Deliverables
+- Acceptance criteria
+- Expected outputs
 
-## Agent Output Formatting
+## Conflicts Tab
 
-The UI now uses an Agent Output Formatter layer.
+The Conflicts tab renders human-friendly dispute cards.
 
-It:
+It can show:
 
-- Detects JSON strings.
-- Safely parses output.
-- Converts JSON into readable summaries.
-- Converts arrays into bullet lists.
-- Converts planner workstreams into cards.
-- Hides internal ids like workstream ids and agent ids.
-- Removes visible markdown markers such as `**bold**`.
-- Prevents raw JSON from appearing in normal user-facing cards.
-- Allows raw output only in Developer Debug Mode.
+- Dispute title
+- Risk/severity
+- Participants
+- Summary
+- Arguments/options
+- Mediator decision
+- Resolved action
+- Status
 
-## Mission Intelligence Panel
+Conflicts are not fabricated. If no conflict exists, the app should not pretend one exists.
 
-Mission Intelligence summarizes the current mission state.
+## Timeline Tab
 
-It shows:
+The Timeline tab now renders natural execution events.
 
-- Current Decision.
-- Active Conflict.
-- Confidence Trend / confidence score.
-- Next Up.
-- Blocked Tasks.
-- Mediator Notes.
+Each event describes:
 
-If there is no conflict, it shows a calm monitoring state instead of pretending something is wrong.
+- What changed
+- Who or what changed it
+- Why it mattered
+- What happened next
 
-## Workstream Strip And Inspector
+## Efficiency Tab
 
-The Workstream Strip is a compact horizontal set of task cards.
+The Efficiency tab shows execution analytics.
 
-Each workstream card shows:
+It can display:
 
-- Title.
-- Primary agent.
-- Supporting/dependency info.
-- Status.
-- Confidence.
-- Why it can run now or why it is waiting.
+- Task coverage
+- Quality score
+- Conflicts resolved
+- Execution duration
+- Tokens consumed
+- Average latency
+- Retry count
+- Failure count
+- Parallelism percentage
+- Consensus percentage
+- Agent utilization
+- Single-agent baseline comparison
 
-Clicking a workstream opens a Workstream Inspector drawer with:
+## Network Tab
 
-- Description.
-- Primary agent.
-- Supporting agents.
-- Dependencies.
-- Current output.
-- Related conflicts.
+The Network tab is a real animated React Flow graph.
+
+It includes:
+
+- Movable agent nodes
+- Agent icons
+- Distinct agent colors
+- Animated edges
+- Moving packets
+- Active node glow
+- Completed node glow
+- Conflict edges
+- Mediator edges
+- Workstream count per agent
+
+Mediator appears or glows only when an active conflict exists or mediator participation is present.
 
 ## Replay System
 
-Replay has been transformed from a page/end-section control into a floating global replay overlay.
+Replay is a floating global overlay.
 
-Replay now has three UI states:
+Replay supports:
 
-- Mini Dock.
-- Expanded Timeline.
-- Inspector mode.
+- Mini dock
+- Expanded timeline
+- Inspector mode
+- Play/pause
+- Step backward/forward
+- Restart
+- Exit replay
+- Speed control
+- Follow toggle
+- Adaptive toggle
+- Click-to-seek event markers
+- Picture-in-picture mode
+- Dragging
 
-It floats above the application and can be controlled from anywhere.
+Replay uses saved Mission Engine events.
 
-### Replay Features
-
-The replay system supports:
-
-- Play/pause.
-- Step backward/forward.
-- Restart.
-- Exit replay.
-- Speed controls.
-- Adaptive speed toggle.
-- Auto-follow toggle.
-- Raw event inspector toggle.
-- Click-to-seek timeline markers.
-- Colored event markers.
-- Agent-colored markers.
-- Conflict/mediator/finalizer/workstream event coloring.
-- Picture-in-picture mode.
-- Draggable overlay in mini, expanded, and inspector states.
-- Dragging from any non-control area.
-- Smooth dragging without selecting/highlighting page text.
-- Overlay can be moved beyond top/left/right/bottom screen edges.
-- Mini dock has a single colored seek slider that can move forward/backward.
-
-### Replay Keyboard Shortcuts
-
-- Space: play/pause.
-- Left/Right: seek 1 second.
-- Shift + Left/Right: previous/next event.
-- Plus/Minus: speed up/down.
-- R: restart.
-- I: inspector mode.
-- T: expanded timeline.
-- P: picture-in-picture.
-- Escape: exit replay.
-
-### Replay Behavior
-
-Replay uses recorded Mission Engine events.
-
-It does not call Qwen again.
+It does not call Qwen.
 It does not regenerate missions.
-It reconstructs mission state from saved replay events.
 
-Adaptive replay compresses idle gaps while preserving important moments like:
+The replay inspector now shows readable event details instead of raw event JSON.
 
-- Conflicts.
-- Mediator interventions.
-- Finalizer events.
-- Synchronization.
-- Mission completion.
+## Mission History
 
-Auto-follow can scroll/focus relevant UI sections while replaying:
+Mission history is stored locally.
 
-- Mission tabs.
-- Mission Intelligence.
-- Workstream Strip.
+Entries can include:
+
+- Mission brief
+- Configuration
+- Workstreams
+- Dialogue
+- Conflicts
+- Final report
+- Efficiency metrics
+- Replay events
+- Saved/completed status
+
+Reopening a completed mission restores elapsed duration, involved agents, workstreams, dialogue colors/icons, timeline, final report, efficiency metrics, and replay state when replay events are available.
+
+## Reports Page
+
+The Reports page lists completed reports.
+
+It supports:
+
+- Copy Markdown
+- Export Markdown
+- Human-readable report preview
+
+The visible JSON export button was removed so normal UI does not expose raw mission objects.
 
 ## Settings
 
 Settings currently include:
 
-- Qwen API Key.
-- Qwen Base URL.
-- Qwen Model.
-- Allow mock fallback on Qwen failure.
-- Developer Debug Mode.
+- Qwen API Key
+- Qwen Base URL
+- Qwen Model
+- Allow mock fallback on Qwen failure
+- Developer Debug Mode
 
-Developer Debug Mode is off by default.
-
-When enabled, debug drawers can show raw model/replay output.
+Developer Debug Mode is off by default. Normal mission UI still stays human-readable and should not expose raw model payloads.
 
 ## Mock Mode And Qwen Mode
 
 The app supports:
 
-- Mock mode for demos and development.
-- Qwen mode for real agent responses.
-- Mock fallback behavior when allowed.
+- Mock mode for demos and development
+- Qwen mode for real model responses
+- Mock fallback when enabled
 
-Qwen mode is expected to return structured content, especially from the Planner. The parser/repair layer protects the app if the model returns malformed JSON or markdown.
+If Qwen fails and fallback is allowed, the app uses local mock output without showing "fallback activated" text to the user.
 
-## Mission History
+## Important UX Fixes Completed
 
-Completed or saved missions can be stored locally.
-
-Mission history entries can include:
-
-- Mission brief.
-- Configuration.
-- Workstreams.
-- Dialogue.
-- Conflicts.
-- Final report.
-- Efficiency metrics.
-- Replay events.
-
-Replay can be started from saved missions if replay events exist.
-
-## Important UX Fixes Completed In This Session
-
-- Sidebar is sticky/fixed during main page scroll.
-- Main content scrolls independently.
-- Completed Council Room no longer shows crowded overlapping speech bubbles.
-- View Full Report now selects and scrolls to Final Report tab.
+- Sidebar stays stable while content scrolls.
+- Completed Council Room no longer shows crowded overlapping bubbles.
+- View Full Report selects and scrolls to Final Report.
 - Replay Mission no longer opens Full Transcript.
 - Full Transcript and per-message expand actions are separate.
 - Agent expand opens Agent Contribution Drawer.
-- Replay is now floating and draggable.
-- Replay mini dock has one colored seek slider.
-- Replay drag no longer highlights/selects screen text.
-- Agent messages no longer show raw JSON in normal UI.
-- Markdown markers are cleaned from visible message summaries.
+- Replay is floating and draggable.
+- Replay inspector no longer shows raw JSON.
+- Reports page no longer exposes JSON export.
+- Dialogue uses agent icons instead of initials.
+- Duplicate identical dialogue messages are hidden.
+- Conflict labels only appear on true conflict entries.
+- Final Report sections are deduped and no-op sections are hidden.
+- Workflow tab no longer shows the gray header helper text.
+- Hardcoded semantic domain catalogs were removed from the mission engine.
 
 ## Verification
 
@@ -479,12 +474,12 @@ npm run lint
 npm run build
 ```
 
-All checks passed after the latest replay and Council Room updates.
+All checks passed after the latest updates.
 
 ## High-Level Product Pitch
 
 Agent Society is an AI mission operating system.
 
-Instead of asking one model to produce one answer, the app creates a society of specialized agents. The Planner turns a user brief into a Mission Graph. Specialists take ownership of workstreams, collaborate in parallel, challenge weak assumptions, resolve disagreements through a Mediator, and synchronize before the Finalizer creates the final report.
+Instead of asking one model to produce one answer, the app creates a council of specialized agents around a Mission Graph. The Planner decomposes the mission, specialists work on meaningful workstreams, Risk Critic challenges weak assumptions when needed, Mediator resolves real disagreements, and Finalizer assembles a polished final deliverable.
 
-The Council Room makes the collaboration visible. The Replay system lets users inspect how the mission unfolded over time. The result feels less like a chatbot response and more like watching an AI organization think, negotiate, and execute.
+The Council Room makes collaboration visible. The replay system lets users inspect how the mission unfolded. The presentation layer turns structured execution data into a premium, human-readable consulting experience.

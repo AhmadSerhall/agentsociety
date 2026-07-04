@@ -1,9 +1,10 @@
 "use client";
 
-import { Bot, CheckCircle2, Loader2, RadioTower, Sparkles } from "lucide-react";
+import { CheckCircle2, Loader2, Sparkles } from "lucide-react";
 import { AGENT_DEFINITIONS } from "@/agents";
 import { Badge } from "@/components/ui/badge";
 import type { AgentRole, AgentThinkingState } from "@/types";
+import { AgentIconGlyph } from "../agent-icons";
 
 export function AgentRoster({ currentAgent, states }: { currentAgent: AgentRole | null; states: Record<AgentRole, AgentThinkingState> }) {
   return (
@@ -27,8 +28,13 @@ export function AgentRoster({ currentAgent, states }: { currentAgent: AgentRole 
                 className="relative grid h-10 w-10 shrink-0 place-items-center rounded-2xl border text-white"
                 style={{ borderColor: `${agent.color}88`, backgroundColor: `${agent.color}22` }}
               >
-                {active ? <RadioTower className="h-4 w-4 animate-pulse" style={{ color: agent.color }} /> : complete ? <CheckCircle2 className="h-4 w-4" style={{ color: agent.color }} /> : <Bot className="h-4 w-4" style={{ color: agent.color }} />}
+                <AgentIconGlyph agentId={agent.id} className={`h-4 w-4 ${active ? "animate-pulse" : ""}`} style={{ color: agent.color }} />
                 {active && <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-cyan-200 shadow-[0_0_14px_rgba(103,232,249,0.9)]" />}
+                {/* {complete && !active && (
+                  <span className="absolute -right-1 -top-1 grid h-4 w-4 place-items-center rounded-full border border-emerald-100/50 bg-slate-950">
+                    <CheckCircle2 className="h-2.5 w-2.5 text-emerald-200" />
+                  </span>
+                )} */}
               </div>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-white">{agent.name}</p>
