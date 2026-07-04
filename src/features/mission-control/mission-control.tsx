@@ -19,6 +19,7 @@ import { useMissionEngine } from "@/hooks";
 import { useMissionStore } from "@/store";
 import { useHistoryStore, useRuntimeSettingsStore, useReplayStore } from "@/store";
 import { useFadeInUp, useStaggerContainer } from "@/hooks";
+import { hasUsableQwenKey, hideApiKeyOnboardingPermanently, isApiKeyOnboardingHidden } from "@/lib/qwenConfig";
 import { getQwenRuntimeInfo } from "@/services/qwen";
 import { MISSION_TYPE_LABELS, DEPTH_LABELS, TIME_HORIZON_LABELS, BUDGET_RANGE_LABELS, RISK_TOLERANCE_LABELS, OUTPUT_FORMAT_LABELS, MissionState, AgentRole, type MissionConfiguration, type MissionType, type Depth, type TimeHorizon, type BudgetRange, type RiskTolerance, type OutputFormat } from "@/types";
 import {
@@ -56,6 +57,7 @@ export function MissionControl() {
   const [showMobileNav, setShowMobileNav] = useState(false);
   const [validationOpen, setValidationOpen] = useState(false);
   const [apiKeyRequiredOpen, setApiKeyRequiredOpen] = useState(false);
+  const [apiKeyOnboardingDismissed, setApiKeyOnboardingDismissed] = useState(false);
   const [replayComingOpen, setReplayComingOpen] = useState(false);
   const [highlightReportTab, setHighlightReportTab] = useState(false);
   const [completionToastOpen, setCompletionToastOpen] = useState(false);
@@ -136,12 +138,19 @@ export function MissionControl() {
   const stagger = useStaggerContainer();
   const runtimeInfo = getQwenRuntimeInfo();
   const mockMode = runtimeInfo.provider === "Mock";
-  const hasUsableQwenKey = runtimeInfo.hasUsableApiKey && Boolean(qwenApiKey.trim() || process.env.NEXT_PUBLIC_QWEN_API_KEY);
+  const hasResolvedQwenKey = hasUsableQwenKey();
+  const shouldShowApiKeyOnboarding = !hasResolvedQwenKey && !apiKeyOnboardingDismissed && !isApiKeyOnboardingHidden();
 
   useEffect(() => {
     loadHistory();
     loadRuntimeSettings();
   }, [loadHistory, loadRuntimeSettings]);
+
+  useEffect(() => {
+    const resetSessionDismissal = () => setApiKeyOnboardingDismissed(false);
+    window.addEventListener("agentSociety:qwenKeyCleared", resetSessionDismissal);
+    return () => window.removeEventListener("agentSociety:qwenKeyCleared", resetSessionDismissal);
+  }, []);
 
   useEffect(() => {
     if (previousStatus.current && previousStatus.current !== MissionState.Completed && status === MissionState.Completed && replayMode === "live") {
@@ -192,7 +201,7 @@ export function MissionControl() {
       setValidationOpen(true);
       return;
     }
-    if (replayMode !== "replay" && !hasUsableQwenKey) {
+    if (replayMode !== "replay" && !hasResolvedQwenKey) {
       setApiKeyRequiredOpen(true);
       return;
     }
@@ -430,7 +439,7 @@ export function MissionControl() {
             </div>
             <DialogTitle className="text-xl text-white">Qwen API key required</DialogTitle>
             <DialogDescription className="leading-relaxed text-white/60">
-              Agent Society is open source and does not ship with a shared API key. Add your own Qwen test or hackathon key in Settings before launching missions.
+              Go to Settings and paste your Qwen API key to run missions.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
@@ -446,6 +455,68 @@ export function MissionControl() {
             >
               <Settings className="h-4 w-4" />
               Open Settings
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={shouldShowApiKeyOnboarding} onOpenChange={(open) => {
+        if (!open) setApiKeyOnboardingDismissed(true);
+      }}>
+        <DialogContent className="border-cyan-200/15 bg-[#07111f]/95 text-white shadow-[0_30px_120px_rgba(34,211,238,0.22)] backdrop-blur-2xl sm:max-w-xl">
+          <DialogHeader>
+            <div className="mb-2 grid h-12 w-12 place-items-center rounded-2xl border border-cyan-200/25 bg-cyan-300/10">
+              <KeyRound className="h-5 w-5 text-cyan-100" />
+            </div>
+            <DialogTitle className="text-xl text-white">Connect your Qwen API key</DialogTitle>
+            <DialogDescription className="leading-relaxed text-white/62">
+              Agent Society requires a Qwen API key to run missions. The key is stored locally in this browser only and missions will not run until a valid key is saved.
+            </DialogDescription>
+          </DialogHeader>
+          <ol className="space-y-2 rounded-2xl border border-cyan-200/10 bg-cyan-300/[0.045] p-4 text-sm leading-relaxed text-white/66">
+            {[
+              "Create or log in to a Qwen/DashScope account.",
+              "Generate an API key.",
+              "Go to Settings.",
+              "Paste it into the Qwen API Key field.",
+            ].map((step, index) => (
+              <li key={step} className="flex items-start gap-3">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-cyan-200/20 bg-cyan-300/10 font-mono text-[0.72rem] font-semibold leading-none text-cyan-100 tabular-nums pt-0.5">
+                  {index + 1}
+                </span>
+                <span>{step}</span>
+              </li>
+            ))}
+          </ol>
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setApiKeyOnboardingDismissed(true);
+              }}
+              className="border-white/10 bg-white/[0.04] text-white/70 hover:bg-white/[0.08] hover:text-white"
+            >
+              I'll do it later
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                hideApiKeyOnboardingPermanently();
+                setApiKeyOnboardingDismissed(true);
+              }}
+              className="border-white/10 bg-white/[0.04] text-white/70 hover:bg-white/[0.08] hover:text-white"
+            >
+              Don't show again
+            </Button>
+            <Button
+              onClick={() => {
+                setApiKeyOnboardingDismissed(true);
+                setActiveView("settings");
+              }}
+              className="gap-2 bg-gradient-to-r from-cyan-300 to-purple-400 text-[#06101f] shadow-[0_0_34px_rgba(34,211,238,0.24)] hover:from-cyan-200 hover:to-purple-300"
+            >
+              <Settings className="h-4 w-4" />
+              Go to Settings
             </Button>
           </div>
         </DialogContent>

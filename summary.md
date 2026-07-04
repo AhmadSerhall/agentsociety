@@ -432,6 +432,23 @@ Settings currently include:
 - Qwen API Key
 - Qwen Base URL
 - Qwen Model
+- Active key status
+- Masked active key display
+- Qwen/DashScope API key link
+
+Qwen settings are resolved through `src/lib/qwenConfig.ts`.
+
+API key priority is:
+
+1. Saved browser key in localStorage
+2. Local developer env key from `VITE_QWEN_API_KEY`
+3. Missing key
+
+The full API key is never displayed. Saved keys override local env keys, and clearing the saved browser key falls back to the local env key if one exists.
+
+Fresh installs without a saved or env key show a first-run onboarding modal explaining that users must bring their own Qwen/DashScope API key. Mission launch is blocked until a key is saved or available through local env configuration.
+
+The onboarding modal presents Qwen setup as a short ordered checklist: go to Settings, log in or create a Qwen/DashScope account, generate a key, and paste it into the Qwen API Key field.
 
 ## Mock Mode And Qwen Mode
 
@@ -439,6 +456,8 @@ The app supports:
 
 - Mock mode for demos and development
 - Qwen mode for real model responses
+
+Mock mode is visible when no usable key is resolved, but mission launch is guarded so users cannot accidentally run missions without configuring Qwen.
 
 ## Important UX Fixes Completed
 
@@ -459,6 +478,7 @@ The app supports:
 - Workflow tab no longer shows the gray header helper text.
 - Hardcoded semantic domain catalogs were removed from the mission engine.
 - Settings no longer shows the environment-variable helper paragraph, mock fallback toggle, or developer debug mode toggle.
+- First-run Qwen API key onboarding and mission launch guard were added for open-source users.
 
 ## Verification
 

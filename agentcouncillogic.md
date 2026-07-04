@@ -408,6 +408,7 @@ If replay events are unavailable, the app falls back to saved history fields.
 ```text
 User brief
   -> Mission configuration
+  -> Qwen key resolved from saved browser key or local env key
   -> Semantic mission context
   -> Planner graph
   -> Workstreams
@@ -434,3 +435,15 @@ Agent Society is a mission council with a shared whiteboard.
 - Presentation renderers translate the structured record into a polished human experience.
 
 The tabs are different human-friendly views of the same `MissionContext`, not independent placeholder generators.
+
+## Qwen Key Gate
+
+Mission execution requires a resolved Qwen API key before the engine starts.
+
+The app resolves keys through `src/lib/qwenConfig.ts`:
+
+1. Saved browser key from localStorage
+2. Local developer env key from `VITE_QWEN_API_KEY`
+3. No key
+
+If no key exists, Mission Control blocks launch and routes the user to Settings. This keeps fresh open-source clones from running with a missing or bundled key.

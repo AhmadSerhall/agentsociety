@@ -11,6 +11,7 @@ import type {
   QwenMessage,
   ApiError,
 } from "@/types";
+import { DEFAULT_QWEN_BASE_URL, DEFAULT_QWEN_MODEL, getResolvedQwenSettings } from "@/lib/qwenConfig";
 
 export interface QwenClientConfig {
   baseUrl: string;
@@ -24,29 +25,12 @@ export interface QwenRuntimeInfo {
   provider: "Qwen" | "Mock";
   hasApiKey: boolean;
   hasUsableApiKey: boolean;
+  keySource: "saved" | "env" | "none";
+  maskedApiKey: string;
   model: string;
   baseUrl: string;
   baseHost: string;
   isLocalBaseUrl: boolean;
-}
-
-const RUNTIME_SETTINGS_KEY = "agent-society-runtime-settings";
-const DEFAULT_QWEN_BASE_URL = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1";
-const DEFAULT_QWEN_MODEL = "qwen-turbo";
-
-interface BrowserQwenSettings {
-  qwenApiKey?: string;
-  qwenBaseUrl?: string;
-  qwenModel?: string;
-}
-
-function getBrowserQwenSettings(): BrowserQwenSettings {
-  if (typeof window === "undefined") return {};
-  try {
-    return JSON.parse(localStorage.getItem(RUNTIME_SETTINGS_KEY) ?? "{}") as BrowserQwenSettings;
-  } catch {
-    return {};
-  }
 }
 
 export class QwenApiError extends Error {
@@ -61,11 +45,11 @@ export class QwenApiError extends Error {
 }
 
 function getClientConfig(): QwenClientConfig {
-  const browserSettings = getBrowserQwenSettings();
+  const resolved = getResolvedQwenSettings();
   return {
-    baseUrl: browserSettings.qwenBaseUrl || process.env.NEXT_PUBLIC_QWEN_BASE_URL || DEFAULT_QWEN_BASE_URL,
-    apiKey: browserSettings.qwenApiKey || process.env.NEXT_PUBLIC_QWEN_API_KEY || "",
-    defaultModel: browserSettings.qwenModel || process.env.NEXT_PUBLIC_QWEN_MODEL || DEFAULT_QWEN_MODEL,
+    baseUrl: resolved.qwenBaseUrl || DEFAULT_QWEN_BASE_URL,
+    apiKey: resolved.qwenApiKey || "",
+    defaultModel: resolved.qwenModel || DEFAULT_QWEN_MODEL,
     defaultTemperature: 0.7,
     defaultMaxTokens: 4096,
   };
@@ -93,6 +77,8 @@ export function getQwenRuntimeInfo(): QwenRuntimeInfo {
     provider: hasUsableApiKey ? "Qwen" : "Mock",
     hasApiKey,
     hasUsableApiKey,
+    keySource: cfg.apiKey ? getResolvedQwenSettings().source : "none",
+    maskedApiKey: getResolvedQwenSettings().maskedApiKey,
     model: cfg.defaultModel,
     baseUrl: cfg.baseUrl,
     baseHost,

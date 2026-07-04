@@ -11,6 +11,7 @@ import { useRef, useCallback, useEffect } from "react";
 import { useMissionStore } from "@/store/mission-store";
 import { useHistoryStore } from "@/store/history-store";
 import { MissionEngine } from "@/services/mission-engine";
+import { hasUsableQwenKey } from "@/lib/qwenConfig";
 import { MissionState, MissionEventType } from "@/types";
 import type { MissionContext, MissionConfiguration } from "@/types";
 import { toast } from "sonner";
@@ -47,6 +48,11 @@ export function useMissionEngine() {
 
   const launch = useCallback(
     (brief: string, config?: Partial<MissionConfiguration>) => {
+      if (!hasUsableQwenKey()) {
+        toast.error("Qwen API key required", { description: "Go to Settings and paste your Qwen API key to run missions." });
+        return;
+      }
+
       const currentStatus = useMissionStore.getState().context?.status;
       if (
         useMissionStore.getState().context &&

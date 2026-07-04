@@ -1,10 +1,14 @@
 "use client";
 
 import { create } from "zustand";
-
-const STORAGE_KEY = "agent-society-runtime-settings";
-const DEFAULT_QWEN_BASE_URL = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1";
-const DEFAULT_QWEN_MODEL = "qwen-turbo";
+import {
+  DEFAULT_QWEN_BASE_URL,
+  DEFAULT_QWEN_MODEL,
+  QWEN_SETTINGS_STORAGE_KEY,
+  clearSavedQwenKey,
+  getSavedQwenSettings,
+  saveQwenSettings,
+} from "@/lib/qwenConfig";
 
 interface RuntimeSettings {
   allowMockFallback: boolean;
@@ -22,30 +26,23 @@ interface RuntimeSettings {
 interface PersistedRuntimeSettings {
   allowMockFallback?: boolean;
   developerDebugMode?: boolean;
-  qwenApiKey?: string;
-  qwenBaseUrl?: string;
-  qwenModel?: string;
 }
 
 function readSettings(): Pick<RuntimeSettings, "allowMockFallback" | "developerDebugMode" | "qwenApiKey" | "qwenBaseUrl" | "qwenModel"> {
   const fallback = {
     allowMockFallback: false,
     developerDebugMode: false,
-    qwenApiKey: "",
-    qwenBaseUrl: DEFAULT_QWEN_BASE_URL,
-    qwenModel: DEFAULT_QWEN_MODEL,
+    ...getSavedQwenSettings(),
   };
   if (typeof window === "undefined") return fallback;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(QWEN_SETTINGS_STORAGE_KEY);
     if (!raw) return fallback;
     const parsed = JSON.parse(raw) as PersistedRuntimeSettings;
     return {
       allowMockFallback: Boolean(parsed.allowMockFallback),
       developerDebugMode: Boolean(parsed.developerDebugMode),
-      qwenApiKey: parsed.qwenApiKey ?? "",
-      qwenBaseUrl: parsed.qwenBaseUrl ?? DEFAULT_QWEN_BASE_URL,
-      qwenModel: parsed.qwenModel ?? DEFAULT_QWEN_MODEL,
+      ...getSavedQwenSettings(),
     };
   } catch {
     return fallback;
@@ -55,7 +52,7 @@ function readSettings(): Pick<RuntimeSettings, "allowMockFallback" | "developerD
 function saveSettings(settings: PersistedRuntimeSettings) {
   if (typeof window === "undefined") return;
   const current = readSettings();
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...current, ...settings }));
+  localStorage.setItem(QWEN_SETTINGS_STORAGE_KEY, JSON.stringify({ ...current, ...settings }));
 }
 
 export const useRuntimeSettingsStore = create<RuntimeSettings>((set) => ({
@@ -79,16 +76,13 @@ export const useRuntimeSettingsStore = create<RuntimeSettings>((set) => ({
       qwenBaseUrl: baseUrl.trim() || DEFAULT_QWEN_BASE_URL,
       qwenModel: model.trim() || DEFAULT_QWEN_MODEL,
     };
-    saveSettings(next);
+    saveQwenSettings(next);
     set(next);
   },
   clearQwenCredentials: () => {
-    const next = {
+    clearSavedQwenKey();
+    set({
       qwenApiKey: "",
-      qwenBaseUrl: DEFAULT_QWEN_BASE_URL,
-      qwenModel: DEFAULT_QWEN_MODEL,
-    };
-    saveSettings(next);
-    set(next);
+    });
   },
 }));

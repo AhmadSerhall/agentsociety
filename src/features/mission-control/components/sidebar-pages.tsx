@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   Copy,
   Download,
+  ExternalLink,
   FileText,
   History,
   KeyRound,
@@ -32,6 +33,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/hooks/use-toast";
+import { QWEN_API_KEY_URL, getEnvQwenSettings, getResolvedQwenSettings } from "@/lib/qwenConfig";
 import { getQwenRuntimeInfo } from "@/services/qwen";
 import { buildMissionStateFromEvents, getReplayDuration } from "@/services/replay/replay-engine";
 import { useHistoryStore, useMissionStore, useRuntimeSettingsStore } from "@/store";
@@ -594,6 +596,8 @@ function ReportsPage() {
 
 function SettingsPage() {
   const runtime = getQwenRuntimeInfo();
+  const resolved = getResolvedQwenSettings();
+  const envSettings = getEnvQwenSettings();
   const qwenApiKey = useRuntimeSettingsStore((state) => state.qwenApiKey);
   const qwenBaseUrl = useRuntimeSettingsStore((state) => state.qwenBaseUrl);
   const qwenModel = useRuntimeSettingsStore((state) => state.qwenModel);
@@ -602,10 +606,14 @@ function SettingsPage() {
   const [apiKeyDraft, setApiKeyDraft] = useState(qwenApiKey);
   const [baseUrlDraft, setBaseUrlDraft] = useState(qwenBaseUrl);
   const [modelDraft, setModelDraft] = useState(qwenModel);
+  const hasSavedKey = Boolean(qwenApiKey.trim());
+  const hasEnvKey = Boolean(envSettings.qwenApiKey.trim());
+  const activeKeyLabel = resolved.source === "saved" ? "Using saved browser key" : resolved.source === "env" ? "Using local env key" : "No API key configured";
+  const keyInputPlaceholder = !hasSavedKey && hasEnvKey ? "Using local env key - paste a key to override" : "Paste your Qwen API key";
 
   return (
     <section className="space-y-5">
-      <PageHeader icon={Settings} title="Settings" meta={`Current mode: ${runtime.provider}`} description="Bring your own Qwen API key to run missions. Credentials are stored locally in this browser and are never committed to the open-source project." />
+      <PageHeader icon={Settings} title="Settings" meta={`Current mode: ${runtime.provider}`} description="Connect your own Qwen API key to run missions. Keys are stored only in this browser and are never committed to the open-source project." />
       <div className="rounded-2xl border border-cyan-200/15 bg-cyan-300/[0.055] p-5 shadow-[0_24px_90px_rgba(34,211,238,0.12)]">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex gap-3">
@@ -615,7 +623,7 @@ function SettingsPage() {
             <div>
               <h3 className="text-base font-semibold text-white">Connect Qwen</h3>
               <p className="mt-1 max-w-3xl text-sm leading-relaxed text-white/58">
-                Paste your own Qwen API key to enable mission generation. Because this app is frontend-only, use restricted test or hackathon keys and never share production secrets.
+                Paste your Qwen API key below. For open-source users, create a Qwen/DashScope account, generate an API key, and save it.
               </p>
             </div>
           </div>
@@ -631,9 +639,13 @@ function SettingsPage() {
               type="password"
               value={apiKeyDraft}
               onChange={(event) => setApiKeyDraft(event.target.value)}
-              placeholder="Paste your Qwen API key"
+              placeholder={keyInputPlaceholder}
               className="h-11 border-cyan-200/15 bg-black/25 text-white placeholder:text-white/28 focus-visible:border-cyan-200/45"
             />
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className={resolved.source === "none" ? "text-amber-100/80" : "text-emerald-100/80"}>{activeKeyLabel}</span>
+              {resolved.maskedApiKey && <span className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 font-mono text-white/56">{resolved.maskedApiKey}</span>}
+            </div>
           </div>
           <div className="space-y-2">
             <label className="text-xs uppercase tracking-[0.18em] text-white/38">Base URL</label>
@@ -658,16 +670,29 @@ function SettingsPage() {
         <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2 text-xs text-white/45">
             <ShieldCheck className="h-4 w-4 text-cyan-200/70" />
-            Stored in localStorage on this device only. The API key is never displayed outside this password field.
+            Stored in localStorage on this device only. The key is never displayed in full.
           </div>
           <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => window.open(QWEN_API_KEY_URL, "_blank", "noopener,noreferrer")}
+              className="gap-2 border-cyan-200/15 bg-cyan-300/[0.08] text-cyan-100 hover:bg-cyan-300/[0.14] hover:text-cyan-50"
+            >
+              <ExternalLink className="h-4 w-4" />
+              Get Qwen API Key
+            </Button>
             <Button
               type="button"
               variant="outline"
               onClick={() => {
                 clearQwenCredentials();
                 setApiKeyDraft("");
-                toast({ title: "Qwen key removed", description: "Mission launch is locked until a new key is saved." });
+                window.dispatchEvent(new Event("agentSociety:qwenKeyCleared"));
+                toast({
+                  title: "Saved key cleared",
+                  description: hasEnvKey ? "Agent Society is now using your local env key." : "Mission launch is locked until a key is saved.",
+                });
               }}
               className="border-white/10 bg-white/[0.04] text-white/70 hover:bg-white/[0.08] hover:text-white"
             >
@@ -676,8 +701,12 @@ function SettingsPage() {
             <Button
               type="button"
               onClick={() => {
+                if (!apiKeyDraft.trim()) {
+                  toast({ title: "Qwen API key required", description: "Paste a valid Qwen API key before saving." });
+                  return;
+                }
                 setQwenCredentials({ apiKey: apiKeyDraft, baseUrl: baseUrlDraft, model: modelDraft });
-                toast({ title: "Qwen settings saved", description: "Agent Society will use your local Qwen credentials for missions." });
+                toast({ title: "Qwen API key saved locally.", description: "Agent Society will use your saved browser key for missions." });
               }}
               className="gap-2 bg-gradient-to-r from-cyan-300 to-purple-400 text-[#06101f] shadow-[0_0_34px_rgba(34,211,238,0.22)] hover:from-cyan-200 hover:to-purple-300"
             >
@@ -689,8 +718,9 @@ function SettingsPage() {
       </div>
       <div className={cardClass()}>
         <h3 className="text-sm font-semibold text-white">Qwen Runtime</h3>
-        <div className="mt-4 grid gap-3 md:grid-cols-3">
+        <div className="mt-4 grid gap-3 md:grid-cols-4">
           <Info label="Provider" value={runtime.provider} />
+          <Info label="Active Key" value={activeKeyLabel} />
           <Info label="Model" value={runtime.model} />
           <Info label="Base URL Host" value={runtime.baseHost} />
         </div>
