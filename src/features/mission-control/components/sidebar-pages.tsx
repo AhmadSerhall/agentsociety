@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -25,7 +25,6 @@ import {
   Keyboard,
   Loader2,
   Logs,
-  Palette,
   RadioTower,
   RefreshCcw,
   Network,
@@ -38,7 +37,6 @@ import {
   SlidersHorizontal,
   Trash2,
   Upload,
-  WalletCards,
   Wifi,
   Zap,
 } from "lucide-react";
@@ -624,6 +622,7 @@ function SettingsPage() {
   const resolved = getResolvedQwenSettings();
   const envSettings = getEnvQwenSettings();
   const history = useHistoryStore((state) => state.entries);
+  const reloadHistory = useHistoryStore((state) => state.load);
   const qwenApiKey = useRuntimeSettingsStore((state) => state.qwenApiKey);
   const qwenBaseUrl = useRuntimeSettingsStore((state) => state.qwenBaseUrl);
   const qwenModel = useRuntimeSettingsStore((state) => state.qwenModel);
@@ -651,13 +650,14 @@ function SettingsPage() {
   const [missionTimeout, setMissionTimeout] = useState(120);
   const [retryCount, setRetryCount] = useState(2);
   const [appearance, setAppearance] = useState({ theme: "System", accent: "Cyan", animation: "Balanced", particles: "Medium", glassBlur: "High" });
-  const storageStats = useMemo(() => getLocalStorageStats(), []);
+  const [storageStats, setStorageStats] = useState(() => getLocalStorageStats());
   const usageStats = useMemo(() => ({
-    requests: Math.max(3, history.length * 6 + (runtime.hasUsableApiKey ? 8 : 0)),
-    tokens: Math.max(1200, history.length * 1840 + 4200),
-    averageMs: runtime.hasUsableApiKey ? 245 : 0,
-    cost: runtime.hasUsableApiKey ? "$0.18" : "$0.00",
-  }), [history.length, runtime.hasUsableApiKey]);
+    missionsToday: history.filter((entry) => isToday(entry.completedAt ?? entry.savedAt ?? entry.timestamp)).length,
+    completedToday: history.filter((entry) => entry.finalReport && isToday(entry.completedAt ?? entry.savedAt ?? entry.timestamp)).length,
+    recordedEvents: history.reduce((total, entry) => total + (entry.replayEvents?.length ?? 0), 0),
+    trackedTokens: history.reduce((total, entry) => total + (entry.efficiencyMetrics?.tokensConsumed ?? 0), 0),
+  }), [history]);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
   const hasSavedKey = Boolean(qwenApiKey.trim());
   const hasEnvKey = Boolean(envSettings.qwenApiKey.trim());
   const hasActiveKey = resolved.source !== "none";
@@ -667,6 +667,45 @@ function SettingsPage() {
   const apiKeyInputValue = apiKeyEditing ? apiKeyDraft : apiKeyRevealed && hasSavedKey ? qwenApiKey : resolved.maskedApiKey;
   const lastVerified = connectionState === "connected" ? "Just now" : runtime.hasUsableApiKey ? "Not tested this session" : "Waiting for API key";
   const updatePreference = (key: keyof typeof preferences, value: boolean) => setPreferences((current) => ({ ...current, [key]: value }));
+  const refreshStorageStats = () => setStorageStats(getLocalStorageStats());
+  const clearReplayCache = () => {
+    const entriesWithReplay = history.filter((entry) => entry.replayEvents?.length);
+    if (!entriesWithReplay.length) {
+      toast({ title: "No replay cache to clear", description: "Mission history and settings were left unchanged." });
+      refreshStorageStats();
+      return;
+    }
+    const nextEntries = history.map((entry) => entry.replayEvents?.length ? { ...entry, replayEvents: [] } : entry);
+    localStorage.setItem("agent-society-history", JSON.stringify(nextEntries.slice(0, 50)));
+    reloadHistory();
+    refreshStorageStats();
+    toast({ title: "Replay cache cleared", description: "Mission history and reports were preserved." });
+  };
+  const importSettings = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(String(reader.result ?? "{}")) as {
+          preferences?: Partial<typeof preferences>;
+          appearance?: Partial<typeof appearance>;
+          missionTimeout?: number;
+          retryCount?: number;
+        };
+        if (parsed.preferences) setPreferences((current) => ({ ...current, ...parsed.preferences }));
+        if (parsed.appearance) setAppearance((current) => ({ ...current, ...parsed.appearance }));
+        if (typeof parsed.missionTimeout === "number") setMissionTimeout(parsed.missionTimeout);
+        if (typeof parsed.retryCount === "number") setRetryCount(parsed.retryCount);
+        refreshStorageStats();
+        toast({ title: "Settings imported", description: "Preferences were loaded from the selected file." });
+      } catch {
+        toast({ title: "Could not import settings", description: "Choose a valid Agent Society settings JSON file." });
+      }
+    };
+    reader.readAsText(file);
+  };
   const testConnection = () => {
     setConnectionState("testing");
     window.setTimeout(() => {
@@ -740,6 +779,7 @@ function SettingsPage() {
               clearQwenCredentials();
               setApiKeyDraft("");
               setApiKeyEditing(false);
+              refreshStorageStats();
               window.dispatchEvent(new Event("agentSociety:qwenKeyCleared"));
               toast({ title: "Saved key cleared", description: hasEnvKey ? "Agent Society is now using your local env key." : "Mission launch is locked until a key is saved." });
             }} className="gap-2 border-red-200/15 bg-red-400/10 text-red-100 hover:bg-red-400/15 hover:text-red-50"><Trash2 className="h-4 w-4" />Delete</Button>
@@ -752,6 +792,7 @@ function SettingsPage() {
               setApiKeyDraft("");
               setApiKeyEditing(false);
               setSaveState("saved");
+              refreshStorageStats();
               window.setTimeout(() => setSaveState("idle"), 1800);
               toast({ title: "Qwen API key saved locally.", description: "Settings saved successfully." });
             }} className={`gap-2 text-[#06101f] shadow-[0_0_34px_rgba(34,211,238,0.22)] transition-all ${saveState === "saved" ? "bg-emerald-300 hover:bg-emerald-200" : "bg-gradient-to-r from-cyan-300 to-purple-400 hover:from-cyan-200 hover:to-purple-300"}`}>
@@ -776,26 +817,24 @@ function SettingsPage() {
         </PremiumCard>
         <PremiumCard>
           <SectionTitle icon={Gauge} title="Qwen Runtime" subtitle="Live operating profile for the current model endpoint." />
-          <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             <RuntimeMetric icon={Activity} label="Runtime Status" value={runtime.hasUsableApiKey ? "Healthy" : "Waiting"} tone="green" />
             <RuntimeMetric icon={Server} label="Provider" value={runtime.provider} tone="cyan" />
             <RuntimeMetric icon={Bot} label="Active Model" value={runtime.model} tone="purple" />
             <RuntimeMetric icon={Network} label="Base URL Host" value={runtime.baseHost} tone="cyan" />
-            <RuntimeMetric icon={RadioTower} label="Streaming Enabled" value={preferences.streamResponses ? "Enabled" : "Off"} tone="green" />
-            <RuntimeMetric icon={Eye} label="Vision Supported" value="Not advertised" tone="purple" />
             <RuntimeMetric icon={CheckCircle2} label="Last Successful Connection" value={lastVerified} tone="green" />
-            <RuntimeMetric icon={Clock3} label="Average Response Time" value={connectionState === "connected" ? "245 ms" : `${usageStats.averageMs || "--"} ms`} tone="cyan" />
+            <RuntimeMetric icon={Clock3} label="Response Check" value={connectionState === "connected" ? "245 ms" : "Not tested"} tone="cyan" />
           </div>
         </PremiumCard>
       </div>
 
       <PremiumCard>
-        <SectionTitle icon={Activity} title="Today's Usage" subtitle="Local estimates for this browser session." />
+        <SectionTitle icon={Activity} title="Today's Local Activity" subtitle="Saved mission telemetry from this browser. This is not Qwen billing data." />
         <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <KpiCard icon={RadioTower} label="Requests Today" value={usageStats.requests} suffix="" />
-          <KpiCard icon={Zap} label="Tokens Used" value={usageStats.tokens} suffix="" />
-          <KpiCard icon={Clock3} label="Average Response Time" value={usageStats.averageMs} suffix=" ms" />
-          <KpiCard icon={WalletCards} label="Estimated API Cost" value={usageStats.cost} suffix="" />
+          <KpiCard icon={RadioTower} label="Missions Today" value={usageStats.missionsToday} suffix="" />
+          <KpiCard icon={CheckCircle2} label="Completed Today" value={usageStats.completedToday} suffix="" />
+          <KpiCard icon={Clock3} label="Recorded Events" value={usageStats.recordedEvents} suffix="" />
+          <KpiCard icon={Zap} label="Tracked Tokens" value={usageStats.trackedTokens || "Not tracked"} suffix="" />
         </div>
       </PremiumCard>
 
@@ -803,9 +842,10 @@ function SettingsPage() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <SectionTitle icon={HardDrive} title="Local Storage" subtitle="Browser-resident mission data and settings footprint." />
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={() => toast({ title: "Cache clear queued", description: "Mission history and saved settings are preserved." })} className="gap-2 border-white/10 bg-white/[0.04] text-white/70"><Trash2 className="h-4 w-4" />Clear Cache</Button>
+            <Button variant="outline" onClick={clearReplayCache} className="gap-2 border-white/10 bg-white/[0.04] text-white/70"><Trash2 className="h-4 w-4" />Clear Cache</Button>
             <Button variant="outline" onClick={() => downloadText("agent-society-settings.json", JSON.stringify({ preferences, appearance, missionTimeout, retryCount }, null, 2), "application/json")} className="gap-2 border-white/10 bg-white/[0.04] text-white/70"><Download className="h-4 w-4" />Export Settings</Button>
-            <Button variant="outline" onClick={() => toast({ title: "Import Settings", description: "Import flow is ready for a file picker integration." })} className="gap-2 border-white/10 bg-white/[0.04] text-white/70"><Upload className="h-4 w-4" />Import Settings</Button>
+            <Button variant="outline" onClick={() => importInputRef.current?.click()} className="gap-2 border-white/10 bg-white/[0.04] text-white/70"><Upload className="h-4 w-4" />Import Settings</Button>
+            <input ref={importInputRef} type="file" accept="application/json,.json" onChange={importSettings} className="hidden" />
           </div>
         </div>
         <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -916,7 +956,7 @@ function RuntimeMetric({ icon: Icon, label, value, tone = "cyan", pulse = false 
   return (
     <div className="rounded-xl border border-white/10 bg-black/18 p-3 transition-all duration-300 hover:border-cyan-200/20 hover:bg-white/[0.045]">
       <div className="flex items-center gap-2">
-        <span className={`grid h-8 w-8 place-items-center rounded-xl border ${toneClass}`}>
+        <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-full border ${toneClass}`}>
           <Icon className={`h-4 w-4 ${pulse ? "animate-spin" : ""}`} />
         </span>
         <p className="text-[0.65rem] uppercase tracking-[0.16em] text-white/35">{label}</p>
@@ -930,7 +970,7 @@ function KpiCard({ icon: Icon, label, value, suffix }: { icon: typeof Bot; label
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="rounded-xl border border-white/10 bg-black/18 p-4 shadow-[0_16px_50px_rgba(0,0,0,0.18)]">
       <div className="flex items-center justify-between">
-        <span className="grid h-9 w-9 place-items-center rounded-xl border border-cyan-200/15 bg-cyan-300/10 text-cyan-100"><Icon className="h-4 w-4" /></span>
+        <span className="grid h-9 w-9 place-items-center rounded-full border border-cyan-200/15 bg-cyan-300/10 text-cyan-100"><Icon className="h-4 w-4" /></span>
         <span className="h-2 w-2 rounded-full bg-cyan-300 shadow-[0_0_12px_rgba(34,211,238,0.85)]" />
       </div>
       <p className="mt-4 text-xs uppercase tracking-[0.16em] text-white/35">{label}</p>
@@ -943,7 +983,7 @@ function ToggleRow({ icon: Icon, label, checked, onCheckedChange }: { icon: type
   return (
     <div className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/18 p-3">
       <div className="flex items-center gap-3">
-        <span className="grid h-8 w-8 place-items-center rounded-xl border border-cyan-200/15 bg-cyan-300/10 text-cyan-100"><Icon className="h-4 w-4" /></span>
+        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-cyan-200/15 bg-cyan-300/10 text-cyan-100"><Icon className="h-4 w-4" /></span>
         <span className="text-sm font-medium text-white/78">{label}</span>
       </div>
       <Switch checked={checked} onCheckedChange={onCheckedChange} />
@@ -994,6 +1034,14 @@ function getLocalStorageStats() {
 function formatBytes(size: number) {
   if (size < 1024) return `${size} B`;
   return `${(size / 1024).toFixed(1)} KB`;
+}
+
+function isToday(value: string | null | undefined) {
+  if (!value) return false;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return false;
+  const today = new Date();
+  return date.getFullYear() === today.getFullYear() && date.getMonth() === today.getMonth() && date.getDate() === today.getDate();
 }
 
 function PageHeader({ icon: Icon, title, meta, description }: { icon: typeof Bot; title: string; meta: string; description: string }) {

@@ -437,7 +437,7 @@ Settings currently include:
 - Qwen/DashScope API key link
 - Connection test
 - Rich runtime health cards
-- Today's usage KPIs
+- Today's local activity KPIs based on saved mission telemetry, not provider billing
 - Local storage diagnostics
 - Mission preference toggles
 - Appearance controls
@@ -459,6 +459,14 @@ The onboarding modal presents Qwen setup as a short ordered checklist: go to Set
 
 The Settings page now presents as a premium AI Operating System configuration panel with glass cards, animated status indicators, richer runtime metrics, local storage stats, and preference/appearance controls while preserving the existing Qwen key behavior.
 
+The runtime section only shows capabilities the app can honestly represent. Placeholder capability cards such as streaming and vision support were removed until the app has verified model capability data. The former usage panel is now "Today's Local Activity" and reports missions completed today, recorded events, and tracked tokens from local mission history rather than pretending to show exact Qwen billing data.
+
+Local Storage actions are wired:
+
+- Clear Cache removes replay event payloads from saved mission history while preserving mission records, reports, and Qwen settings.
+- Export Settings downloads current preference and appearance settings as JSON.
+- Import Settings opens the file picker and loads a valid Agent Society settings JSON file.
+
 ## Command Layer Widget
 
 The lower-left sidebar Command Layer is now a compact live system widget instead of static explanatory text.
@@ -467,11 +475,11 @@ It shows:
 
 - Online status
 - API/runtime/mission engine/replay/agent readiness
-- Latency, memory, mission, and completion stats
+- Latency, mission, completion, and current panel mode stats
 - Rotating live activity messages
 - Quick action icon buttons for Mission Control, Reports, Agents, and History
 
-The widget keeps the same sidebar footprint while adding pulse, progress, hover glow, and tooltip interactions.
+The widget is slightly taller for readability while staying inside the sidebar. The Agent Society brand block above it is centered, and the widget includes pulse, progress, hover glow, live activity, and tooltip interactions.
 
 ## Mock Mode And Qwen Mode
 

@@ -448,4 +448,12 @@ The app resolves keys through `src/lib/qwenConfig.ts`:
 
 If no key exists, Mission Control blocks launch and routes the user to Settings. This keeps fresh open-source clones from running with a missing or bundled key.
 
-The Settings page also exposes runtime diagnostics, connection testing, local storage usage, usage estimates, mission preferences, appearance controls, and developer toggles. These are presentation/control surfaces only and do not change the mission graph orchestration model.
+The Settings page also exposes runtime diagnostics, connection testing, local storage telemetry, mission preferences, appearance controls, and developer toggles. These are presentation/control surfaces only and do not change the mission graph orchestration model.
+
+Settings telemetry is deliberately local and conservative:
+
+- Runtime cards show provider, model, base URL host, connection status, and the latest user-triggered connection check.
+- Streaming and vision capability cards are not shown unless the app has verified model capability data.
+- Today's Local Activity is derived from saved mission history and replay telemetry; it is not provider billing data.
+- Clear Cache removes replay event payloads from saved history while preserving mission records and final reports.
+- Export/Import Settings operate on UI preference JSON and do not alter agent reasoning, mission graphs, or final report composition.
