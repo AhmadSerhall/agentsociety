@@ -696,13 +696,15 @@ export class MissionEngine {
     this.updateTask(ctx, task.id, { status: "completed", output: result, completedAt: now(), confidence: nextConfidence });
     this.updateWorkstream(ctx, task.workstreamId, { status: "completed", output: result, completedAt: now(), confidence: nextConfidence });
     this.setAgentState(ctx, task.agent, "complete");
-    this.addDialogue(ctx, agentDef.id, agentDef.name, agentDef.role, result, phase === MissionState.RiskReview, {
-      phase,
-      status: "complete",
-      referencedWorkstreamIds: [task.workstreamId],
-      confidence: nextConfidence,
-      displayRole: missionDisplayRole(classification, task.agent),
-    });
+    if (task.agent !== AgentRole.Finalizer) {
+      this.addDialogue(ctx, agentDef.id, agentDef.name, agentDef.role, result, phase === MissionState.RiskReview, {
+        phase,
+        status: "complete",
+        referencedWorkstreamIds: [task.workstreamId],
+        confidence: nextConfidence,
+        displayRole: missionDisplayRole(classification, task.agent),
+      });
+    }
     this.addTimeline(ctx, task.agent, phase, `${agentDef.name} completed ${task.title}`, `Confidence moved from ${task.confidence}% to ${nextConfidence}% after reviewing shared context and dependencies.`, this.timelineKind(phase), Date.now() - phaseStart);
     this.recordReplayEvent(ctx, "AGENT_FINISHED", {
       agentId: agentDef.id,

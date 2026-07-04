@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { normalizeDialogueEntry } from "@/features/mission-control/components/council/agent-output-formatter";
 import { AgentIconGlyph } from "@/features/mission-control/components/agent-icons";
 import { useMissionStore } from "@/store";
+import { AgentRole } from "@/types";
 import { formatRelativeTime } from "@/utils";
 import { useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
@@ -13,8 +14,10 @@ export function DialoguePanel() {
   const dialogue = useMissionStore(useShallow((s) => s.context?.dialogue ?? []));
   const displayDialogue = useMemo(() => {
     const seen = new Set<string>();
-    return dialogue.filter((entry) => {
+    const lastFinalizerIndex = dialogue.findLastIndex((entry) => entry.agentRole === AgentRole.Finalizer);
+    return dialogue.filter((entry, index) => {
       const output = normalizeDialogueEntry(entry);
+      if (entry.agentRole === AgentRole.Finalizer && index !== lastFinalizerIndex) return false;
       const key = `${entry.agentRole}:${output.summary.toLowerCase()}:${output.bullets.join("|").toLowerCase()}`;
       if (seen.has(key)) return false;
       seen.add(key);

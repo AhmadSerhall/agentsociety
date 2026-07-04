@@ -31,7 +31,6 @@ import { AGENT_DEFINITIONS } from "@/agents";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
 import { toast } from "@/hooks/use-toast";
 import { getQwenRuntimeInfo } from "@/services/qwen";
 import { buildMissionStateFromEvents, getReplayDuration } from "@/services/replay/replay-engine";
@@ -595,10 +594,6 @@ function ReportsPage() {
 
 function SettingsPage() {
   const runtime = getQwenRuntimeInfo();
-  const allowMockFallback = useRuntimeSettingsStore((state) => state.allowMockFallback);
-  const setAllowMockFallback = useRuntimeSettingsStore((state) => state.setAllowMockFallback);
-  const developerDebugMode = useRuntimeSettingsStore((state) => state.developerDebugMode);
-  const setDeveloperDebugMode = useRuntimeSettingsStore((state) => state.setDeveloperDebugMode);
   const qwenApiKey = useRuntimeSettingsStore((state) => state.qwenApiKey);
   const qwenBaseUrl = useRuntimeSettingsStore((state) => state.qwenBaseUrl);
   const qwenModel = useRuntimeSettingsStore((state) => state.qwenModel);
@@ -699,23 +694,6 @@ function SettingsPage() {
           <Info label="Model" value={runtime.model} />
           <Info label="Base URL Host" value={runtime.baseHost} />
         </div>
-        <p className="mt-4 text-sm leading-relaxed text-white/55">
-          Open-source users can either paste a local browser key above or set `NEXT_PUBLIC_QWEN_API_KEY`, `NEXT_PUBLIC_QWEN_BASE_URL`, and `NEXT_PUBLIC_QWEN_MODEL` in `.env.local`.
-        </p>
-      </div>
-      <div className={`${cardClass()} flex items-center justify-between gap-4`}>
-        <div>
-          <h3 className="text-sm font-semibold text-white">Allow mock fallback on Qwen failure</h3>
-          <p className="mt-1 text-sm text-white/50">When off, Qwen failures stop the mission with a clear error instead of pretending Qwen succeeded.</p>
-        </div>
-        <Switch checked={allowMockFallback} onCheckedChange={setAllowMockFallback} />
-      </div>
-      <div className={`${cardClass()} flex items-center justify-between gap-4`}>
-        <div>
-          <h3 className="text-sm font-semibold text-white">Developer Debug Mode</h3>
-          <p className="mt-1 text-sm text-white/50">When enabled, transcript drawers can reveal raw model output for debugging. Keep this off for the normal product experience.</p>
-        </div>
-        <Switch checked={developerDebugMode} onCheckedChange={setDeveloperDebugMode} />
       </div>
     </section>
   );

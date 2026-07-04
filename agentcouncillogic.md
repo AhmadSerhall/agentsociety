@@ -101,6 +101,8 @@ The main communication channels are:
 
 Dependent agents consume upstream context through `MissionContext`. For example, a later task can depend on research output, and the Finalizer synthesizes completed workstreams instead of inventing a separate answer from scratch.
 
+Finalizer workstream execution is kept separate from visible Finalizer narration. The Dialogue tab shows the final synthesis contribution once, so the user sees one clear closing message instead of multiple near-identical Finalizer cards.
+
 ## Mission Graph
 
 The Mission Graph contains:
@@ -274,6 +276,8 @@ It now displays:
 - Workstream cards when Planner output is parsed
 
 Duplicate identical entries are hidden at presentation time, so repeated Finalizer or Mediator messages do not clutter the tab.
+
+If saved or replayed mission data contains more than one Finalizer message, the Dialogue tab keeps the latest Finalizer synthesis and hides earlier Finalizer duplicates.
 
 ### Conflicts
 

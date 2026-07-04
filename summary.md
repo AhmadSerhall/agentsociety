@@ -240,6 +240,7 @@ The Dialogue tab now:
 - Shows message type only when useful
 - Shows conflict badges only for actual conflict entries
 - Dedupes identical repeated messages
+- Shows only one Finalizer synthesis contribution, using the latest final synthesis when older missions contain duplicate Finalizer entries
 - Renders structured payloads into summaries, bullets, and cards
 
 This prevents repeated Finalizer/Mediator messages and avoids misleading conflict labels.
@@ -431,10 +432,6 @@ Settings currently include:
 - Qwen API Key
 - Qwen Base URL
 - Qwen Model
-- Allow mock fallback on Qwen failure
-- Developer Debug Mode
-
-Developer Debug Mode is off by default. Normal mission UI still stays human-readable and should not expose raw model payloads.
 
 ## Mock Mode And Qwen Mode
 
@@ -442,9 +439,6 @@ The app supports:
 
 - Mock mode for demos and development
 - Qwen mode for real model responses
-- Mock fallback when enabled
-
-If Qwen fails and fallback is allowed, the app uses local mock output without showing "fallback activated" text to the user.
 
 ## Important UX Fixes Completed
 
@@ -458,11 +452,13 @@ If Qwen fails and fallback is allowed, the app uses local mock output without sh
 - Replay inspector no longer shows raw JSON.
 - Reports page no longer exposes JSON export.
 - Dialogue uses agent icons instead of initials.
+- Dialogue shows one consolidated Finalizer synthesis instead of repeated Finalizer cards.
 - Duplicate identical dialogue messages are hidden.
 - Conflict labels only appear on true conflict entries.
 - Final Report sections are deduped and no-op sections are hidden.
 - Workflow tab no longer shows the gray header helper text.
 - Hardcoded semantic domain catalogs were removed from the mission engine.
+- Settings no longer shows the environment-variable helper paragraph, mock fallback toggle, or developer debug mode toggle.
 
 ## Verification
 
