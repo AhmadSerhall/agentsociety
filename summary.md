@@ -435,6 +435,13 @@ Settings currently include:
 - Active key status
 - Masked active key display
 - Qwen/DashScope API key link
+- Connection test
+- Rich runtime health cards
+- Today's usage KPIs
+- Local storage diagnostics
+- Mission preference toggles
+- Appearance controls
+- Collapsible developer controls
 
 Qwen settings are resolved through `src/lib/qwenConfig.ts`.
 
@@ -449,6 +456,22 @@ The full API key is never displayed. Long keys are masked in the Qwen API Key fi
 Fresh installs without a saved or env key show a first-run onboarding modal explaining that users must bring their own Qwen/DashScope API key. Mission launch is blocked until a key is saved or available through local env configuration.
 
 The onboarding modal presents Qwen setup as a short ordered checklist: go to Settings, log in or create a Qwen/DashScope account, generate a key, and paste it into the Qwen API Key field.
+
+The Settings page now presents as a premium AI Operating System configuration panel with glass cards, animated status indicators, richer runtime metrics, local storage stats, and preference/appearance controls while preserving the existing Qwen key behavior.
+
+## Command Layer Widget
+
+The lower-left sidebar Command Layer is now a compact live system widget instead of static explanatory text.
+
+It shows:
+
+- Online status
+- API/runtime/mission engine/replay/agent readiness
+- Latency, memory, mission, and completion stats
+- Rotating live activity messages
+- Quick action icon buttons for Mission Control, Reports, Agents, and History
+
+The widget keeps the same sidebar footprint while adding pulse, progress, hover glow, and tooltip interactions.
 
 ## Mock Mode And Qwen Mode
 

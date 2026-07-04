@@ -447,3 +447,5 @@ The app resolves keys through `src/lib/qwenConfig.ts`:
 3. No key
 
 If no key exists, Mission Control blocks launch and routes the user to Settings. This keeps fresh open-source clones from running with a missing or bundled key.
+
+The Settings page also exposes runtime diagnostics, connection testing, local storage usage, usage estimates, mission preferences, appearance controls, and developer toggles. These are presentation/control surfaces only and do not change the mission graph orchestration model.

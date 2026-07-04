@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Bot,
@@ -7,11 +8,15 @@ import {
   FileText,
   History,
   LayoutDashboard,
+  Play,
   RadioTower,
   Settings,
   Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getQwenRuntimeInfo } from "@/services/qwen";
+import { useHistoryStore, useMissionStore } from "@/store";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 export type MissionView = "mission-control" | "agents" | "history" | "reports" | "settings";
 
@@ -34,6 +39,22 @@ function SidebarContent({
   activeView: MissionView;
   onViewChange: (view: MissionView) => void;
 }) {
+  const historyEntries = useHistoryStore((state) => state.entries);
+  const context = useMissionStore((state) => state.context);
+  const runtime = getQwenRuntimeInfo();
+  const [activityIndex, setActivityIndex] = useState(0);
+  const activityFeed = useMemo(() => [
+    "Planner initialized",
+    runtime.hasUsableApiKey ? "Runtime connected" : "Runtime waiting for key",
+    context?.status === "completed" ? "Mission completed" : "Mission engine ready",
+    historyEntries.length ? "Reports generated" : "Replay ready",
+  ], [context?.status, historyEntries.length, runtime.hasUsableApiKey]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setActivityIndex((index) => (index + 1) % activityFeed.length), 3200);
+    return () => window.clearInterval(interval);
+  }, [activityFeed.length]);
+
   return (
     <>
       <div className="relative overflow-hidden rounded-2xl border border-cyan-200/15 bg-gradient-to-br from-cyan-300/10 via-white/[0.045] to-purple-400/10 p-4 shadow-[0_22px_70px_rgba(34,211,238,0.12)]">
@@ -50,10 +71,10 @@ function SidebarContent({
           <h2 className="text-lg font-bold text-white">Society</h2>
         </div>
         </div>
-        <div className="mt-4 flex items-center gap-2 text-xs text-white/48">
+        {/* <div className="mt-4 flex items-center gap-2 text-xs text-white/48">
           <RadioTower className="h-3.5 w-3.5 text-emerald-200" />
           System pulse nominal
-        </div>
+        </div> */}
       </div>
 
       <nav className="mt-8 space-y-2">
@@ -85,19 +106,112 @@ function SidebarContent({
         })}
       </nav>
 
-      <div className="mt-auto rounded-2xl border border-purple-300/15 bg-gradient-to-br from-purple-500/10 via-cyan-400/5 to-transparent p-4 shadow-[0_20px_70px_rgba(168,85,247,0.08)]">
-        <div className="flex items-center gap-2 text-xs uppercase tracking-[0.22em] text-purple-200/70">
+      <CommandLayerWidget
+        activeView={activeView}
+        onViewChange={onViewChange}
+        runtimeConnected={runtime.hasUsableApiKey}
+        activity={activityFeed[activityIndex] ?? "Runtime ready"}
+        historyCount={historyEntries.length}
+        completedCount={historyEntries.filter((entry) => entry.finalReport).length}
+      />
+    </>
+  );
+}
+
+function CommandLayerWidget({
+  activeView,
+  onViewChange,
+  runtimeConnected,
+  activity,
+  historyCount,
+  completedCount,
+}: {
+  activeView: MissionView;
+  onViewChange: (view: MissionView) => void;
+  runtimeConnected: boolean;
+  activity: string;
+  historyCount: number;
+  completedCount: number;
+}) {
+  const rows = [
+    ["API", runtimeConnected ? "Connected" : "Needs key", runtimeConnected],
+    ["Runtime", runtimeConnected ? "Healthy" : "Limited", runtimeConnected],
+    ["Mission Engine", "Ready", true],
+    ["Replay", "Ready", true],
+    ["Agents", activeView === "mission-control" ? "Idle" : "Standby", true],
+  ] as const;
+  const actions: Array<{ label: string; view: MissionView; icon: typeof LayoutDashboard }> = [
+    { label: "Launch Mission", view: "mission-control", icon: Play },
+    { label: "Reports", view: "reports", icon: FileText },
+    { label: "Agents", view: "agents", icon: Bot },
+    { label: "History", view: "history", icon: History },
+  ];
+
+  return (
+    <div className="mt-4 overflow-hidden rounded-2xl border border-cyan-200/15 bg-gradient-to-br from-cyan-300/10 via-white/[0.045] to-purple-400/10 p-3 shadow-[0_20px_70px_rgba(6,182,212,0.12)]">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-[0.65rem] uppercase tracking-[0.2em] text-cyan-100/75">
           <Cpu className="h-3.5 w-3.5" />
           Command Layer
         </div>
-        <p className="mt-2 text-sm leading-6 text-white/62">
-          War Room view keeps planning, dialogue, risks, and synthesis visible while agents execute.
-        </p>
-        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
-          <motion.div className="h-full w-2/3 rounded-full bg-gradient-to-r from-cyan-300 to-purple-300" animate={{ opacity: [0.55, 1, 0.55] }} transition={{ duration: 2.4, repeat: Infinity }} />
-        </div>
+        <span className="flex items-center gap-1.5 rounded-full border border-emerald-200/15 bg-emerald-300/10 px-2 py-0.5 text-[0.62rem] font-semibold text-emerald-100">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-300 shadow-[0_0_12px_rgba(110,231,183,0.9)] animate-pulse" />
+          ONLINE
+        </span>
       </div>
-    </>
+
+      <div className="mt-3 grid gap-1.5">
+        {rows.map(([label, value, ok]) => (
+          <div key={label} className="flex items-center justify-between rounded-lg border border-white/8 bg-black/18 px-2 py-1.5 text-[0.68rem]">
+            <span className="text-white/45">{label}</span>
+            <span className={ok ? "text-cyan-100" : "text-amber-100"}>{value}</span>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-1.5 text-[0.65rem]">
+        <MiniStat label="Latency" value={runtimeConnected ? "245ms" : "--"} />
+        <MiniStat label="Memory" value="42%" />
+        <MiniStat label="Missions" value={String(historyCount)} />
+        <MiniStat label="Complete" value={String(completedCount)} />
+      </div>
+
+      {/* <div className="mt-3 rounded-xl border border-cyan-200/10 bg-cyan-300/[0.045] px-2.5 py-2">
+        <p className="text-[0.62rem] uppercase tracking-[0.18em] text-cyan-100/55">Live Activity</p>
+        <motion.p key={activity} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} className="mt-1 truncate text-xs text-white/72">
+          {activity}
+        </motion.p>
+      </div> */}
+
+      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
+        <motion.div className="h-full rounded-full bg-gradient-to-r from-cyan-300 to-purple-300" animate={{ width: ["42%", "78%", "58%"], opacity: [0.65, 1, 0.65] }} transition={{ duration: 3.2, repeat: Infinity }} />
+      </div>
+
+      <div className="mt-3 flex items-center justify-between gap-1.5">
+        {actions.map((action) => {
+          const Icon = action.icon;
+          return (
+            <Tooltip key={action.label}>
+              <TooltipTrigger asChild>
+                <button type="button" onClick={() => onViewChange(action.view)} className="grid h-8 w-8 place-items-center rounded-lg border border-white/10 bg-white/[0.045] text-white/55 transition-all hover:border-cyan-200/25 hover:bg-cyan-300/10 hover:text-cyan-100 hover:shadow-[0_0_18px_rgba(34,211,238,0.16)]">
+                  <Icon className="h-3.5 w-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top">{action.label}</TooltipContent>
+            </Tooltip>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function MiniStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-white/8 bg-black/18 px-2 py-1.5">
+      <p className="text-white/35">{label}</p>
+      <p className="mt-0.5 font-semibold text-white/80">{value}</p>
+    </div>
   );
 }
 

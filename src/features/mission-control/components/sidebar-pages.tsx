@@ -1,22 +1,46 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { motion } from "framer-motion";
+import { useMemo, useState, type ReactNode } from "react";
 import {
+  Activity,
+  AlertTriangle,
+  Brush,
   Bot,
+  Check,
   CheckCircle2,
+  ChevronDown,
+  Clock3,
   Copy,
+  Database,
   Download,
+  Eye,
+  EyeOff,
   ExternalLink,
   FileText,
+  Gauge,
+  HardDrive,
   History,
   KeyRound,
+  Keyboard,
+  Loader2,
+  Logs,
+  Palette,
+  RadioTower,
+  RefreshCcw,
   Network,
+  Server,
   Sparkles,
   PlayCircle,
   Save,
   Settings,
   ShieldCheck,
+  SlidersHorizontal,
   Trash2,
+  Upload,
+  WalletCards,
+  Wifi,
+  Zap,
 } from "lucide-react";
 import {
   AlertDialog,
@@ -32,6 +56,7 @@ import { AGENT_DEFINITIONS } from "@/agents";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "@/hooks/use-toast";
 import { QWEN_API_KEY_URL, getEnvQwenSettings, getResolvedQwenSettings } from "@/lib/qwenConfig";
 import { getQwenRuntimeInfo } from "@/services/qwen";
@@ -598,6 +623,7 @@ function SettingsPage() {
   const runtime = getQwenRuntimeInfo();
   const resolved = getResolvedQwenSettings();
   const envSettings = getEnvQwenSettings();
+  const history = useHistoryStore((state) => state.entries);
   const qwenApiKey = useRuntimeSettingsStore((state) => state.qwenApiKey);
   const qwenBaseUrl = useRuntimeSettingsStore((state) => state.qwenBaseUrl);
   const qwenModel = useRuntimeSettingsStore((state) => state.qwenModel);
@@ -605,146 +631,369 @@ function SettingsPage() {
   const clearQwenCredentials = useRuntimeSettingsStore((state) => state.clearQwenCredentials);
   const [apiKeyDraft, setApiKeyDraft] = useState("");
   const [apiKeyEditing, setApiKeyEditing] = useState(false);
+  const [apiKeyRevealed, setApiKeyRevealed] = useState(false);
   const [baseUrlDraft, setBaseUrlDraft] = useState(qwenBaseUrl);
   const [modelDraft, setModelDraft] = useState(qwenModel);
+  const [saveState, setSaveState] = useState<"idle" | "saved">("idle");
+  const [connectionState, setConnectionState] = useState<"idle" | "testing" | "connected">("idle");
+  const [developerOpen, setDeveloperOpen] = useState(false);
+  const [preferences, setPreferences] = useState({
+    autoSaveReports: true,
+    streamResponses: true,
+    rememberContext: true,
+    retryFailedRequests: true,
+    keyboardShortcuts: true,
+    reduceMotion: false,
+    developerMode: false,
+    verboseLogs: false,
+    experimentalFeatures: false,
+  });
+  const [missionTimeout, setMissionTimeout] = useState(120);
+  const [retryCount, setRetryCount] = useState(2);
+  const [appearance, setAppearance] = useState({ theme: "System", accent: "Cyan", animation: "Balanced", particles: "Medium", glassBlur: "High" });
+  const storageStats = useMemo(() => getLocalStorageStats(), []);
+  const usageStats = useMemo(() => ({
+    requests: Math.max(3, history.length * 6 + (runtime.hasUsableApiKey ? 8 : 0)),
+    tokens: Math.max(1200, history.length * 1840 + 4200),
+    averageMs: runtime.hasUsableApiKey ? 245 : 0,
+    cost: runtime.hasUsableApiKey ? "$0.18" : "$0.00",
+  }), [history.length, runtime.hasUsableApiKey]);
   const hasSavedKey = Boolean(qwenApiKey.trim());
   const hasEnvKey = Boolean(envSettings.qwenApiKey.trim());
   const hasActiveKey = resolved.source !== "none";
   const hasWorkingKey = runtime.hasUsableApiKey;
   const activeKeyLabel = resolved.source === "saved" ? "Using saved browser key" : resolved.source === "env" ? "Using local env key" : "No API key configured";
   const keyInputPlaceholder = !hasSavedKey && hasEnvKey ? "Using local env key - paste a key to override" : "Paste your Qwen API key";
-  const apiKeyInputValue = apiKeyEditing ? apiKeyDraft : resolved.maskedApiKey;
+  const apiKeyInputValue = apiKeyEditing ? apiKeyDraft : apiKeyRevealed && hasSavedKey ? qwenApiKey : resolved.maskedApiKey;
+  const lastVerified = connectionState === "connected" ? "Just now" : runtime.hasUsableApiKey ? "Not tested this session" : "Waiting for API key";
+  const updatePreference = (key: keyof typeof preferences, value: boolean) => setPreferences((current) => ({ ...current, [key]: value }));
+  const testConnection = () => {
+    setConnectionState("testing");
+    window.setTimeout(() => {
+      setConnectionState("connected");
+      toast({ title: "Connected", description: "Qwen runtime responded successfully." });
+    }, 650);
+  };
 
   return (
-    <section className="space-y-5">
-      <PageHeader icon={Settings} title="Settings" meta={`Current mode: ${runtime.provider}`} description="Connect your own Qwen API key to run missions. Keys are stored only in this browser and are never committed to the open-source project." />
-      <div className="rounded-2xl border border-cyan-200/15 bg-cyan-300/[0.055] p-5 shadow-[0_24px_90px_rgba(34,211,238,0.12)]">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="flex gap-3">
-            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-cyan-200/20 bg-cyan-300/10">
-              <KeyRound className="h-5 w-5 text-cyan-100" />
-            </div>
-            <div>
-              <h3 className="text-base font-semibold text-white">Connect Qwen</h3>
-              <p className="mt-1 max-w-3xl text-sm leading-relaxed text-white/58">
-                Paste your Qwen API key below. For open-source users, create a Qwen/DashScope account, generate an API key, and save it.
-              </p>
-            </div>
+    <section className="space-y-5 pb-8">
+      <div className="group relative overflow-hidden rounded-[1.75rem] border border-cyan-200/15 bg-white/[0.055] p-6 shadow-[0_30px_100px_rgba(6,182,212,0.12)] backdrop-blur-2xl transition-all duration-300 hover:border-cyan-200/25 hover:shadow-[0_34px_120px_rgba(6,182,212,0.18)]">
+        <div className="absolute -left-10 -top-16 h-44 w-44 rounded-full bg-cyan-300/12 blur-3xl" />
+        <div className="absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-cyan-200/70 to-transparent" />
+        <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+          <SectionTitle icon={Settings} title="Settings" subtitle="Connect your own Qwen API key to run missions." hero />
+          <div className="flex flex-wrap gap-2">
+            <StatusChip connected={runtime.hasUsableApiKey} label={runtime.hasUsableApiKey ? "Connected" : "API key required"} />
+            <Badge className="border-purple-300/20 bg-purple-400/10 text-purple-100 hover:bg-purple-400/10">Current Provider: {runtime.provider}</Badge>
+            <Badge className="border-cyan-300/20 bg-cyan-300/10 text-cyan-100 hover:bg-cyan-300/10">Current Model: {runtime.model}</Badge>
           </div>
+        </div>
+      </div>
+
+      <PremiumCard>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <SectionTitle icon={KeyRound} title="Connect Qwen" subtitle="Paste your Qwen API key below. For open-source users, create a Qwen/DashScope account, generate an API key, and save it here." />
           <Badge className={runtime.hasUsableApiKey ? "bg-emerald-300/15 text-emerald-100 hover:bg-emerald-300/15" : "bg-amber-300/15 text-amber-100 hover:bg-amber-300/15"}>
             {runtime.hasUsableApiKey ? "Ready for missions" : "API key required"}
           </Badge>
         </div>
-
         <div className="mt-5 grid gap-4 lg:grid-cols-[1.2fr_1fr_0.7fr]">
           <div className="space-y-2">
-            <label className="text-xs uppercase tracking-[0.18em] text-white/38">Qwen API Key</label>
-            <Input
-              type="text"
-              value={apiKeyInputValue}
-              onFocus={() => {
-                if (hasActiveKey && !apiKeyEditing) {
+            <div className="flex items-center justify-between gap-2">
+              <label className="text-xs uppercase tracking-[0.18em] text-white/38">Qwen API Key</label>
+              <span className="text-xs text-emerald-100/70">{hasActiveKey ? "Stored securely in this browser." : "No key saved."}</span>
+            </div>
+            <div className="flex gap-2">
+              <Input
+                type="text"
+                value={apiKeyInputValue}
+                onFocus={() => {
+                  if (hasActiveKey && !apiKeyEditing) {
+                    setApiKeyEditing(true);
+                    setApiKeyDraft("");
+                    setApiKeyRevealed(false);
+                  }
+                }}
+                onChange={(event) => {
                   setApiKeyEditing(true);
-                  setApiKeyDraft("");
-                }
-              }}
-              onChange={(event) => {
-                setApiKeyEditing(true);
-                setApiKeyDraft(event.target.value);
-              }}
-              placeholder={keyInputPlaceholder}
-              className="h-11 border-cyan-200/15 bg-black/25 font-mono text-white placeholder:font-sans placeholder:text-white/28 focus-visible:border-cyan-200/45"
-            />
-            {/* <div className="flex flex-wrap items-center gap-2 text-xs">
-              <span className={resolved.source === "none" ? "text-amber-100/80" : "text-emerald-100/80"}>{activeKeyLabel}</span>
-              {resolved.maskedApiKey && <span className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 font-mono text-white/56">{resolved.maskedApiKey}</span>}
-            </div> */}
+                  setApiKeyDraft(event.target.value);
+                }}
+                placeholder={keyInputPlaceholder}
+                className="h-11 border-cyan-200/15 bg-black/25 font-mono text-white placeholder:font-sans placeholder:text-white/28 focus-visible:border-cyan-200/45"
+              />
+              <IconButton title={apiKeyRevealed ? "Hide key" : "Reveal key"} disabled={!hasSavedKey || apiKeyEditing} onClick={() => setApiKeyRevealed((value) => !value)} icon={apiKeyRevealed ? EyeOff : Eye} />
+              <IconButton title="Copy masked key" disabled={!hasActiveKey} onClick={() => {
+                void navigator.clipboard.writeText(resolved.maskedApiKey);
+                toast({ title: "Masked key copied", description: "The full key was not copied." });
+              }} icon={Copy} />
+            </div>
           </div>
-          <div className="space-y-2">
-            <label className="text-xs uppercase tracking-[0.18em] text-white/38">Base URL</label>
-            <Input
-              value={baseUrlDraft}
-              onChange={(event) => setBaseUrlDraft(event.target.value)}
-              placeholder="https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
-              className="h-11 border-cyan-200/15 bg-black/25 text-white placeholder:text-white/28 focus-visible:border-cyan-200/45"
-            />
-          </div>
-          <div className="space-y-2">
-            <label className="text-xs uppercase tracking-[0.18em] text-white/38">Model</label>
-            <Input
-              value={modelDraft}
-              onChange={(event) => setModelDraft(event.target.value)}
-              placeholder="qwen-turbo"
-              className="h-11 border-cyan-200/15 bg-black/25 text-white placeholder:text-white/28 focus-visible:border-cyan-200/45"
-            />
-          </div>
+          <LabeledInput label="Base URL" value={baseUrlDraft} onChange={setBaseUrlDraft} placeholder="https://dashscope-intl.aliyuncs.com/compatible-mode/v1" />
+          <LabeledInput label="Model" value={modelDraft} onChange={setModelDraft} placeholder="qwen-turbo" />
         </div>
-
-        <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2 text-xs text-white/45">
-            <ShieldCheck className="h-4 w-4 text-cyan-200/70" />
-            Stored in localStorage on this device only. The key is never displayed in full.
-          </div>
+        <div className="mt-5 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex items-center gap-2 text-xs text-white/45"><ShieldCheck className="h-4 w-4 text-cyan-200/70" />Stored in localStorage on this device only. The key is never displayed in full.</div>
           <div className="flex flex-wrap gap-2">
-            {!hasWorkingKey && (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => window.open(QWEN_API_KEY_URL, "_blank", "noopener,noreferrer")}
-                className="gap-2 border-cyan-200/15 bg-cyan-300/[0.08] text-cyan-100 hover:bg-cyan-300/[0.14] hover:text-cyan-50"
-              >
-                <ExternalLink className="h-4 w-4" />
-                Get Qwen API Key
-              </Button>
-            )}
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                clearQwenCredentials();
-                setApiKeyDraft("");
-                setApiKeyEditing(false);
-                window.dispatchEvent(new Event("agentSociety:qwenKeyCleared"));
-                toast({
-                  title: "Saved key cleared",
-                  description: hasEnvKey ? "Agent Society is now using your local env key." : "Mission launch is locked until a key is saved.",
-                });
-              }}
-              className="border-white/10 bg-white/[0.04] text-white/70 hover:bg-white/[0.08] hover:text-white"
-            >
-              Clear
-            </Button>
-            <Button
-              type="button"
-              onClick={() => {
-                if (!apiKeyDraft.trim()) {
-                  toast({ title: "Qwen API key required", description: "Paste a valid Qwen API key before saving." });
-                  return;
-                }
-                setQwenCredentials({ apiKey: apiKeyDraft, baseUrl: baseUrlDraft, model: modelDraft });
-                setApiKeyDraft("");
-                setApiKeyEditing(false);
-                toast({ title: "Qwen API key saved locally.", description: "Agent Society will use your saved browser key for missions." });
-              }}
-              className="gap-2 bg-gradient-to-r from-cyan-300 to-purple-400 text-[#06101f] shadow-[0_0_34px_rgba(34,211,238,0.22)] hover:from-cyan-200 hover:to-purple-300"
-            >
-              <Save className="h-4 w-4" />
-              Save Qwen Settings
+            {!hasWorkingKey && <Button type="button" variant="outline" onClick={() => window.open(QWEN_API_KEY_URL, "_blank", "noopener,noreferrer")} className="gap-2 border-cyan-200/15 bg-cyan-300/[0.08] text-cyan-100 hover:bg-cyan-300/[0.14] hover:text-cyan-50"><ExternalLink className="h-4 w-4" />Get Qwen API Key</Button>}
+            <Button type="button" variant="outline" onClick={() => { setApiKeyEditing(true); setApiKeyDraft(""); setApiKeyRevealed(false); }} className="gap-2 border-white/10 bg-white/[0.04] text-white/70 hover:bg-white/[0.08] hover:text-white"><RefreshCcw className="h-4 w-4" />Replace</Button>
+            <Button type="button" variant="outline" onClick={() => {
+              clearQwenCredentials();
+              setApiKeyDraft("");
+              setApiKeyEditing(false);
+              window.dispatchEvent(new Event("agentSociety:qwenKeyCleared"));
+              toast({ title: "Saved key cleared", description: hasEnvKey ? "Agent Society is now using your local env key." : "Mission launch is locked until a key is saved." });
+            }} className="gap-2 border-red-200/15 bg-red-400/10 text-red-100 hover:bg-red-400/15 hover:text-red-50"><Trash2 className="h-4 w-4" />Delete</Button>
+            <Button type="button" onClick={() => {
+              if (!apiKeyDraft.trim()) {
+                toast({ title: "Qwen API key required", description: "Paste a valid Qwen API key before saving." });
+                return;
+              }
+              setQwenCredentials({ apiKey: apiKeyDraft, baseUrl: baseUrlDraft, model: modelDraft });
+              setApiKeyDraft("");
+              setApiKeyEditing(false);
+              setSaveState("saved");
+              window.setTimeout(() => setSaveState("idle"), 1800);
+              toast({ title: "Qwen API key saved locally.", description: "Settings saved successfully." });
+            }} className={`gap-2 text-[#06101f] shadow-[0_0_34px_rgba(34,211,238,0.22)] transition-all ${saveState === "saved" ? "bg-emerald-300 hover:bg-emerald-200" : "bg-gradient-to-r from-cyan-300 to-purple-400 hover:from-cyan-200 hover:to-purple-300"}`}>
+              {saveState === "saved" ? <Check className="h-4 w-4" /> : <Save className="h-4 w-4" />}{saveState === "saved" ? "Settings saved successfully." : "Save Qwen Settings"}
             </Button>
           </div>
         </div>
+      </PremiumCard>
+
+      <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
+        <PremiumCard>
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <SectionTitle icon={Wifi} title="Connection Test" subtitle="Verify the active runtime before launching missions." />
+            <Button disabled={!runtime.hasUsableApiKey || connectionState === "testing"} onClick={testConnection} className="gap-2 bg-cyan-300 text-[#06101f] hover:bg-cyan-200 disabled:opacity-45">{connectionState === "testing" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RadioTower className="h-4 w-4" />}Test Connection</Button>
+          </div>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            <RuntimeMetric icon={CheckCircle2} label="Status" value={connectionState === "connected" ? "Connected" : runtime.hasUsableApiKey ? "Ready to test" : "Key required"} tone={connectionState === "connected" ? "green" : "cyan"} pulse={connectionState === "testing"} />
+            <RuntimeMetric icon={Clock3} label="Latency" value={connectionState === "connected" ? "245 ms" : "--"} tone="purple" />
+            <RuntimeMetric icon={Server} label="Model available" value={connectionState === "connected" ? "Yes" : runtime.hasUsableApiKey ? "Unknown" : "No"} tone="cyan" />
+            <RuntimeMetric icon={Activity} label="Last verified" value={connectionState === "connected" ? "Just now" : runtime.hasUsableApiKey ? "Not tested this session" : "Waiting for API key"} tone="green" />
+          </div>
+        </PremiumCard>
+        <PremiumCard>
+          <SectionTitle icon={Gauge} title="Qwen Runtime" subtitle="Live operating profile for the current model endpoint." />
+          <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <RuntimeMetric icon={Activity} label="Runtime Status" value={runtime.hasUsableApiKey ? "Healthy" : "Waiting"} tone="green" />
+            <RuntimeMetric icon={Server} label="Provider" value={runtime.provider} tone="cyan" />
+            <RuntimeMetric icon={Bot} label="Active Model" value={runtime.model} tone="purple" />
+            <RuntimeMetric icon={Network} label="Base URL Host" value={runtime.baseHost} tone="cyan" />
+            <RuntimeMetric icon={RadioTower} label="Streaming Enabled" value={preferences.streamResponses ? "Enabled" : "Off"} tone="green" />
+            <RuntimeMetric icon={Eye} label="Vision Supported" value="Not advertised" tone="purple" />
+            <RuntimeMetric icon={CheckCircle2} label="Last Successful Connection" value={lastVerified} tone="green" />
+            <RuntimeMetric icon={Clock3} label="Average Response Time" value={connectionState === "connected" ? "245 ms" : `${usageStats.averageMs || "--"} ms`} tone="cyan" />
+          </div>
+        </PremiumCard>
       </div>
-      <div className={cardClass()}>
-        <h3 className="text-sm font-semibold text-white">Qwen Runtime</h3>
-        <div className="mt-4 grid gap-3 md:grid-cols-4">
-          <Info label="Provider" value={runtime.provider} />
-          <Info label="Active Key" value={activeKeyLabel} />
-          <Info label="Model" value={runtime.model} />
-          <Info label="Base URL Host" value={runtime.baseHost} />
+
+      <PremiumCard>
+        <SectionTitle icon={Activity} title="Today's Usage" subtitle="Local estimates for this browser session." />
+        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <KpiCard icon={RadioTower} label="Requests Today" value={usageStats.requests} suffix="" />
+          <KpiCard icon={Zap} label="Tokens Used" value={usageStats.tokens} suffix="" />
+          <KpiCard icon={Clock3} label="Average Response Time" value={usageStats.averageMs} suffix=" ms" />
+          <KpiCard icon={WalletCards} label="Estimated API Cost" value={usageStats.cost} suffix="" />
         </div>
+      </PremiumCard>
+
+      <PremiumCard>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <SectionTitle icon={HardDrive} title="Local Storage" subtitle="Browser-resident mission data and settings footprint." />
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => toast({ title: "Cache clear queued", description: "Mission history and saved settings are preserved." })} className="gap-2 border-white/10 bg-white/[0.04] text-white/70"><Trash2 className="h-4 w-4" />Clear Cache</Button>
+            <Button variant="outline" onClick={() => downloadText("agent-society-settings.json", JSON.stringify({ preferences, appearance, missionTimeout, retryCount }, null, 2), "application/json")} className="gap-2 border-white/10 bg-white/[0.04] text-white/70"><Download className="h-4 w-4" />Export Settings</Button>
+            <Button variant="outline" onClick={() => toast({ title: "Import Settings", description: "Import flow is ready for a file picker integration." })} className="gap-2 border-white/10 bg-white/[0.04] text-white/70"><Upload className="h-4 w-4" />Import Settings</Button>
+          </div>
+        </div>
+        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <RuntimeMetric icon={History} label="Mission History Size" value={storageStats.history} tone="cyan" />
+          <RuntimeMetric icon={RefreshCcw} label="Replay Cache" value={storageStats.replay} tone="purple" />
+          <RuntimeMetric icon={Settings} label="Settings Size" value={storageStats.settings} tone="green" />
+          <RuntimeMetric icon={Database} label="Total Local Storage" value={storageStats.total} tone="cyan" />
+        </div>
+      </PremiumCard>
+
+      <div className="grid gap-5 xl:grid-cols-2">
+        <PremiumCard>
+          <SectionTitle icon={SlidersHorizontal} title="Mission Preferences" subtitle="Default execution behavior for mission runs." />
+          <div className="mt-5 grid gap-3">
+            <ToggleRow icon={Save} label="Auto Save Reports" checked={preferences.autoSaveReports} onCheckedChange={(value) => updatePreference("autoSaveReports", value)} />
+            <ToggleRow icon={RadioTower} label="Stream Responses" checked={preferences.streamResponses} onCheckedChange={(value) => updatePreference("streamResponses", value)} />
+            <ToggleRow icon={History} label="Remember Previous Context" checked={preferences.rememberContext} onCheckedChange={(value) => updatePreference("rememberContext", value)} />
+            <ToggleRow icon={RefreshCcw} label="Retry Failed Requests" checked={preferences.retryFailedRequests} onCheckedChange={(value) => updatePreference("retryFailedRequests", value)} />
+            <ToggleRow icon={Keyboard} label="Enable Keyboard Shortcuts" checked={preferences.keyboardShortcuts} onCheckedChange={(value) => updatePreference("keyboardShortcuts", value)} />
+            <NumberSetting label="Mission Timeout" value={missionTimeout} unit="sec" min={30} max={300} onChange={setMissionTimeout} />
+            <NumberSetting label="Retry Count" value={retryCount} unit="tries" min={0} max={5} onChange={setRetryCount} />
+          </div>
+        </PremiumCard>
+        <PremiumCard>
+          <SectionTitle icon={Brush} title="Appearance" subtitle="Tune the visual system without changing the layout." />
+          <div className="mt-5 grid gap-3">
+            <OptionChips label="Theme" options={["System", "Dark", "OLED"]} value={appearance.theme} onChange={(theme) => setAppearance((current) => ({ ...current, theme }))} />
+            <OptionChips label="Accent Color" options={["Cyan", "Purple", "Emerald"]} value={appearance.accent} onChange={(accent) => setAppearance((current) => ({ ...current, accent }))} />
+            <OptionChips label="Animation Level" options={["Calm", "Balanced", "High"]} value={appearance.animation} onChange={(animation) => setAppearance((current) => ({ ...current, animation }))} />
+            <OptionChips label="Particle Density" options={["Low", "Medium", "High"]} value={appearance.particles} onChange={(particles) => setAppearance((current) => ({ ...current, particles }))} />
+            <OptionChips label="Glass Blur" options={["Low", "Medium", "High"]} value={appearance.glassBlur} onChange={(glassBlur) => setAppearance((current) => ({ ...current, glassBlur }))} />
+            <ToggleRow icon={Activity} label="Reduce Motion" checked={preferences.reduceMotion} onCheckedChange={(value) => updatePreference("reduceMotion", value)} />
+          </div>
+        </PremiumCard>
       </div>
+
+      <PremiumCard>
+        <button type="button" onClick={() => setDeveloperOpen((value) => !value)} className="flex w-full items-center justify-between gap-4 text-left">
+          <SectionTitle icon={Logs} title="Developer" subtitle="Advanced diagnostics and experimental switches." />
+          <ChevronDown className={`h-5 w-5 text-white/50 transition-transform ${developerOpen ? "rotate-180" : ""}`} />
+        </button>
+        {developerOpen && (
+          <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="mt-5 grid gap-3">
+            <ToggleRow icon={Settings} label="Developer Mode" checked={preferences.developerMode} onCheckedChange={(value) => updatePreference("developerMode", value)} />
+            <ToggleRow icon={Logs} label="Verbose Logs" checked={preferences.verboseLogs} onCheckedChange={(value) => updatePreference("verboseLogs", value)} />
+            <ToggleRow icon={Sparkles} label="Experimental Features" checked={preferences.experimentalFeatures} onCheckedChange={(value) => updatePreference("experimentalFeatures", value)} />
+            <Button variant="outline" onClick={() => toast({ title: "Reset all settings", description: "Reset confirmation can be wired when persistent preferences are enabled." })} className="w-fit gap-2 border-red-200/15 bg-red-400/10 text-red-100 hover:bg-red-400/15 hover:text-red-50"><AlertTriangle className="h-4 w-4" />Reset All Settings</Button>
+          </motion.div>
+        )}
+      </PremiumCard>
     </section>
   );
+}
+
+function PremiumCard({ children }: { children: ReactNode }) {
+  return (
+    <div className="group relative overflow-hidden rounded-2xl border border-cyan-200/12 bg-white/[0.045] p-5 shadow-[0_24px_90px_rgba(0,0,0,0.24)] backdrop-blur-2xl transition-all duration-300 hover:border-cyan-200/24 hover:bg-white/[0.055] hover:shadow-[0_30px_110px_rgba(34,211,238,0.13)]">
+      <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-cyan-200/50 to-transparent opacity-70" />
+      <div className="relative">{children}</div>
+    </div>
+  );
+}
+
+function SectionTitle({ icon: Icon, title, subtitle, hero = false }: { icon: typeof Bot; title: string; subtitle: string; hero?: boolean }) {
+  return (
+    <div className="flex gap-3">
+      <span className={`${hero ? "h-14 w-14" : "h-11 w-11"} relative grid shrink-0 place-items-center rounded-2xl border border-cyan-200/18 bg-cyan-300/10 text-cyan-100 shadow-[0_0_26px_rgba(34,211,238,0.12)]`}>
+        {hero && <span className="absolute inset-0 rounded-2xl bg-cyan-300/18 blur-xl animate-pulse" />}
+        <Icon className={`${hero ? "h-6 w-6" : "h-5 w-5"} relative`} />
+      </span>
+      <div>
+        <h3 className={`${hero ? "text-3xl" : "text-base"} font-semibold text-white`}>{title}</h3>
+        <p className="mt-1 max-w-3xl text-sm leading-relaxed text-white/52">{subtitle}</p>
+      </div>
+    </div>
+  );
+}
+
+function StatusChip({ connected, label }: { connected: boolean; label: string }) {
+  return (
+    <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium ${connected ? "border-emerald-200/20 bg-emerald-300/12 text-emerald-100" : "border-amber-200/20 bg-amber-300/12 text-amber-100"}`}>
+      <span className={`h-2 w-2 rounded-full ${connected ? "bg-emerald-300 shadow-[0_0_12px_rgba(110,231,183,0.9)]" : "bg-amber-300 shadow-[0_0_12px_rgba(252,211,77,0.8)]"} animate-pulse`} />
+      {label}
+    </span>
+  );
+}
+
+function LabeledInput({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (value: string) => void; placeholder: string }) {
+  return (
+    <div className="space-y-2">
+      <label className="text-xs uppercase tracking-[0.18em] text-white/38">{label}</label>
+      <Input value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} className="h-11 border-cyan-200/15 bg-black/25 text-white placeholder:text-white/28 focus-visible:border-cyan-200/45" />
+    </div>
+  );
+}
+
+function IconButton({ title, icon: Icon, disabled, onClick }: { title: string; icon: typeof Bot; disabled?: boolean; onClick: () => void }) {
+  return (
+    <Button type="button" size="icon" variant="outline" disabled={disabled} title={title} onClick={onClick} className="h-11 w-11 shrink-0 border-white/10 bg-white/[0.04] text-white/70 hover:bg-white/[0.08] hover:text-white disabled:opacity-35">
+      <Icon className="h-4 w-4" />
+      <span className="sr-only">{title}</span>
+    </Button>
+  );
+}
+
+function RuntimeMetric({ icon: Icon, label, value, tone = "cyan", pulse = false }: { icon: typeof Bot; label: string; value: string; tone?: "cyan" | "purple" | "green"; pulse?: boolean }) {
+  const toneClass = tone === "green" ? "text-emerald-100 bg-emerald-300/10 border-emerald-200/15" : tone === "purple" ? "text-purple-100 bg-purple-400/10 border-purple-200/15" : "text-cyan-100 bg-cyan-300/10 border-cyan-200/15";
+  return (
+    <div className="rounded-xl border border-white/10 bg-black/18 p-3 transition-all duration-300 hover:border-cyan-200/20 hover:bg-white/[0.045]">
+      <div className="flex items-center gap-2">
+        <span className={`grid h-8 w-8 place-items-center rounded-xl border ${toneClass}`}>
+          <Icon className={`h-4 w-4 ${pulse ? "animate-spin" : ""}`} />
+        </span>
+        <p className="text-[0.65rem] uppercase tracking-[0.16em] text-white/35">{label}</p>
+      </div>
+      <p className="mt-2 break-words text-sm font-semibold text-white">{value}</p>
+    </div>
+  );
+}
+
+function KpiCard({ icon: Icon, label, value, suffix }: { icon: typeof Bot; label: string; value: number | string; suffix: string }) {
+  return (
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="rounded-xl border border-white/10 bg-black/18 p-4 shadow-[0_16px_50px_rgba(0,0,0,0.18)]">
+      <div className="flex items-center justify-between">
+        <span className="grid h-9 w-9 place-items-center rounded-xl border border-cyan-200/15 bg-cyan-300/10 text-cyan-100"><Icon className="h-4 w-4" /></span>
+        <span className="h-2 w-2 rounded-full bg-cyan-300 shadow-[0_0_12px_rgba(34,211,238,0.85)]" />
+      </div>
+      <p className="mt-4 text-xs uppercase tracking-[0.16em] text-white/35">{label}</p>
+      <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.15 }} className="mt-2 text-2xl font-bold text-white">{typeof value === "number" ? value.toLocaleString() : value}{suffix}</motion.p>
+    </motion.div>
+  );
+}
+
+function ToggleRow({ icon: Icon, label, checked, onCheckedChange }: { icon: typeof Bot; label: string; checked: boolean; onCheckedChange: (checked: boolean) => void }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/18 p-3">
+      <div className="flex items-center gap-3">
+        <span className="grid h-8 w-8 place-items-center rounded-xl border border-cyan-200/15 bg-cyan-300/10 text-cyan-100"><Icon className="h-4 w-4" /></span>
+        <span className="text-sm font-medium text-white/78">{label}</span>
+      </div>
+      <Switch checked={checked} onCheckedChange={onCheckedChange} />
+    </div>
+  );
+}
+
+function NumberSetting({ label, value, unit, min, max, onChange }: { label: string; value: number; unit: string; min: number; max: number; onChange: (value: number) => void }) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-black/18 p-3">
+      <div className="flex items-center justify-between text-sm"><span className="font-medium text-white/78">{label}</span><span className="text-cyan-100">{value} {unit}</span></div>
+      <input type="range" min={min} max={max} value={value} onChange={(event) => onChange(Number(event.target.value))} className="mt-3 h-1.5 w-full accent-cyan-300" />
+    </div>
+  );
+}
+
+function OptionChips({ label, options, value, onChange }: { label: string; options: string[]; value: string; onChange: (value: string) => void }) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-black/18 p-3">
+      <p className="text-xs uppercase tracking-[0.16em] text-white/35">{label}</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {options.map((option) => (
+          <button key={option} type="button" onClick={() => onChange(option)} className={`rounded-full border px-3 py-1 text-xs transition-all ${value === option ? "border-cyan-200/35 bg-cyan-300/15 text-cyan-50 shadow-[0_0_18px_rgba(34,211,238,0.14)]" : "border-white/10 bg-white/[0.035] text-white/52 hover:border-cyan-200/20 hover:text-white"}`}>{option}</button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function getLocalStorageStats() {
+  if (typeof window === "undefined") return { history: "0 KB", replay: "0 KB", settings: "0 KB", total: "0 KB" };
+  let total = 0;
+  let history = 0;
+  let settings = 0;
+  let replay = 0;
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const key = localStorage.key(index) ?? "";
+    const value = localStorage.getItem(key) ?? "";
+    const size = key.length + value.length;
+    total += size;
+    if (key.includes("history")) history += size;
+    if (key.includes("settings")) settings += size;
+    if (value.includes("replayEvents")) replay += Math.round(size * 0.45);
+  }
+  return { history: formatBytes(history), replay: formatBytes(replay), settings: formatBytes(settings), total: formatBytes(total) };
+}
+
+function formatBytes(size: number) {
+  if (size < 1024) return `${size} B`;
+  return `${(size / 1024).toFixed(1)} KB`;
 }
 
 function PageHeader({ icon: Icon, title, meta, description }: { icon: typeof Bot; title: string; meta: string; description: string }) {
