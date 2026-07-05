@@ -12,6 +12,7 @@ import { useMissionStore } from "@/store/mission-store";
 import { useHistoryStore } from "@/store/history-store";
 import { MissionEngine } from "@/services/mission-engine";
 import { hasUsableQwenKey } from "@/lib/qwenConfig";
+import { getSavedSettingsOptions } from "@/lib/settingsPreferences";
 import { MissionState, MissionEventType } from "@/types";
 import type { MissionContext, MissionConfiguration } from "@/types";
 import { toast } from "sonner";
@@ -91,7 +92,7 @@ export function useMissionEngine() {
         toast.success("Mission completed successfully!");
 
         const finalCtx = engine.getContext();
-        if (finalCtx) {
+        if (finalCtx && getSavedSettingsOptions().preferences.autoSaveReports) {
           saveMissionHistory(finalCtx, addHistory);
         }
       });
@@ -106,7 +107,7 @@ export function useMissionEngine() {
         useMissionStore.setState({ isRunning: false });
         toast.info("Mission cancelled");
         const partialCtx = engine.getContext();
-        if (partialCtx) {
+        if (partialCtx && getSavedSettingsOptions().preferences.autoSaveReports) {
           saveMissionHistory(partialCtx, addHistory);
         }
       });

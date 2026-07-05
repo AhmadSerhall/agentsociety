@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
+import { getSavedSettingsOptions } from "@/lib/settingsPreferences";
 import { useHistoryStore } from "@/store";
 import {
   DEPTH_LABELS,
@@ -24,6 +25,8 @@ type PromptSuggestion = {
 };
 
 type MatchedPromptSuggestion = PromptSuggestion & { match: RegExp };
+
+const EMPTY_HISTORY: ReturnType<typeof useHistoryStore.getState>["entries"] = [];
 
 const EXAMPLE_PROMPTS: PromptSuggestion[] = [
   {
@@ -89,8 +92,10 @@ export function MissionBriefComposer({
   onCancel: () => void;
 }) {
   const historyEntries = useHistoryStore((state) => state.entries);
-  const recommendedPrompts = useMemo(() => buildRecommendedPrompts(historyEntries), [historyEntries]);
-  const hasHistoryRecommendations = historyEntries.length > 0 && recommendedPrompts.length > 0;
+  const rememberPreviousContext = getSavedSettingsOptions().preferences.rememberContext;
+  const sourceHistory = rememberPreviousContext ? historyEntries : [];
+  const recommendedPrompts = useMemo(() => buildRecommendedPrompts(sourceHistory), [sourceHistory]);
+  const hasHistoryRecommendations = sourceHistory.length > 0 && recommendedPrompts.length > 0;
   const configNeedsAttention = brief.trim().length > 0 && !showConfig && !isRunning;
 
   return (

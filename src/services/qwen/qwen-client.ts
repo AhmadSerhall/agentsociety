@@ -12,6 +12,7 @@ import type {
   ApiError,
 } from "@/types";
 import { DEFAULT_QWEN_BASE_URL, DEFAULT_QWEN_MODEL, getResolvedQwenSettings } from "@/lib/qwenConfig";
+import { getSavedSettingsOptions } from "@/lib/settingsPreferences";
 
 export interface QwenClientConfig {
   baseUrl: string;
@@ -100,6 +101,24 @@ function sanitizeMessages(messages: QwenMessage[]): QwenMessage[] {
     .map((message) => ({ role: message.role, content: message.content }));
 }
 
+async function readStreamedCompletion(res: Response) {
+  const text = await res.text();
+  let content = "";
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("data:")) continue;
+    const data = trimmed.replace(/^data:\s*/, "");
+    if (!data || data === "[DONE]") continue;
+    try {
+      const parsed = JSON.parse(data) as { choices?: Array<{ delta?: { content?: string }; message?: { content?: string } }> };
+      content += parsed.choices?.[0]?.delta?.content ?? parsed.choices?.[0]?.message?.content ?? "";
+    } catch {
+      // Ignore non-JSON stream keepalive lines.
+    }
+  }
+  return content.trim();
+}
+
 export function createQwenClient(config?: Partial<QwenClientConfig>) {
   const cfg = { ...getClientConfig(), ...config };
 
@@ -112,23 +131,57 @@ export function createQwenClient(config?: Partial<QwenClientConfig>) {
       throw new QwenApiError({ code: "REPLAY_BLOCKED", message: "Replay mode never calls Qwen or any LLM." });
     }
 
+    const settings = getSavedSettingsOptions();
     const body: QwenChatRequest = {
       model: overrides?.model ?? cfg.defaultModel,
       messages: sanitizeMessages(messages),
       temperature: overrides?.temperature ?? cfg.defaultTemperature,
       max_tokens: overrides?.maxTokens ?? cfg.defaultMaxTokens,
-      stream: false,
+      stream: settings.preferences.streamResponses,
     };
 
-    const res = await fetch(chatCompletionsUrl(cfg.baseUrl), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${cfg.apiKey}`,
-      },
-      body: JSON.stringify(body),
-      signal: overrides?.signal,
-    });
+    const attempts = settings.preferences.retryFailedRequests ? Math.max(1, settings.retryCount + 1) : 1;
+    let res: Response | null = null;
+    let lastError: unknown = null;
+
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      if (settings.preferences.verboseLogs) {
+        console.info(`[Agent Society] Qwen request attempt ${attempt + 1}/${attempts}`, {
+          model: body.model,
+          stream: body.stream,
+          timeoutSeconds: settings.missionTimeout,
+        });
+      }
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), Math.max(1, settings.missionTimeout) * 1000);
+      const abortFromOuter = () => controller.abort();
+      overrides?.signal?.addEventListener("abort", abortFromOuter, { once: true });
+      try {
+        res = await fetch(chatCompletionsUrl(cfg.baseUrl), {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${cfg.apiKey}`,
+          },
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        });
+        if (settings.preferences.verboseLogs) {
+          console.info("[Agent Society] Qwen response status", { status: res.status, ok: res.ok });
+        }
+        if (res.ok || attempt === attempts - 1) break;
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") throw error;
+        lastError = error;
+        if (attempt === attempts - 1) throw error;
+      } finally {
+        clearTimeout(timeout);
+        overrides?.signal?.removeEventListener("abort", abortFromOuter);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
+    }
+
+    if (!res) throw lastError instanceof Error ? lastError : new QwenApiError({ code: "NETWORK", message: "Qwen request failed before receiving a response." });
 
     if (!res.ok) {
       const err: ApiError = await res.json().catch(() => ({
@@ -136,6 +189,12 @@ export function createQwenClient(config?: Partial<QwenClientConfig>) {
         message: res.statusText,
       }));
       throw new QwenApiError(err);
+    }
+
+    if (body.stream) {
+      const streamed = await readStreamedCompletion(res);
+      if (streamed) return streamed;
+      throw new QwenApiError({ code: "EMPTY", message: "No streamed completion content returned." });
     }
 
     const data: QwenChatResponse = await res.json();

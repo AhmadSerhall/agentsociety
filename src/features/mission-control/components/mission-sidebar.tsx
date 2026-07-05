@@ -59,17 +59,17 @@ function SidebarContent({
     <>
       <div className="relative overflow-hidden rounded-2xl border border-cyan-200/15 bg-gradient-to-br from-cyan-300/10 via-white/[0.045] to-purple-400/10 p-4 shadow-[0_22px_70px_rgba(34,211,238,0.12)]">
         <div className="absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-cyan-200/70 to-transparent" />
-        <div className="flex items-center gap-3">
-        <div className="relative grid h-12 w-12 place-items-center rounded-2xl border border-cyan-300/30 bg-cyan-300/10 shadow-[0_0_28px_rgba(34,211,238,0.24)]">
-          <Sparkles className="h-5 w-5 text-cyan-200" />
-          <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full bg-emerald-300 shadow-[0_0_18px_rgba(110,231,183,0.9)]" />
-        </div>
-        <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.28em] text-cyan-200/80">
-            Agent
-          </p>
-          <h2 className="text-lg font-bold text-white">Society</h2>
-        </div>
+        <div className="flex items-center justify-start gap-3 text-left">
+          <div className="relative grid h-12 w-12 place-items-center rounded-2xl border border-cyan-300/30 bg-cyan-300/10 shadow-[0_0_28px_rgba(34,211,238,0.24)]">
+            <Sparkles className="h-5 w-5 text-cyan-200" />
+            <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full bg-emerald-300 shadow-[0_0_18px_rgba(110,231,183,0.9)]" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.28em] text-cyan-200/80">
+              Agent
+            </p>
+            <h2 className="text-lg font-bold text-white">Society</h2>
+          </div>
         </div>
         {/* <div className="mt-4 flex items-center gap-2 text-xs text-white/48">
           <RadioTower className="h-3.5 w-3.5 text-emerald-200" />

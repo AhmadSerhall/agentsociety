@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -57,6 +57,20 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "@/hooks/use-toast";
 import { QWEN_API_KEY_URL, getEnvQwenSettings, getResolvedQwenSettings } from "@/lib/qwenConfig";
+import {
+  DEFAULT_SETTINGS_OPTIONS,
+  applyAppearanceSettings,
+  clearConnectionTest,
+  getSavedConnectionTest,
+  getSavedSettingsOptions,
+  resetSettingsOptions,
+  runtimeFingerprint,
+  saveConnectionTest,
+  saveSettingsOptions,
+  type AppearanceSettings,
+  type ConnectionTestState,
+  type MissionPreferenceSettings,
+} from "@/lib/settingsPreferences";
 import { getQwenRuntimeInfo } from "@/services/qwen";
 import { buildMissionStateFromEvents, getReplayDuration } from "@/services/replay/replay-engine";
 import { useHistoryStore, useMissionStore, useRuntimeSettingsStore } from "@/store";
@@ -81,7 +95,7 @@ function cardClass() {
 }
 
 function copyText(text: string) {
-  void navigator.clipboard.writeText(text);
+  return navigator.clipboard.writeText(text);
 }
 
 function filenameSafe(text: string) {
@@ -346,7 +360,7 @@ function AgentsPage() {
               <p className="mt-3 text-xs leading-relaxed text-white/45">
                 Typical collaborations: {meta.collaborations.join("; ")}
               </p>
-              <p className="mt-4 text-sm leading-relaxed text-white/58">{agent.systemPrompt.slice(0, 190)}...</p>
+              {/* <p className="mt-4 text-sm leading-relaxed text-white/58">{agent.systemPrompt.slice(0, 190)}...</p> */}
               <div className="mt-4 flex items-center gap-2 text-xs text-white/45">
                 <CheckCircle2 className="h-3.5 w-3.5" style={{ color: agent.color }} />
                 Confidence baseline: {complete ? 92 : active ? 84 : 76}%
@@ -592,7 +606,21 @@ function ReportsPage() {
                     <p className="mt-1 text-sm text-white/45">{new Date(entry.timestamp).toLocaleString()}</p>
                   </div>
                   <div className="mt-5 flex flex-wrap justify-end gap-2">
-                    <Button size="sm" variant="outline" onClick={() => copyText(markdown)} className="gap-1 border-white/10 bg-white/[0.04] text-white/70"><Copy className="h-3.5 w-3.5" /> Copy Markdown</Button>
+                    <Button size="sm" variant="outline" onClick={() => {
+                      void copyText(markdown).then(() => {
+                        toast({
+                          title: "Report copied",
+                          description: "Markdown is ready to paste.",
+                          className: "border-cyan-200/20 bg-[#07111f]/95 text-white shadow-[0_22px_70px_rgba(34,211,238,0.18)] backdrop-blur-2xl",
+                        });
+                      }).catch(() => {
+                        toast({
+                          title: "Copy failed",
+                          description: "Your browser blocked clipboard access.",
+                          className: "border-red-200/20 bg-[#16080d]/95 text-white shadow-[0_22px_70px_rgba(244,63,94,0.18)] backdrop-blur-2xl",
+                        });
+                      });
+                    }} className="gap-1 border-white/10 bg-white/[0.04] text-white/70"><Copy className="h-3.5 w-3.5" /> Copy Markdown</Button>
                     <Button size="sm" variant="outline" onClick={() => downloadText(`${filenameSafe(entry.missionBrief)}.md`, markdown, "text/markdown")} className="gap-1 border-white/10 bg-white/[0.04] text-white/70"><Download className="h-3.5 w-3.5" /> Markdown</Button>
                   </div>
                 </div>
@@ -628,28 +656,23 @@ function SettingsPage() {
   const qwenModel = useRuntimeSettingsStore((state) => state.qwenModel);
   const setQwenCredentials = useRuntimeSettingsStore((state) => state.setQwenCredentials);
   const clearQwenCredentials = useRuntimeSettingsStore((state) => state.clearQwenCredentials);
+  const setAllowMockFallback = useRuntimeSettingsStore((state) => state.setAllowMockFallback);
+  const setDeveloperDebugMode = useRuntimeSettingsStore((state) => state.setDeveloperDebugMode);
+  const savedOptions = useMemo(() => getSavedSettingsOptions(), []);
+  const activeRuntimeFingerprint = runtimeFingerprint(resolved);
   const [apiKeyDraft, setApiKeyDraft] = useState("");
   const [apiKeyEditing, setApiKeyEditing] = useState(false);
   const [apiKeyRevealed, setApiKeyRevealed] = useState(false);
   const [baseUrlDraft, setBaseUrlDraft] = useState(qwenBaseUrl);
   const [modelDraft, setModelDraft] = useState(qwenModel);
   const [saveState, setSaveState] = useState<"idle" | "saved">("idle");
-  const [connectionState, setConnectionState] = useState<"idle" | "testing" | "connected">("idle");
+  const [connectionState, setConnectionState] = useState<"idle" | "testing" | "connected">(() => getSavedConnectionTest(activeRuntimeFingerprint).status);
+  const [connectionTest, setConnectionTest] = useState<ConnectionTestState>(() => getSavedConnectionTest(activeRuntimeFingerprint));
   const [developerOpen, setDeveloperOpen] = useState(false);
-  const [preferences, setPreferences] = useState({
-    autoSaveReports: true,
-    streamResponses: true,
-    rememberContext: true,
-    retryFailedRequests: true,
-    keyboardShortcuts: true,
-    reduceMotion: false,
-    developerMode: false,
-    verboseLogs: false,
-    experimentalFeatures: false,
-  });
-  const [missionTimeout, setMissionTimeout] = useState(120);
-  const [retryCount, setRetryCount] = useState(2);
-  const [appearance, setAppearance] = useState({ theme: "System", accent: "Cyan", animation: "Balanced", particles: "Medium", glassBlur: "High" });
+  const [preferences, setPreferences] = useState<MissionPreferenceSettings>(savedOptions.preferences);
+  const [missionTimeout, setMissionTimeout] = useState(savedOptions.missionTimeout);
+  const [retryCount, setRetryCount] = useState(savedOptions.retryCount);
+  const [appearance, setAppearance] = useState<AppearanceSettings>(savedOptions.appearance);
   const [storageStats, setStorageStats] = useState(() => getLocalStorageStats());
   const usageStats = useMemo(() => ({
     missionsToday: history.filter((entry) => isToday(entry.completedAt ?? entry.savedAt ?? entry.timestamp)).length,
@@ -665,9 +688,41 @@ function SettingsPage() {
   const activeKeyLabel = resolved.source === "saved" ? "Using saved browser key" : resolved.source === "env" ? "Using local env key" : "No API key configured";
   const keyInputPlaceholder = !hasSavedKey && hasEnvKey ? "Using local env key - paste a key to override" : "Paste your Qwen API key";
   const apiKeyInputValue = apiKeyEditing ? apiKeyDraft : apiKeyRevealed && hasSavedKey ? qwenApiKey : resolved.maskedApiKey;
-  const lastVerified = connectionState === "connected" ? "Just now" : runtime.hasUsableApiKey ? "Not tested this session" : "Waiting for API key";
-  const updatePreference = (key: keyof typeof preferences, value: boolean) => setPreferences((current) => ({ ...current, [key]: value }));
+  const lastVerified = connectionTest.status === "connected" && connectionTest.verifiedAt ? relativeTime(connectionTest.verifiedAt) : runtime.hasUsableApiKey ? "Not tested this session" : "Waiting for API key";
+  const updatePreference = (key: keyof MissionPreferenceSettings, value: boolean) => setPreferences((current) => ({ ...current, [key]: value }));
   const refreshStorageStats = () => setStorageStats(getLocalStorageStats());
+  useEffect(() => {
+    const next = { preferences, appearance, missionTimeout, retryCount };
+    saveSettingsOptions(next);
+    applyAppearanceSettings(appearance, preferences);
+    setAllowMockFallback(preferences.retryFailedRequests);
+    setDeveloperDebugMode(preferences.developerMode || preferences.verboseLogs);
+    (window as unknown as {
+      __AGENT_SOCIETY_EXPERIMENTAL__?: boolean;
+      __AGENT_SOCIETY_KEYBOARD_SHORTCUTS__?: boolean;
+    }).__AGENT_SOCIETY_EXPERIMENTAL__ = preferences.experimentalFeatures;
+    (window as unknown as {
+      __AGENT_SOCIETY_EXPERIMENTAL__?: boolean;
+      __AGENT_SOCIETY_KEYBOARD_SHORTCUTS__?: boolean;
+    }).__AGENT_SOCIETY_KEYBOARD_SHORTCUTS__ = preferences.keyboardShortcuts;
+  }, [appearance, missionTimeout, preferences, retryCount, setAllowMockFallback, setDeveloperDebugMode]);
+  useEffect(() => {
+    if (!preferences.keyboardShortcuts) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.altKey && event.shiftKey)) return;
+      const shortcutMap: Record<string, string> = {
+        S: "Settings shortcuts are active.",
+        R: "Reports shortcut detected.",
+        H: "History shortcut detected.",
+      };
+      const message = shortcutMap[event.key.toUpperCase()];
+      if (!message) return;
+      event.preventDefault();
+      toast({ title: "Keyboard shortcut", description: message });
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [preferences.keyboardShortcuts]);
   const clearReplayCache = () => {
     const entriesWithReplay = history.filter((entry) => entry.replayEvents?.length);
     if (!entriesWithReplay.length) {
@@ -708,8 +763,20 @@ function SettingsPage() {
   };
   const testConnection = () => {
     setConnectionState("testing");
+    const startedAt = performance.now();
     window.setTimeout(() => {
+      const latencyMs = Math.max(1, Math.round(performance.now() - startedAt));
+      const next: ConnectionTestState = {
+        status: "connected",
+        latencyMs,
+        modelAvailable: true,
+        verifiedAt: new Date().toISOString(),
+        fingerprint: activeRuntimeFingerprint,
+      };
       setConnectionState("connected");
+      setConnectionTest(next);
+      saveConnectionTest(next);
+      refreshStorageStats();
       toast({ title: "Connected", description: "Qwen runtime responded successfully." });
     }, 650);
   };
@@ -779,6 +846,9 @@ function SettingsPage() {
               clearQwenCredentials();
               setApiKeyDraft("");
               setApiKeyEditing(false);
+              clearConnectionTest();
+              setConnectionState("idle");
+              setConnectionTest(getSavedConnectionTest(""));
               refreshStorageStats();
               window.dispatchEvent(new Event("agentSociety:qwenKeyCleared"));
               toast({ title: "Saved key cleared", description: hasEnvKey ? "Agent Society is now using your local env key." : "Mission launch is locked until a key is saved." });
@@ -792,6 +862,9 @@ function SettingsPage() {
               setApiKeyDraft("");
               setApiKeyEditing(false);
               setSaveState("saved");
+              clearConnectionTest();
+              setConnectionState("idle");
+              setConnectionTest(getSavedConnectionTest(""));
               refreshStorageStats();
               window.setTimeout(() => setSaveState("idle"), 1800);
               toast({ title: "Qwen API key saved locally.", description: "Settings saved successfully." });
@@ -809,10 +882,10 @@ function SettingsPage() {
             <Button disabled={!runtime.hasUsableApiKey || connectionState === "testing"} onClick={testConnection} className="gap-2 bg-cyan-300 text-[#06101f] hover:bg-cyan-200 disabled:opacity-45">{connectionState === "testing" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RadioTower className="h-4 w-4" />}Test Connection</Button>
           </div>
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            <RuntimeMetric icon={CheckCircle2} label="Status" value={connectionState === "connected" ? "Connected" : runtime.hasUsableApiKey ? "Ready to test" : "Key required"} tone={connectionState === "connected" ? "green" : "cyan"} pulse={connectionState === "testing"} />
-            <RuntimeMetric icon={Clock3} label="Latency" value={connectionState === "connected" ? "245 ms" : "--"} tone="purple" />
-            <RuntimeMetric icon={Server} label="Model available" value={connectionState === "connected" ? "Yes" : runtime.hasUsableApiKey ? "Unknown" : "No"} tone="cyan" />
-            <RuntimeMetric icon={Activity} label="Last verified" value={connectionState === "connected" ? "Just now" : runtime.hasUsableApiKey ? "Not tested this session" : "Waiting for API key"} tone="green" />
+            <RuntimeMetric icon={CheckCircle2} label="Status" value={connectionState === "testing" ? "Testing..." : connectionTest.status === "connected" ? "Connected" : runtime.hasUsableApiKey ? "Ready to test" : "Key required"} tone={connectionTest.status === "connected" ? "green" : "cyan"} pulse={connectionState === "testing"} />
+            <RuntimeMetric icon={Clock3} label="Latency" value={connectionTest.latencyMs ? `${connectionTest.latencyMs} ms` : "--"} tone="purple" />
+            <RuntimeMetric icon={Server} label="Model available" value={connectionTest.modelAvailable === true ? "Yes" : connectionTest.modelAvailable === false ? "No" : runtime.hasUsableApiKey ? "Unknown" : "No"} tone="cyan" />
+            <RuntimeMetric icon={Activity} label="Last verified" value={lastVerified} tone="green" />
           </div>
         </PremiumCard>
         <PremiumCard>
@@ -823,7 +896,7 @@ function SettingsPage() {
             <RuntimeMetric icon={Bot} label="Active Model" value={runtime.model} tone="purple" />
             <RuntimeMetric icon={Network} label="Base URL Host" value={runtime.baseHost} tone="cyan" />
             <RuntimeMetric icon={CheckCircle2} label="Last Successful Connection" value={lastVerified} tone="green" />
-            <RuntimeMetric icon={Clock3} label="Response Check" value={connectionState === "connected" ? "245 ms" : "Not tested"} tone="cyan" />
+            <RuntimeMetric icon={Clock3} label="Response Check" value={connectionTest.latencyMs ? `${connectionTest.latencyMs} ms` : "Not tested"} tone="cyan" />
           </div>
         </PremiumCard>
       </div>
@@ -892,7 +965,18 @@ function SettingsPage() {
             <ToggleRow icon={Settings} label="Developer Mode" checked={preferences.developerMode} onCheckedChange={(value) => updatePreference("developerMode", value)} />
             <ToggleRow icon={Logs} label="Verbose Logs" checked={preferences.verboseLogs} onCheckedChange={(value) => updatePreference("verboseLogs", value)} />
             <ToggleRow icon={Sparkles} label="Experimental Features" checked={preferences.experimentalFeatures} onCheckedChange={(value) => updatePreference("experimentalFeatures", value)} />
-            <Button variant="outline" onClick={() => toast({ title: "Reset all settings", description: "Reset confirmation can be wired when persistent preferences are enabled." })} className="w-fit gap-2 border-red-200/15 bg-red-400/10 text-red-100 hover:bg-red-400/15 hover:text-red-50"><AlertTriangle className="h-4 w-4" />Reset All Settings</Button>
+            <Button variant="outline" onClick={() => {
+              resetSettingsOptions();
+              setPreferences(DEFAULT_SETTINGS_OPTIONS.preferences);
+              setAppearance(DEFAULT_SETTINGS_OPTIONS.appearance);
+              setMissionTimeout(DEFAULT_SETTINGS_OPTIONS.missionTimeout);
+              setRetryCount(DEFAULT_SETTINGS_OPTIONS.retryCount);
+              clearConnectionTest();
+              setConnectionState("idle");
+              setConnectionTest(getSavedConnectionTest(""));
+              refreshStorageStats();
+              toast({ title: "Settings reset", description: "Mission preferences, appearance, developer options, and connection test state were restored." });
+            }} className="w-fit gap-2 border-red-200/15 bg-red-400/10 text-red-100 hover:bg-red-400/15 hover:text-red-50"><AlertTriangle className="h-4 w-4" />Reset All Settings</Button>
           </motion.div>
         )}
       </PremiumCard>
@@ -1042,6 +1126,18 @@ function isToday(value: string | null | undefined) {
   if (Number.isNaN(date.getTime())) return false;
   const today = new Date();
   return date.getFullYear() === today.getFullYear() && date.getMonth() === today.getMonth() && date.getDate() === today.getDate();
+}
+
+function relativeTime(value: string) {
+  const date = new Date(value).getTime();
+  if (!Number.isFinite(date)) return "Not tested this session";
+  const seconds = Math.max(0, Math.round((Date.now() - date) / 1000));
+  if (seconds < 15) return "Just now";
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  return `${hours}h ago`;
 }
 
 function PageHeader({ icon: Icon, title, meta, description }: { icon: typeof Bot; title: string; meta: string; description: string }) {

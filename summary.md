@@ -467,6 +467,20 @@ Local Storage actions are wired:
 - Export Settings downloads current preference and appearance settings as JSON.
 - Import Settings opens the file picker and loads a valid Agent Society settings JSON file.
 
+Settings options are now persisted through `src/lib/settingsPreferences.ts` and documented in `settingspageoptions.md`.
+
+Functional option behavior now includes:
+
+- Connection test state persists across page switches for the active Qwen runtime fingerprint.
+- Auto Save Reports controls whether completed/cancelled missions are written to Mission History.
+- Stream Responses switches the Qwen client into streaming mode and collects streamed chunks into final output.
+- Remember Previous Context controls whether history is used for recommended mission prompts.
+- Retry Failed Requests and Retry Count control Qwen request retry behavior.
+- Mission Timeout controls the per-Qwen-request timeout.
+- Developer Mode and Verbose Logs map into runtime debug behavior, and Verbose Logs prints lightweight Qwen request diagnostics.
+- Appearance options are saved and applied as document root data attributes/CSS variables.
+- Reset All Settings restores defaults and clears persisted connection-test state.
+
 ## Command Layer Widget
 
 The lower-left sidebar Command Layer is now a compact live system widget instead of static explanatory text.
@@ -479,7 +493,9 @@ It shows:
 - Rotating live activity messages
 - Quick action icon buttons for Mission Control, Reports, Agents, and History
 
-The widget is slightly taller for readability while staying inside the sidebar. The Agent Society brand block above it is centered, and the widget includes pulse, progress, hover glow, live activity, and tooltip interactions.
+The widget is slightly taller for readability while staying inside the sidebar. The Agent Society brand block above it is centered as a row with icon plus title, and the widget includes pulse, progress, hover glow, live activity, and tooltip interactions.
+
+Reports page copy actions now show a small bottom-right glass toast that confirms markdown was copied or explains if clipboard access was blocked.
 
 ## Mock Mode And Qwen Mode
 

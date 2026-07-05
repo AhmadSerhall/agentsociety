@@ -457,3 +457,14 @@ Settings telemetry is deliberately local and conservative:
 - Today's Local Activity is derived from saved mission history and replay telemetry; it is not provider billing data.
 - Clear Cache removes replay event payloads from saved history while preserving mission records and final reports.
 - Export/Import Settings operate on UI preference JSON and do not alter agent reasoning, mission graphs, or final report composition.
+
+The Settings page now persists operational preferences through `src/lib/settingsPreferences.ts`.
+
+These preferences affect execution surfaces without changing planner reasoning:
+
+- Auto Save Reports determines whether mission completion/cancellation writes to Mission History.
+- Stream Responses switches the Qwen client between streamed and non-streamed response handling.
+- Retry Failed Requests and Retry Count control Qwen request retries before surfacing failure/fallback behavior.
+- Mission Timeout controls the per-request Qwen timeout.
+- Remember Previous Context controls whether mission history is used for recommended prompts.
+- Developer Mode and Verbose Logs feed the existing runtime debug pathway.
