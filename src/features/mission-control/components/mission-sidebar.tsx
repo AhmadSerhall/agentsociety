@@ -136,8 +136,8 @@ function CommandLayerWidget({
   const rows = [
     ["API", runtimeConnected ? "Connected" : "Needs key", runtimeConnected],
     ["Runtime", runtimeConnected ? "Healthy" : "Limited", runtimeConnected],
-    ["Mission Engine", "Ready", true],
-    ["Replay", "Ready", true],
+    // ["Mission Engine", "Ready", true],
+    // ["Replay", "Ready", true],
     ["Agents", activeView === "mission-control" ? "Idle" : "Standby", true],
   ] as const;
   const actions: Array<{ label: string; view: MissionView; icon: typeof LayoutDashboard }> = [
@@ -170,8 +170,8 @@ function CommandLayerWidget({
       </div>
 
       <div className="mt-3 grid grid-cols-2 gap-1.5 text-[0.65rem]">
-        <MiniStat label="Latency" value={runtimeConnected ? "245ms" : "--"} />
-        <MiniStat label="Memory" value="42%" />
+        {/* <MiniStat label="Latency" value={runtimeConnected ? "245ms" : "--"} />
+        <MiniStat label="Memory" value="42%" /> */}
         <MiniStat label="Missions" value={String(historyCount)} />
         <MiniStat label="Complete" value={String(completedCount)} />
       </div>
@@ -187,7 +187,7 @@ function CommandLayerWidget({
         <motion.div className="h-full rounded-full bg-gradient-to-r from-cyan-300 to-purple-300" animate={{ width: ["42%", "78%", "58%"], opacity: [0.65, 1, 0.65] }} transition={{ duration: 3.2, repeat: Infinity }} />
       </div>
 
-      <div className="mt-3 flex items-center justify-between gap-1.5">
+      {/* <div className="mt-3 flex items-center justify-between gap-1.5">
         {actions.map((action) => {
           const Icon = action.icon;
           return (
@@ -201,7 +201,7 @@ function CommandLayerWidget({
             </Tooltip>
           );
         })}
-      </div>
+      </div> */}
     </div>
   );
 }
