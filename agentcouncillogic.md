@@ -84,7 +84,7 @@ The shared visual map lives at:
 
 The Agents page, Agent Roster, Dialogue tab, and Network tab all read from that shared map. This keeps Planner, Research Agent, Product Strategist, Technical Architect, Marketing Strategist, Finance Agent, Risk Critic, Mediator, and Finalizer visually consistent across the app.
 
-The Agent Roster always shows the real role icon inside each avatar. Active and completed states appear as pulse, glow, spinner, sparkle, or completion overlays rather than replacing the role icon.
+The Agent Roster always shows the real role icon inside each avatar. Active and completed states appear as pulse, glow, spinner, check, or completion overlays rather than replacing the role icon.
 
 ## How Agents Communicate
 
@@ -435,6 +435,26 @@ Agent Society is a mission council with a shared whiteboard.
 - Presentation renderers translate the structured record into a polished human experience.
 
 The tabs are different human-friendly views of the same `MissionContext`, not independent placeholder generators.
+
+## Running Mission Presentation
+
+During mission execution, Mission Control presents agent communication through a Mission Operations Board instead of the old orbit graph/message overlay.
+
+The board shows:
+
+- Mission Engine routing state in its own card
+- The active specialist with that agent's shared icon and color
+- Agent state in a compact Agent Roster as Working, Finished, or Waiting
+- A responsive agent progress strip with each role's icon, status, percentage, and thin progress bar
+- The latest agent signal as a compact findings summary, not the full raw output
+- Recent signal rows for prior updates with one-line summaries, timestamps, and inspect behavior
+- A compact metrics strip for task completion, active agents, average response, tracked tokens, estimated cost, and success rate
+- Mission Intelligence as a high-z-index overlay instead of a permanent right column
+- Full Transcript for complete dialogue review
+
+This keeps live communication readable while preserving the same underlying `MissionContext.dialogue`, `agentStates`, and `currentAgent` data.
+
+Long agent text is clamped on the dashboard and remains available through Inspect or Full Transcript. The running presentation uses compact cards with natural vertical page scrolling and small internal scroll areas only where useful. It avoids fixed viewport-height clipping so live context and agent messages remain readable.
 
 ## Qwen Key Gate
 

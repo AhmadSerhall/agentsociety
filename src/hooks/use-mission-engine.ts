@@ -15,7 +15,7 @@ import { hasUsableQwenKey } from "@/lib/qwenConfig";
 import { getSavedSettingsOptions } from "@/lib/settingsPreferences";
 import { MissionState, MissionEventType } from "@/types";
 import type { MissionContext, MissionConfiguration } from "@/types";
-import { toast } from "sonner";
+import { toast as appToast } from "@/hooks/use-toast";
 
 function saveMissionHistory(ctx: MissionContext, addHistory: ReturnType<typeof useHistoryStore.getState>["add"]) {
   addHistory({
@@ -35,6 +35,10 @@ function saveMissionHistory(ctx: MissionContext, addHistory: ReturnType<typeof u
   });
 }
 
+const toast = Object.assign(appToast, {
+  warning: (title: string) => appToast({ title, description: "Mediator activated." }),
+});
+
 export function useMissionEngine() {
   const engineRef = useRef<MissionEngine | null>(null);
   const { context, isRunning, initMission, setContext } = useMissionStore();
@@ -50,7 +54,7 @@ export function useMissionEngine() {
   const launch = useCallback(
     (brief: string, config?: Partial<MissionConfiguration>) => {
       if (!hasUsableQwenKey()) {
-        toast.error("Qwen API key required", { description: "Go to Settings and paste your Qwen API key to run missions." });
+        toast({ title: "Qwen API key required", description: "Go to Settings and paste your Qwen API key to run missions.", variant: "destructive" });
         return;
       }
 
@@ -71,12 +75,12 @@ export function useMissionEngine() {
 
       // Subscribe to key events
       engine.on(MissionEventType.MissionStarted, () => {
-        toast.info("Mission launched");
+        toast({ title: "Mission launched" });
       });
 
       engine.on(MissionEventType.AgentStarted, (e) => {
         const { agentName } = e.payload as { agentName: string };
-        toast.info(`${agentName} is working...`);
+        toast({ title: `${agentName} is working...` });
       });
 
       engine.on(MissionEventType.ConflictDetected, () => {
@@ -84,12 +88,12 @@ export function useMissionEngine() {
       });
 
       engine.on(MissionEventType.ConflictResolved, () => {
-        toast.success("Conflict resolved by Mediator");
+        toast({ title: "Conflict resolved", description: "Mediator handled the disagreement." });
       });
 
       engine.on(MissionEventType.MissionCompleted, () => {
         useMissionStore.setState({ isRunning: false });
-        toast.success("Mission completed successfully!");
+        toast({ title: "Mission completed successfully!" });
 
         const finalCtx = engine.getContext();
         if (finalCtx && getSavedSettingsOptions().preferences.autoSaveReports) {
@@ -100,12 +104,16 @@ export function useMissionEngine() {
       engine.on(MissionEventType.MissionFailed, (e) => {
         useMissionStore.setState({ isRunning: false });
         const payload = e.payload as { error?: string };
-        toast.error(payload.error ?? "Mission failed");
+        toast({ title: payload.error ?? "Mission failed", variant: "destructive" });
       });
 
       engine.on(MissionEventType.MissionCancelled, () => {
         useMissionStore.setState({ isRunning: false });
-        toast.info("Mission cancelled");
+        toast({
+          title: "Mission cancelled",
+          description: "Partial progress was saved to Mission History.",
+          className: "border-red-300/25 bg-red-950/90 text-red-50 shadow-[0_22px_70px_rgba(239,68,68,0.24)] backdrop-blur-xl",
+        });
         const partialCtx = engine.getContext();
         if (partialCtx && getSavedSettingsOptions().preferences.autoSaveReports) {
           saveMissionHistory(partialCtx, addHistory);

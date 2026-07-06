@@ -187,10 +187,12 @@ The Council Room is the main running/completed mission surface.
 It includes:
 
 - Agent roster
-- Circular council area
-- Mission Engine center node
-- Active speaking agents with glow/pulse
-- Latest speech bubbles
+- Compact Mission Operations Board
+- Mission Engine routing card
+- Active specialist card with glow/pulse
+- Summary-first Live Dispatch
+- Compact agent progress strip
+- Mission metrics strip
 - Full Transcript drawer
 - Mission Intelligence panel
 - Workstream Strip
@@ -496,6 +498,22 @@ It shows:
 The widget is slightly taller for readability while staying inside the sidebar. The Agent Society brand block above it is centered as a row with icon plus title, and the widget includes pulse, progress, hover glow, live activity, and tooltip interactions.
 
 Reports page copy actions now show a small bottom-right glass toast that confirms markdown was copied or explains if clipboard access was blocked.
+
+## Running Mission View
+
+The active mission council view no longer uses the old solar-system orbit layout. While a mission is running, the center panel now renders a Mission Operations Board:
+
+- A compact Mission Engine card that does not overlap text or icons
+- A focused active-specialist card with the correct shared agent icon and color
+- Agent state is shown in a tighter Agent Roster as Working, Finished, or Waiting
+- A horizontal/responsive agent progress strip with icon, status, percent, and progress bar
+- A dedicated Live Dispatch panel that summarizes the latest agent signal instead of showing full transcript text
+- Recent signal rows with one-line summaries, timestamps, status chips, hover, and inspect behavior
+- A compact metrics strip for tasks completed, active agents, average response, tracked tokens, estimated cost, and success rate
+- Mission Intelligence opens as a z-[9999] overlay instead of consuming a fixed right column
+- Full Transcript remains available for the complete message history
+
+Long agent outputs are clamped in the dashboard and can be opened through Inspect or Full Transcript. The running board uses compact cards, internal scrolling only where useful, and natural page scrolling. It does not force the Mission Engine area into a fixed 100vh-style container, so context is not clipped.
 
 ## Mock Mode And Qwen Mode
 

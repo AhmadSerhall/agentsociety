@@ -344,7 +344,7 @@ export function MissionControl() {
                       exit={{ opacity: 0 }}
                       className="space-y-4"
                     >
-                      <CompactMissionHeader involvedAgents={involvedAgents} onCancel={cancel} />
+                      <CompactMissionHeader involvedAgents={involvedAgents} onCancel={cancel} onStartNew={handleStartNewMission} />
                       <AgentCouncilRoom onViewReport={handleViewFullReport} onReplayMission={handleReplayMission} onStartNew={handleStartNewMission} />
                     </motion.div>
                   )}

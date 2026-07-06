@@ -3,7 +3,7 @@
 import { motion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { PauseCircle, ShieldCheck, Timer, UsersRound } from "lucide-react";
+import { PauseCircle, RotateCcw, ShieldCheck, Timer, UsersRound } from "lucide-react";
 import { AGENT_DEFINITIONS } from "@/agents";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -28,7 +28,7 @@ function elapsed(startedAt?: string | null, completedAt?: string | null, current
   return formatElapsed(end - start);
 }
 
-export function CompactMissionHeader({ involvedAgents, onCancel }: { involvedAgents: AgentRole[]; onCancel: () => void }) {
+export function CompactMissionHeader({ involvedAgents, onCancel, onStartNew }: { involvedAgents: AgentRole[]; onCancel: () => void; onStartNew: () => void }) {
   const context = useMissionStore((s) => s.context);
   const replayMode = useReplayStore((s) => s.mode);
   const replayTime = useReplayStore((s) => s.replayTime);
@@ -36,6 +36,7 @@ export function CompactMissionHeader({ involvedAgents, onCancel }: { involvedAge
   const status = context?.status ?? MissionState.Idle;
   const progress = Math.round((context?.progress ?? 0) * 100);
   const completed = status === MissionState.Completed;
+  const cancelled = status === MissionState.Cancelled;
   const terminal = completed || status === MissionState.Cancelled || status === MissionState.Failed;
   const agentDetails = useMemo(
     () => involvedAgents.map((role) => AGENT_DEFINITIONS.find((agent) => agent.role === role)).filter(Boolean),
@@ -64,9 +65,15 @@ export function CompactMissionHeader({ involvedAgents, onCancel }: { involvedAge
             <Badge className="border-cyan-300/20 bg-cyan-300/10 text-cyan-100 hover:bg-cyan-300/10">
               {completed ? "Mission Report Ready" : "Agent Council Running"}
             </Badge>
-            <Badge className={completed ? "bg-emerald-300/15 text-emerald-100" : "bg-purple-300/15 text-purple-100"}>
+            <Badge className={statusBadgeClass(status)}>
               {status.replace(/-/g, " ")}
             </Badge>
+            {cancelled && (
+              <Button size="sm" onClick={onStartNew} className="h-7 gap-1 rounded-full bg-red-300 text-[#24070b] hover:bg-red-200">
+                <RotateCcw className="h-3.5 w-3.5" />
+                Start New Mission
+              </Button>
+            )}
           </div>
           <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-white/68">{context.missionBrief}</p>
         </div>
@@ -96,7 +103,7 @@ export function CompactMissionHeader({ involvedAgents, onCancel }: { involvedAge
         </div>
 
         <div className="flex gap-2">
-          {!completed && (
+          {!terminal && (
             <Button variant="outline" onClick={onCancel} className="gap-2 rounded-full border-red-300/25 bg-red-400/10 text-red-100 hover:bg-red-400/15">
               <PauseCircle className="h-4 w-4" />
               Cancel
@@ -107,6 +114,13 @@ export function CompactMissionHeader({ involvedAgents, onCancel }: { involvedAge
       <Progress value={progress} className="mt-4 h-1.5 bg-white/10 [&>div]:bg-gradient-to-r [&>div]:from-cyan-300 [&>div]:to-purple-400" />
     </motion.header>
   );
+}
+
+function statusBadgeClass(status: MissionState) {
+  if (status === MissionState.Completed) return "bg-emerald-300/15 text-emerald-100 hover:bg-emerald-300/15";
+  if (status === MissionState.Cancelled) return "border-red-300/20 bg-red-400/15 text-red-100 hover:bg-red-400/15";
+  if (status === MissionState.Failed) return "border-red-300/25 bg-red-500/15 text-red-100 hover:bg-red-500/15";
+  return "bg-cyan-300/15 text-cyan-100 hover:bg-cyan-300/15";
 }
 
 function Metric({ icon, label, value, hoverContent }: { icon: ReactNode; label: string; value: string; hoverContent?: ReactNode }) {
