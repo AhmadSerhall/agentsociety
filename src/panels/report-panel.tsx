@@ -16,6 +16,7 @@ export function ReportPanel() {
 
   const sections = composeReportSections(report);
   const markdown = reportToMarkdown(report);
+  const isDirectAnswer = report.deliverableMode === "direct_answer";
 
   return (
     <div className="space-y-4">
@@ -27,13 +28,13 @@ export function ReportPanel() {
             void navigator.clipboard.writeText(markdown);
             toast({
               title: "Copied to clipboard",
-              description: "The final mission report markdown is ready to paste.",
+              description: isDirectAnswer ? "The answer is ready to paste." : "The final mission report markdown is ready to paste.",
             });
           }}
           className="gap-1 border-white/10 bg-white/[0.04] text-white/70 hover:border-cyan-200/30 hover:bg-cyan-300/10 hover:text-cyan-50"
         >
           <Copy className="h-3.5 w-3.5" />
-          Copy Report
+          {isDirectAnswer ? "Copy Answer" : "Copy Report"}
         </Button>
         <Button size="sm" variant="outline" onClick={() => downloadText("agent-society-report.md", markdown, "text/markdown")} className="gap-1 border-white/10 bg-white/[0.04] text-white/70">
           <Download className="h-3.5 w-3.5" />

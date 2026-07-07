@@ -545,6 +545,8 @@ export function MissionControl() {
 /* ─── Config Form ──────────────────────── */
 
 function MissionTabs({ value, onValueChange }: { value?: string; onValueChange?: (value: string) => void }) {
+  const isDirectAnswer = useMissionStore((s) => s.context?.finalReport?.deliverableMode === "direct_answer" || s.context?.missionClassification?.deliverableMode === "direct_answer");
+
   return (
     <Tabs value={value} onValueChange={onValueChange} defaultValue="workflow" className="w-full">
       <TabsList className="h-auto w-full flex-wrap justify-start gap-1 overflow-x-auto border border-cyan-200/10 bg-white/[0.045] p-1 backdrop-blur-xl">
@@ -552,7 +554,7 @@ function MissionTabs({ value, onValueChange }: { value?: string; onValueChange?:
         <TabsTrigger value="workstreams">Workstreams</TabsTrigger>
         <TabsTrigger value="dialogue">Dialogue</TabsTrigger>
         <TabsTrigger value="conflicts">Conflicts</TabsTrigger>
-        <TabsTrigger value="report">Final Report</TabsTrigger>
+        <TabsTrigger value="report">{isDirectAnswer ? "Answer" : "Final Report"}</TabsTrigger>
         <TabsTrigger value="timeline">Timeline</TabsTrigger>
         <TabsTrigger value="efficiency">Efficiency</TabsTrigger>
         <TabsTrigger value="network">Network</TabsTrigger>

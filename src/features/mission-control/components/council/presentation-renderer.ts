@@ -7,13 +7,22 @@ import { sanitizeMissionList, sanitizeMissionText, sanitizeUserFacingText } from
 const INTERNAL_KEYS = new Set([
   "id",
   "agentId",
+  "agentName",
   "agentRole",
+  "displayRole",
   "primaryAgentId",
   "supportingAgentIds",
   "assignedAgentId",
   "taskIds",
   "workstreamId",
   "workstreamTitle",
+  "status",
+  "usefulOutput",
+  "keyFindings",
+  "recommendations",
+  "actionItems",
+  "confidence",
+  "conflictSignals",
   "payload",
   "metadata",
   "dependencies",
@@ -64,6 +73,7 @@ export function renderStructuredText(value: unknown, options: { fallbackTitle?: 
         }))
       : [];
     const summary = firstClean([
+      object.finalAnswer,
       object.summary,
       object.decisionSummary,
       object.decision,
@@ -117,6 +127,16 @@ export function renderStructuredText(value: unknown, options: { fallbackTitle?: 
 }
 
 export function composeReportSections(report: MissionReport): HumanReportSection[] {
+  if (report.deliverableMode === "direct_answer") {
+    const answer = clean(report.finalAnswer || report.executiveSummary);
+    const reviewerNote = clean(report.reviewNote);
+    const directSections: Array<HumanReportSection | null> = [
+      answer ? { title: "Answer", kicker: "Direct result", body: answer, bullets: [] } : null,
+      reviewerNote ? { title: "Reviewer Note", kicker: "Quality check", body: reviewerNote, bullets: [] } : null,
+    ];
+    return directSections.filter((section): section is HumanReportSection => Boolean(section));
+  }
+
   const sections: Array<[string, string | undefined, string]> = [
     ["Consulting Summary", report.executiveSummary, "Primary answer"],
     ["Objective", report.missionObjective, "User request"],
@@ -272,7 +292,8 @@ function clean(value: unknown): string {
     .replace(/^#{1,6}\s+/gm, "")
     .replace(/\*\*(.*?)\*\*/g, "$1")
     .replace(/`([^`]+)`/g, "$1")
-    .replace(/\b(primaryAgentId|supportingAgentIds|assignedAgentId|workstreamId|taskIds|payload|metadata)\b:?/gi, "")
+    .replace(/^\s*(agentName|displayRole|workstreamTitle|status|usefulOutput|keyFindings|recommendations|actionItems|confidence|conflictSignals)\s*:\s*/gim, "")
+    .replace(/\b(agentName|displayRole|workstreamTitle|status|usefulOutput|keyFindings|recommendations|actionItems|confidence|conflictSignals|primaryAgentId|supportingAgentIds|assignedAgentId|workstreamId|taskIds|payload|metadata)\b:?/gi, "")
     .replace(/\b(ws|task|agent)-[a-z0-9-]+\b/gi, "")
     .replace(/[{}[\]"]/g, "")
     .replace(/\s{2,}/g, " ")

@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, AlertTriangle, BrainCircuit, GitBranch, ShieldCheck } from "lucide-react";
+import { Activity, AlertTriangle, BrainCircuit, GitBranch, Route, ShieldCheck } from "lucide-react";
 import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import type { MissionContext } from "@/types";
@@ -10,16 +10,22 @@ import { normalizeDialogueEntry } from "./agent-output-formatter";
 export function MissionIntelligencePanel({ context }: { context: MissionContext }) {
   const activeConflict = context.conflicts.find((conflict) => conflict.status !== "resolved" && !conflict.resolved) ?? context.conflicts.at(-1);
   const latest = context.dialogue.at(-1);
-  const currentDecision = latest ? normalizeDialogueEntry(latest).summary : "Awaiting the Planner to create useful workstreams.";
+  const classification = context.missionClassification;
+  const isDirectAnswer = classification?.deliverableMode === "direct_answer";
+  const currentDecision = isDirectAnswer && context.finalReport?.finalAnswer
+    ? "Answer delivered directly."
+    : latest ? normalizeDialogueEntry(latest).summary : "Awaiting the next useful mission update.";
   const conflictBody = activeConflict
     ? activeConflict.resolved || activeConflict.status === "resolved"
       ? "No active conflict."
       : sanitizeUserFacingText(activeConflict.summary ?? activeConflict.description)
     : "No active conflict.";
-  const keyDecision = activeConflict?.finalAction ?? activeConflict?.resolvedAction ?? activeConflict?.mediatorDecision ?? "Key decision will appear after the first meaningful tradeoff is resolved.";
+  const keyDecision = isDirectAnswer
+    ? "No mission decision was required."
+    : activeConflict?.finalAction ?? activeConflict?.resolvedAction ?? activeConflict?.mediatorDecision ?? "Key decision will appear after the first meaningful tradeoff is resolved.";
   const mediatorNotes = activeConflict?.resolved
     ? sanitizeUserFacingText(activeConflict.finalAction ?? activeConflict.resolvedAction ?? context.mediatorDecisions)
-    : sanitizeUserFacingText(context.mediatorDecisions || "Mediator is standing by until a disagreement needs arbitration.");
+    : sanitizeUserFacingText(isDirectAnswer ? "No mediation was required for this direct answer." : context.mediatorDecisions || "Mediator is standing by until a disagreement needs arbitration.");
   const blockedTasks = context.executionTasks.filter((task) => task.status === "blocked");
   const averageConfidence = Math.round(context.executionTasks.reduce((sum, task) => sum + (task.confidence ?? 0), 0) / Math.max(1, context.executionTasks.length));
 
@@ -50,8 +56,35 @@ export function MissionIntelligencePanel({ context }: { context: MissionContext 
           body={mediatorNotes}
           tone="emerald"
         />
+        {classification && (
+          <div className="rounded-2xl border border-cyan-200/12 bg-cyan-300/[0.035] p-3 text-cyan-100">
+            <div className="flex items-center gap-2">
+              <Route className="h-4 w-4" />
+              <p className="text-xs font-semibold uppercase tracking-[0.16em]">Developer Debug</p>
+            </div>
+            <dl className="mt-3 grid gap-2 text-xs text-white/62">
+              <DebugLine label="Mission Type" value={classification.missionType.replace(/_/g, " ")} />
+              <DebugLine label="Deliverable" value={classification.deliverableMode.replace(/_/g, " ")} />
+              <DebugLine label="Complexity" value={`${classification.complexity}/10`} />
+              <DebugLine label="Strategy" value={classification.selectedStrategy.replace(/_/g, " ")} />
+              <DebugLine label="Selected Agents" value={classification.recommendedAgents.join(", ")} />
+              <DebugLine label="Planning Enabled" value={classification.requiresPlanning ? "Yes" : "No"} />
+              <DebugLine label="Planning Reason" value={classification.planningReason} />
+              <DebugLine label="Confidence" value={`${classification.classificationConfidence}%`} />
+            </dl>
+          </div>
+        )}
       </div>
     </aside>
+  );
+}
+
+function DebugLine({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="grid grid-cols-[110px_minmax(0,1fr)] gap-2">
+      <dt className="truncate uppercase tracking-[0.12em] text-white/34">{label}</dt>
+      <dd className="line-clamp-2 text-white/70">{sanitizeUserFacingText(value)}</dd>
+    </div>
   );
 }
 

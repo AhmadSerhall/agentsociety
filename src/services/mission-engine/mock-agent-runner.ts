@@ -12,17 +12,7 @@ import {
   type MissionContext,
 } from "@/types";
 
-type MissionIntent =
-  | "exam_preparation"
-  | "business_launch"
-  | "technical_debugging"
-  | "product_strategy"
-  | "learning_plan"
-  | "research_analysis"
-  | "financial_planning"
-  | "content_strategy"
-  | "personal_planning"
-  | "general_problem_solving";
+type MissionIntent = string;
 
 interface MockMissionClassification {
   intent: MissionIntent;

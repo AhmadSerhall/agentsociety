@@ -147,6 +147,9 @@ export interface MissionGraph {
 }
 
 export interface MissionReport {
+  deliverableMode?: DeliverableMode;
+  finalAnswer?: string;
+  reviewNote?: string;
   executiveSummary: string;
   missionObjective: string;
   selectedMissionConfiguration?: string;
@@ -182,6 +185,48 @@ export interface EfficiencyMetrics {
   agentUtilizationPercent?: number;
   /** Comparison: single-agent estimated score. */
   singleAgentBaseline: number;
+}
+
+export type MissionKind =
+  | "translation"
+  | "summarization"
+  | "question_answering"
+  | "research"
+  | "creative_writing"
+  | "programming"
+  | "debugging"
+  | "software_architecture"
+  | "business_planning"
+  | "startup_launch"
+  | "erp_design"
+  | "financial_analysis"
+  | "education"
+  | "brainstorming"
+  | "multi_step_execution"
+  | "general_problem_solving"
+  | "file_analysis"
+  | "code_review"
+  | "document_generation"
+  | "conversation"
+  | "math_logical_reasoning";
+
+export type DeliverableMode = "direct_answer" | "artifact" | "mission_report";
+
+export interface MissionExecutionStrategy {
+  missionType: MissionKind;
+  deliverableMode: DeliverableMode;
+  complexity: number;
+  estimatedWorkstreams: number;
+  estimatedDuration: string;
+  recommendedAgents: AgentRole[];
+  requiresPlanning: boolean;
+  requiresResearch: boolean;
+  requiresConflictResolution: boolean;
+  requiresParallelism: boolean;
+  selectedStrategy: "direct" | "specialist_pair" | "focused_sequence" | "mission_graph";
+  planningReason: string;
+  classificationConfidence: number;
+  validationNotes: string[];
 }
 
 export interface TimelineEntry {
@@ -257,6 +302,7 @@ export interface MissionContext {
   missionId: MissionId;
   missionBrief: string;
   configuration: MissionConfiguration;
+  missionClassification?: MissionExecutionStrategy;
   workstreams: Workstream[];
   researchSummary: string;
   productStrategy: string;

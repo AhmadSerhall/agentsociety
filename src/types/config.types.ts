@@ -30,6 +30,7 @@ export type BudgetRange =
 export type RiskTolerance = "none" | "conservative" | "balanced" | "aggressive";
 
 export type OutputFormat =
+  | "direct-result"
   | "executive-report"
   | "execution-roadmap"
   | "strategy-brief"
@@ -84,6 +85,7 @@ export const RISK_TOLERANCE_LABELS: Record<RiskTolerance, string> = {
 };
 
 export const OUTPUT_FORMAT_LABELS: Record<OutputFormat, string> = {
+  "direct-result": "Direct Result",
   "executive-report": "Executive Report",
   "execution-roadmap": "Execution Roadmap",
   "strategy-brief": "Strategy Brief",

@@ -66,6 +66,8 @@ When the user types in the mission brief, the Mission Config button can draw att
 
 Configuration includes options such as mission type, depth, time horizon, budget range, risk tolerance, and output format. Time horizon and risk tolerance support a "None specified" style state.
 
+Output format includes `Direct Result`, which tells the engine to prefer a concise final answer for simple missions. It does not hard-disable planning for complex missions; the classifier still decides whether a mission graph is necessary.
+
 ## Agent Society Model
 
 The system uses these agent identities:
@@ -107,6 +109,29 @@ It manages:
 - Final report
 - Efficiency metrics
 
+The engine now thinks before it plans. A Mission Classification Engine runs before Planner and decides whether the request needs a mission graph or can be handled by a direct specialist path.
+
+Classification stores:
+
+- Mission type
+- Complexity score from 1-10
+- Estimated workstreams and duration
+- Recommended agents
+- Whether planning, research, conflict resolution, and parallelism are needed
+- Selected strategy
+- Planning reason
+- Classification confidence
+
+For simple missions such as translation, summarization, direct Q&A, conversation, or small creative writing requests, Planner is skipped and the engine creates a minimal specialist path. If `Direct Result` is selected, that concise path is preferred even more strongly when the classifier agrees the prompt is simple enough. For complex missions such as startup launch, ERP design, software architecture, business planning, or multi-step execution, Planner creates a Mission Graph.
+
+Agent execution is artifact-first:
+
+- Workers produce the requested deliverable itself, such as translated text, code, research, writing, architecture, finance analysis, or campaign content.
+- Reviewers inspect and correct worker output without replacing it with new unrelated work.
+- Coordinators assign, merge, or resolve. Planner is not the default entry point, and Finalizer merges verified outputs instead of inventing a new deliverable.
+
+For direct missions, the final report primary answer is pulled from the worker artifact. Generic meta-output such as "translation completed" or "mission complete" is rejected by the usefulness gate.
+
 ## Semantic Mission Context
 
 Mission Type is an execution preference, not a domain category.
@@ -124,6 +149,8 @@ This keeps the system domain-agnostic and avoids adding new mission-type templat
 ## Mission Graph
 
 The Mission Graph is the core execution model.
+
+Not every mission receives a large graph. Low-complexity missions can use a direct one-or-two-step graph generated from classification rather than Planner output.
 
 It contains:
 
@@ -515,6 +542,18 @@ The active mission council view no longer uses the old solar-system orbit layout
 
 Long agent outputs are clamped in the dashboard and can be opened through Inspect or Full Transcript. The running board uses compact cards, internal scrolling only where useful, and natural page scrolling. It does not force the Mission Engine area into a fixed 100vh-style container, so context is not clipped.
 
+## Direct Answer Output
+
+Mission classification now includes a `deliverableMode`:
+
+- `direct_answer` for translation, summarization, simple explanations, simple Q&A, conversation, and lightweight education/math answers.
+- `artifact` for small writing tasks, code generation/debugging, document generation, file analysis, and code review.
+- `mission_report` for complex planning, business, startup, ERP, financial, architecture, and multi-step execution missions.
+
+When `deliverableMode` is `direct_answer`, the Final Report tab is presented as Answer. It renders only the final answer and an optional reviewer note. Consulting sections such as Workstreams, Expert Contributions, Action Plan, Risk Summary, Resources, Success Measures, and Final Recommendations are intentionally hidden for simple tasks.
+
+Direct-answer agent output now has a first-class `finalAnswer` field. The finalizer must pass through the useful worker/reviewer answer instead of inventing report sections or recommendations. The markdown exporter also emits a simple Answer document for these missions.
+
 ## Mock Mode And Qwen Mode
 
 The app supports:
@@ -561,6 +600,6 @@ All checks passed after the latest updates.
 
 Agent Society is an AI mission operating system.
 
-Instead of asking one model to produce one answer, the app creates a council of specialized agents around a Mission Graph. The Planner decomposes the mission, specialists work on meaningful workstreams, Risk Critic challenges weak assumptions when needed, Mediator resolves real disagreements, and Finalizer assembles a polished final deliverable.
+Instead of asking one model to produce one answer, the app classifies the request, chooses the smallest useful team, and only creates a full Mission Graph when decomposition improves quality. Planner is conditional, specialists work on meaningful workstreams, Risk Critic challenges weak assumptions when needed, Mediator resolves real disagreements, and Finalizer assembles a polished final deliverable.
 
 The Council Room makes collaboration visible. The replay system lets users inspect how the mission unfolded. The presentation layer turns structured execution data into a premium, human-readable consulting experience.

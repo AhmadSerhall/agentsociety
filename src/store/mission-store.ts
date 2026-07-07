@@ -32,6 +32,7 @@ const createEmptyContext = (brief: string, config: MissionConfiguration): Missio
   missionId: generateId(),
   missionBrief: brief,
   configuration: config,
+  missionClassification: undefined,
   workstreams: [],
   researchSummary: "",
   productStrategy: "",

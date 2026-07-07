@@ -29,18 +29,55 @@ The context stores:
 The mission flow is:
 
 1. User enters a mission brief and configuration.
-2. The mission engine creates semantic mission context from the objective.
-3. The Planner creates or repairs a Mission Graph.
-4. Workstreams are converted into executable tasks.
-5. Tasks become ready when dependencies are satisfied.
-6. Ready tasks can run in parallel.
-7. Assigned agents produce structured outputs.
-8. Risk Critic only participates when useful work or real risk context exists.
-9. Conflicts are created only from real conflict signals or material objections.
-10. Mediator runs only when an actual conflict needs resolution.
-11. Finalizer synthesizes completed work into a final report.
-12. The report is validated and rendered for humans.
-13. Mission history and replay events are saved locally.
+2. The Mission Classification Engine identifies the mission type, complexity, selected strategy, and smallest useful team.
+3. The engine decides whether planning is useful.
+4. If planning is unnecessary, direct workstreams are created from classification.
+5. If decomposition is useful, Planner creates or repairs a Mission Graph.
+6. Workstreams are converted into executable tasks.
+7. Tasks become ready when dependencies are satisfied.
+8. Ready tasks can run in parallel only when parallelism is useful.
+9. Assigned agents produce structured outputs.
+10. Risk Critic only participates when useful work or real risk context exists.
+11. Conflicts are created only from real conflict signals or material objections.
+12. Mediator runs only when an actual conflict needs resolution.
+13. Finalizer synthesizes completed work into a final report.
+14. The report is validated and rendered for humans.
+15. Mission history and replay events are saved locally.
+
+## Mission Classification Engine
+
+Classification happens before Planner.
+
+It stores:
+
+- Mission type
+- Complexity score from 1-10
+- Estimated workstreams
+- Estimated duration
+- Recommended agents
+- Whether planning is required
+- Whether research is required
+- Whether conflict resolution is likely
+- Whether parallelism is useful
+- Selected strategy
+- Reason planning was enabled or skipped
+- Classification confidence
+
+Planning is not mandatory. Simple translation, summarization, direct Q&A, conversation, or small writing tasks skip Planner and run through a minimal specialist path. Complex startup, ERP, architecture, business, and multi-step execution tasks use Planner and a Mission Graph.
+
+`Direct Result` is an output-format preference. When selected, the classifier leans toward concise direct execution for simple requests and the report composer keeps orchestration details out of the primary answer. Complex requests can still use Planner if decomposition is genuinely useful.
+
+## Strict Agent Categories
+
+Every runtime contribution is treated as one category:
+
+- Worker: produces the actual artifact requested by the user.
+- Reviewer: checks, corrects, and validates worker output without inventing a new deliverable.
+- Coordinator: assigns, merges, or resolves. Planner, Mediator, and Finalizer are coordinators.
+
+Workers must do the work itself. A translation worker outputs the translated paragraph. A programming worker outputs code. A writing worker outputs the requested writing. A research worker outputs the research answer.
+
+For direct missions, Finalizer merges verified worker output and returns the artifact itself. It should not replace the artifact with meta-commentary like "mission complete" or "the translation has been completed." The usefulness gate rejects those meta-only outputs for direct execution.
 
 ## Domain Understanding
 
@@ -62,7 +99,7 @@ The Planner should still be the source of the meaningful mission graph. Local se
 
 The main agents are:
 
-- Planner: Creates the Mission Graph, assigns workstreams, and revises the graph if needed.
+- Planner: Creates the Mission Graph only when classification says decomposition will improve quality.
 - Research Agent: Gathers context, evidence, constraints, and baseline findings.
 - Product Strategist: Handles product, scope, user outcome, or offer design when useful.
 - Technical Architect: Handles technical, structural, implementation, compatibility, or system planning when useful.
@@ -126,6 +163,8 @@ The graph controls execution order:
 - Blocked tasks wait for conflict resolution or Planner revision.
 - Final synthesis waits for required tasks and conflict readiness.
 
+For low-complexity missions, the graph can be a direct classifier-generated path such as Translator to Reviewer or Answer Specialist to Finalizer. These direct paths intentionally avoid enterprise sections like budget, stakeholders, roadmap, or implementation phases unless the user asked for them.
+
 ## Workstream Execution
 
 Each workstream becomes an `ExecutionTask`.
@@ -181,9 +220,27 @@ If no real disagreement exists, the UI should say that no conflicts were generat
 
 ## Final Report Delivery
 
-The final report is assembled from the same mission context used by all tabs.
+Final delivery is assembled from the same mission context used by all tabs, but the visible format depends on `deliverableMode`.
 
-The report is built from:
+The mission classifier sets one of three delivery modes:
+
+- `direct_answer`: translation, summarization, simple explanation, simple Q&A, conversation, and lightweight education/math answers.
+- `artifact`: code, debugging output, small writing, document generation, code review, or file analysis.
+- `mission_report`: complex planning, architecture, business, startup, ERP, financial analysis, and broad multi-step execution.
+
+For `direct_answer`, the worker/reviewer contract is:
+
+```json
+{
+  "finalAnswer": "the exact answer the user should see",
+  "reviewNote": "optional short reviewer note",
+  "confidence": 90
+}
+```
+
+The Finalizer must pass through the verified `finalAnswer`. It must not create consulting sections, orchestration summaries, new recommendations, risk summaries, workstream metadata, or report language.
+
+For `mission_report`, the report is assembled from:
 
 - Mission objective
 - Configuration
@@ -194,7 +251,7 @@ The report is built from:
 - Timeline
 - Efficiency metrics
 
-The final report should answer the user's objective directly. Orchestration details remain supporting context, not the main deliverable.
+The final user-facing output must match the requested deliverable. A translation returns translated text. A brief explanation returns the brief explanation. Code requests return code. Full consulting/report sections are reserved for complex missions where a report is actually the right deliverable.
 
 Before display, the presentation layer removes or avoids:
 
@@ -297,9 +354,16 @@ If no useful conflict exists, it does not invent one.
 
 ### Final Report
 
-The Final Report tab uses the report composer renderer.
+The report tab uses the report composer renderer, but its label and sections adapt to `deliverableMode`.
 
-It displays polished sections such as:
+For `direct_answer`, the tab is presented as Answer and shows only:
+
+- Answer
+- Optional Reviewer Note
+
+It does not show consulting/report sections.
+
+For `mission_report`, it displays polished sections such as:
 
 - Consulting Summary
 - Objective
