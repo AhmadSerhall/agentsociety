@@ -2550,11 +2550,23 @@ export class MissionEngine {
     const parallelismPercent = Math.round((independentTasks / Math.max(1, ctx.executionTasks.length)) * 100);
     const consensusPercent = ctx.conflicts.length === 0 ? 100 : Math.round((resolved / Math.max(1, ctx.conflicts.length)) * 100);
     const requiredAgents = new Set(ctx.executionTasks.map((task) => task.agent));
+    const complexity = ctx.missionClassification?.complexity ?? Math.max(1, Math.min(10, Math.ceil(totalWorkstreams * 1.2)));
+    const directMode = ctx.missionClassification?.deliverableMode === "direct_answer";
+    const dependencyLoad = ctx.executionTasks.reduce((sum, task) => sum + task.dependencies.length, 0);
+    const lowConfidenceTasks = ctx.executionTasks.filter((task) => task.confidence < 75).length;
+    const estimatedCompletionTime = this.efficiencyCompletionLabel(ctx, executionDurationMs, latencies, totalWorkstreams, complexity);
+    const singleAgentCoverageBaseline = Math.max(35, Math.min(92, taskCoverage - Math.max(8, Math.round(totalWorkstreams * 3.5 + dependencyLoad * 2))));
+    const singleAgentConfidenceBaseline = Math.max(38, Math.min(90, confidence - Math.max(6, Math.round(participatingAgents.size * 2.2 + lowConfidenceTasks * 1.5))));
+    const singleAgentPerspectiveBaseline = directMode ? 10 : Math.max(10, Math.min(45, Math.round((1 / Math.max(1, participatingAgents.size)) * 100)));
+    const singleAgentBaseline = Math.max(
+      36,
+      Math.min(88, Math.round((singleAgentCoverageBaseline * 0.28) + (singleAgentConfidenceBaseline * 0.34) + (Math.min(100, outputCompleteness) * 0.18) + (singleAgentPerspectiveBaseline * 0.2)))
+    );
     return {
       taskCoverage,
       qualityScore: Math.max(45, Math.min(98, qualityScore)),
       conflictsResolved: resolved,
-      estimatedCompletionTime: ctx.configuration.depth === "deep-analysis" ? "6-8 focused hours" : ctx.configuration.depth === "fast" ? "90-120 minutes" : "3-4 focused hours",
+      estimatedCompletionTime,
       perspectivesConsidered: participatingAgents.size,
       revisionCount: ctx.conflicts.length + ctx.executionTasks.filter((task) => task.confidence < 75).length + (hadConflicts ? 1 : 0),
       finalConfidenceScore: confidence,
@@ -2566,8 +2578,27 @@ export class MissionEngine {
       parallelismPercent,
       consensusPercent,
       agentUtilizationPercent: Math.min(100, Math.round((participatingAgents.size / Math.max(1, requiredAgents.size || participatingAgents.size)) * 100)),
-      singleAgentBaseline: Math.max(42, Math.min(72, confidence - 18 + Math.round(participatingAgents.size / 2))),
+      singleAgentBaseline,
+      singleAgentCoverageBaseline,
+      singleAgentConfidenceBaseline,
+      singleAgentPerspectiveBaseline,
     };
+  }
+
+  private efficiencyCompletionLabel(ctx: MissionContext, executionDurationMs: number, latencies: number[], totalWorkstreams: number, complexity: number) {
+    if (executionDurationMs > 0) return `${this.formatMetricDuration(executionDurationMs)} actual runtime`;
+    const averageLatency = latencies.length ? latencies.reduce((sum, value) => sum + value, 0) / latencies.length : 1600;
+    const dependencyMultiplier = 1 + (ctx.executionTasks.reduce((sum, task) => sum + task.dependencies.length, 0) / Math.max(1, ctx.executionTasks.length)) * 0.18;
+    const estimateMs = Math.max(1000, Math.round((averageLatency * Math.max(1, totalWorkstreams) * dependencyMultiplier) + complexity * 650));
+    return `${this.formatMetricDuration(estimateMs)} telemetry estimate`;
+  }
+
+  private formatMetricDuration(ms: number) {
+    const seconds = Math.max(1, Math.round(ms / 1000));
+    if (seconds < 60) return `${seconds}s`;
+    const minutes = Math.floor(seconds / 60);
+    const rest = seconds % 60;
+    return rest ? `${minutes}m ${rest}s` : `${minutes}m`;
   }
 
   private generateReport(ctx: MissionContext): MissionReport {

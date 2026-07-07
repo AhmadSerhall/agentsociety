@@ -18,10 +18,10 @@ export function EfficiencyPanel() {
   const analytics = buildMissionAnalytics(context);
 
   const data = [
-    { name: "Quality", multi: metrics.qualityScore, single: metrics.singleAgentBaseline },
-    { name: "Coverage", multi: metrics.taskCoverage, single: 60 },
-    { name: "Confidence", multi: metrics.finalConfidenceScore, single: 52 },
-    { name: "Perspectives", multi: metrics.perspectivesConsidered * 10, single: 10 },
+    { name: "Quality", multi: metrics.qualityScore, single: analytics.singleAgentQualityBaseline },
+    { name: "Coverage", multi: metrics.taskCoverage, single: analytics.singleAgentCoverageBaseline },
+    { name: "Confidence", multi: metrics.finalConfidenceScore, single: analytics.singleAgentConfidenceBaseline },
+    { name: "Perspectives", multi: analytics.societyPerspectiveScore, single: analytics.singleAgentPerspectiveBaseline },
   ];
 
   return (
@@ -36,7 +36,7 @@ export function EfficiencyPanel() {
         </div>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <Metric label="Execution Duration" value={formatDuration(analytics.executionDurationMs)} progress={durationProgress(analytics.executionDurationMs)} />
-          <Metric label="Tokens Consumed" value={analytics.tokensConsumed.toLocaleString()} progress={Math.min(100, analytics.tokensConsumed / 30)} />
+          <Metric label="Tracked Tokens" value={analytics.tokensConsumed.toLocaleString()} progress={Math.min(100, analytics.tokensConsumed / 30)} />
           <Metric label="Average Latency" value={formatDuration(analytics.averageLatencyMs)} progress={durationProgress(analytics.averageLatencyMs)} />
           <Metric label="Retries" value={String(analytics.retryCount)} progress={Math.min(100, analytics.retryCount * 24)} />
           <Metric label="Failures" value={String(analytics.failureCount)} progress={analytics.failureCount ? Math.min(100, analytics.failureCount * 35) : 4} />
@@ -68,7 +68,7 @@ export function EfficiencyPanel() {
         <Metric label="Task Coverage" value={`${metrics.taskCoverage}%`} progress={metrics.taskCoverage} />
         <Metric label="Perspectives Considered" value={String(metrics.perspectivesConsidered)} progress={100} />
         <Metric label="Conflict Resolution" value={`${metrics.conflictsResolved} resolved`} progress={metrics.conflictsResolved > 0 ? 100 : 30} />
-        <Metric label="Estimated Completion Time" value={metrics.estimatedCompletionTime} progress={75} />
+        <Metric label="Completion Time" value={metrics.estimatedCompletionTime} progress={durationProgress(analytics.executionDurationMs || analytics.averageLatencyMs)} />
         <Metric label="Confidence Score" value={`${metrics.finalConfidenceScore}%`} progress={metrics.finalConfidenceScore} />
         <Metric label="Revision Count" value={String(metrics.revisionCount)} progress={Math.min(100, metrics.revisionCount * 28)} />
       </div>
@@ -76,7 +76,7 @@ export function EfficiencyPanel() {
       <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
         <div className="mb-3 flex items-center justify-between">
           <p className="text-sm font-semibold text-white">Single Agent vs Agent Society</p>
-          <p className="text-xs text-white/45">{metrics.singleAgentBaseline}% baseline to {metrics.qualityScore}% society score</p>
+          <p className="text-xs text-white/45">{analytics.singleAgentQualityBaseline}% baseline to {metrics.qualityScore}% society score</p>
         </div>
         <ResponsiveContainer width="100%" height={190}>
           <BarChart data={data} barCategoryGap="22%">
@@ -138,6 +138,17 @@ function buildMissionAnalytics(context: MissionContext) {
       percent: Math.round((events / maxEvents) * 100),
     };
   }).filter((agent) => agent.events > 0 || agent.workstreams > 0);
+  const taskCount = Math.max(1, context.executionTasks.length || context.workstreams.length);
+  const dependencyLoad = context.executionTasks.reduce((sum, task) => sum + task.dependencies.length, 0);
+  const lowConfidenceTasks = context.executionTasks.filter((task) => (task.confidence ?? 0) > 0 && (task.confidence ?? 0) < 75).length;
+  const societyPerspectiveScore = Math.min(100, Math.round((metrics?.perspectivesConsidered ?? participatingAgents.size) * 100 / Math.max(1, AGENT_DEFINITIONS.length)));
+  const singleAgentCoverageBaseline = metrics?.singleAgentCoverageBaseline ?? Math.max(35, Math.min(92, (metrics?.taskCoverage ?? 70) - Math.max(8, Math.round(taskCount * 3.5 + dependencyLoad * 2))));
+  const singleAgentConfidenceBaseline = metrics?.singleAgentConfidenceBaseline ?? Math.max(38, Math.min(90, (metrics?.finalConfidenceScore ?? 70) - Math.max(6, Math.round(participatingAgents.size * 2.2 + lowConfidenceTasks * 1.5))));
+  const singleAgentPerspectiveBaseline = metrics?.singleAgentPerspectiveBaseline ?? (context.missionClassification?.deliverableMode === "direct_answer" ? 10 : Math.max(10, Math.min(45, Math.round(100 / Math.max(1, participatingAgents.size || 1)))));
+  const singleAgentQualityBaseline = metrics?.singleAgentBaseline ?? Math.max(
+    36,
+    Math.min(88, Math.round((singleAgentCoverageBaseline * 0.28) + (singleAgentConfidenceBaseline * 0.34) + (Math.min(100, tokensConsumed / Math.max(1, taskCount * 30)) * 0.18) + (singleAgentPerspectiveBaseline * 0.2)))
+  );
 
   return {
     executionDurationMs,
@@ -150,6 +161,11 @@ function buildMissionAnalytics(context: MissionContext) {
     agentUtilizationPercent,
     agentUtilization,
     eventCount: replayEvents.length,
+    societyPerspectiveScore,
+    singleAgentQualityBaseline,
+    singleAgentCoverageBaseline,
+    singleAgentConfidenceBaseline,
+    singleAgentPerspectiveBaseline,
   };
 }
 

@@ -104,7 +104,7 @@ export function NetworkGraphPanel({ className }: { className?: string }) {
           maskColor="rgba(2,6,23,0.62)"
           className="!bottom-4 !right-4 !rounded-xl !border !border-cyan-200/10 !bg-black/35"
         />
-        <Controls className="!bottom-4 !left-4 !overflow-hidden !rounded-xl !border !border-cyan-200/10 !bg-black/35 !shadow-[0_18px_60px_rgba(0,0,0,0.35)]" />
+        {/* <Controls className="!bottom-4 !left-4 !overflow-hidden !rounded-xl !border !border-cyan-200/10 !bg-black/35 !shadow-[0_18px_60px_rgba(0,0,0,0.35)]" /> */}
       </ReactFlow>
     </div>
   );

@@ -369,7 +369,7 @@ It can display:
 - Quality score
 - Conflicts resolved
 - Execution duration
-- Tokens consumed
+- Tracked token estimate
 - Average latency
 - Retry count
 - Failure count
@@ -377,6 +377,8 @@ It can display:
 - Consensus percentage
 - Agent utilization
 - Single-agent baseline comparison
+
+Efficiency values are derived from the current mission context, replay events, workstreams, dialogue, task dependencies, conflicts, timing, and agent participation. They are not static demo values. The chart baselines for single-agent quality, coverage, confidence, and perspectives are calculated separately so different missions can produce different comparison shapes. Completion time now shows actual runtime when available, otherwise a telemetry estimate from task count, latency, dependencies, and complexity.
 
 ## Network Tab
 

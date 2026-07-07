@@ -185,6 +185,9 @@ export interface EfficiencyMetrics {
   agentUtilizationPercent?: number;
   /** Comparison: single-agent estimated score. */
   singleAgentBaseline: number;
+  singleAgentCoverageBaseline?: number;
+  singleAgentConfidenceBaseline?: number;
+  singleAgentPerspectiveBaseline?: number;
 }
 
 export type MissionKind =

@@ -405,7 +405,7 @@ It can display:
 - Quality score
 - Conflicts resolved
 - Execution duration
-- Tokens consumed
+- Tracked token estimate
 - Average latency
 - Retry count
 - Failure count
@@ -413,6 +413,8 @@ It can display:
 - Consensus percentage
 - Agent utilization
 - Single-agent baseline comparison
+
+These metrics are calculated from `MissionContext`, replay records, workstream/task state, dependencies, dialogue length, conflicts, confidence scores, and participating agents. They are not shared hardcoded values. The single-agent comparison uses separate baselines for quality, coverage, confidence, and perspectives. Completion time uses actual mission runtime when available and falls back to a telemetry estimate only when runtime is missing.
 
 ### Network
 
