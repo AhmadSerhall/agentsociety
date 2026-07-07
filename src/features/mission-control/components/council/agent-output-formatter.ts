@@ -209,7 +209,7 @@ export function normalizeAgentOutputForDisplay(output: unknown, options?: { agen
 }
 
 export function normalizeDialogueEntry(entry: AgentDialogueEntry) {
-  const human = renderAgentMessage(entry, 280);
+  const human = renderAgentMessage(entry, 5000);
   return {
     title: human.title,
     summary: human.summary,

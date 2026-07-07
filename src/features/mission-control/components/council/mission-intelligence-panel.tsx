@@ -81,9 +81,9 @@ export function MissionIntelligencePanel({ context }: { context: MissionContext 
 
 function DebugLine({ label, value }: { label: string; value: string }) {
   return (
-    <div className="grid grid-cols-[110px_minmax(0,1fr)] gap-2">
-      <dt className="truncate uppercase tracking-[0.12em] text-white/34">{label}</dt>
-      <dd className="line-clamp-2 text-white/70">{sanitizeUserFacingText(value)}</dd>
+    <div className="grid gap-1 rounded-xl border border-white/8 bg-black/14 p-2">
+      <dt className="text-[0.62rem] uppercase tracking-[0.12em] text-white/34">{label}</dt>
+      <dd className="break-words text-white/70">{sanitizeUserFacingText(value)}</dd>
     </div>
   );
 }

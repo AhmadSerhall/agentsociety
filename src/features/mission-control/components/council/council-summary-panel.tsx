@@ -3,6 +3,7 @@
 import { CheckCircle2, GitMerge, ShieldCheck, Sparkles } from "lucide-react";
 import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
+import { StructuredContent } from "@/components/structured-content";
 import { AgentRole, type MissionContext } from "@/types";
 import { sanitizeUserFacingText } from "@/utils";
 import { normalizeAgentOutputForDisplay } from "./agent-output-formatter";
@@ -12,6 +13,7 @@ export function CouncilSummaryPanel({ context }: { context: MissionContext }) {
   const confidence = context.efficiencyMetrics?.finalConfidenceScore ?? Math.round(context.executionTasks.reduce((sum, task) => sum + task.confidence, 0) / Math.max(1, context.executionTasks.length));
   const resolvedConflicts = context.conflicts.filter((conflict) => conflict.resolved || conflict.status === "resolved").length;
   const keyDecision = formatKeyDecision(context);
+  const summary = sanitizeUserFacingText(report?.executiveSummary || "The agent society completed the workstreams, resolved required coordination points, and synthesized the final execution plan.");
 
   return (
     <section className="relative overflow-hidden rounded-[1.6rem] border border-emerald-300/20 bg-[radial-gradient(circle_at_50%_0%,rgba(16,185,129,0.15),transparent_38%),linear-gradient(135deg,rgba(3,7,18,0.9),rgba(15,23,42,0.72))] p-6 shadow-[0_26px_100px_rgba(16,185,129,0.12)] backdrop-blur-xl">
@@ -22,9 +24,9 @@ export function CouncilSummaryPanel({ context }: { context: MissionContext }) {
       <div className="mt-5 text-center">
         <Badge className="bg-emerald-300/15 text-emerald-100 hover:bg-emerald-300/15">Saved to history</Badge>
         <h3 className="mt-3 text-2xl font-bold text-white">{sanitizeUserFacingText(report?.missionObjective || "Council Synchronized")}</h3>
-        <p className="mx-auto mt-3 max-w-2xl text-sm leading-relaxed text-white/62">
-          {sanitizeUserFacingText(report?.executiveSummary || "The agent society completed the workstreams, resolved required coordination points, and synthesized the final execution plan.")}
-        </p>
+        <div className="mx-auto mt-4 max-w-3xl">
+          <StructuredContent text={summary} />
+        </div>
       </div>
       <div className="mt-5 grid gap-3 md:grid-cols-3">
         <SummaryMetric icon={<GitMerge className="h-4 w-4" />} label="Workstreams" value={String(context.executionTasks.length || context.workstreams.length)} />

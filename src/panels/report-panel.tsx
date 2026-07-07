@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { StructuredContent } from "@/components/structured-content";
 import { composeReportSections } from "@/features/mission-control/components/council/presentation-renderer";
 import { toast } from "@/hooks/use-toast";
 import { useMissionStore } from "@/store";
@@ -52,7 +53,9 @@ export function ReportPanel() {
               <h3 className="mt-2 text-lg font-semibold text-white">
                 {section.title}
               </h3>
-              <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-relaxed text-white/68">{section.body}</p>
+              <div className="mt-3">
+                <StructuredContent text={section.body} />
+              </div>
               {section.bullets.length > 0 && (
                 <ul className="mt-3 space-y-1.5 text-sm text-white/58">
                   {section.bullets.map((bullet) => <li key={bullet} className="flex gap-2"><span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-cyan-300" />{bullet}</li>)}

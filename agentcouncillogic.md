@@ -284,6 +284,8 @@ It converts structured mission data into:
 
 The older agent output formatter now delegates to this renderer. Normal user-facing UI should never show raw model payloads.
 
+Roadmap-like answers now pass through a structured content renderer before display. Plain text sections such as `What to do`, `Practical steps`, `Key context`, `Timing`, and `Watch-outs` are presented as readable headings, numbered steps, and bullet rows instead of a single dense paragraph.
+
 ## Completed Mission Tabs
 
 ### Workflow
@@ -331,6 +333,8 @@ It now displays:
 - Human summary
 - Bullets
 - Workstream cards when Planner output is parsed
+
+Dialogue entries are not ellipsis-truncated in the completed mission Dialogue tab. Compact live dashboard surfaces can still summarize or clamp text, but the Dialogue tab is the full readable contribution record.
 
 Duplicate identical entries are hidden at presentation time, so repeated Finalizer or Mediator messages do not clutter the tab.
 

@@ -554,6 +554,10 @@ When `deliverableMode` is `direct_answer`, the Final Report tab is presented as 
 
 Direct-answer agent output now has a first-class `finalAnswer` field. The finalizer must pass through the useful worker/reviewer answer instead of inventing report sections or recommendations. The markdown exporter also emits a simple Answer document for these missions.
 
+Roadmap, checklist, timing, watch-out, and step-based answers are rendered through a structured content component instead of being shown as one dense paragraph. The completed mission summary and report sections can display modern numbered cards, bullet rows, and lightweight section headings from the same final text.
+
+The Dialogue tab now shows full agent message summaries without ellipsis truncation, while compact running-dashboard views can still clamp text where needed. Developer Debug fields wrap naturally so selected agents, planning status, and planning reason remain readable.
+
 ## Mock Mode And Qwen Mode
 
 The app supports:
