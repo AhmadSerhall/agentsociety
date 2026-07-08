@@ -5,11 +5,13 @@ import { StructuredContent } from "@/components/structured-content";
 import { composeReportSections } from "@/features/mission-control/components/council/presentation-renderer";
 import { toast } from "@/hooks/use-toast";
 import { useMissionStore } from "@/store";
+import type { DrilldownSource } from "@/types";
 import { CheckCircle2, Copy, Download } from "lucide-react";
 import { downloadText, reportToMarkdown } from "@/utils";
 
 export function ReportPanel() {
   const report = useMissionStore((s) => s.context?.finalReport);
+  const context = useMissionStore((s) => s.context);
 
   if (!report) {
     return <p className="text-sm italic text-white/45">The final report will appear once all agents finish or the mission is synthesized.</p>;
@@ -54,7 +56,14 @@ export function ReportPanel() {
                 {section.title}
               </h3>
               <div className="mt-3">
-                <StructuredContent text={section.body} />
+                <StructuredContent
+                  text={section.body}
+                  drilldownBase={context ? {
+                    parentMissionId: context.missionId,
+                    sourceType: section.title.toLowerCase().includes("risk") ? "risk" : section.title.toLowerCase().includes("decision") ? "decision" : "recommendation",
+                  } : undefined}
+                  onDrilldown={(source: DrilldownSource) => window.dispatchEvent(new CustomEvent("agentSociety:drilldown", { detail: source }))}
+                />
               </div>
               {section.bullets.length > 0 && (
                 <ul className="mt-3 space-y-1.5 text-sm text-white/58">

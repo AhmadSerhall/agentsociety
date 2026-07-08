@@ -29,20 +29,22 @@ The context stores:
 The mission flow is:
 
 1. User enters a mission brief and configuration.
-2. The Mission Classification Engine identifies the mission type, complexity, selected strategy, and smallest useful team.
-3. The engine decides whether planning is useful.
-4. If planning is unnecessary, direct workstreams are created from classification.
-5. If decomposition is useful, Planner creates or repairs a Mission Graph.
-6. Workstreams are converted into executable tasks.
-7. Tasks become ready when dependencies are satisfied.
-8. Ready tasks can run in parallel only when parallelism is useful.
-9. Assigned agents produce structured outputs.
-10. Risk Critic only participates when useful work or real risk context exists.
-11. Conflicts are created only from real conflict signals or material objections.
-12. Mediator runs only when an actual conflict needs resolution.
-13. Finalizer synthesizes completed work into a final report.
-14. The report is validated and rendered for humans.
-15. Mission history and replay events are saved locally.
+2. The Mission Brief composer can suggest a configuration from the Mission Classification Engine before launch.
+3. Enter launches the mission, Shift+Enter creates a new line, and Ctrl/Cmd+Enter also launches.
+4. The Mission Classification Engine identifies the mission type, complexity, selected strategy, and smallest useful team.
+5. The engine decides whether planning is useful.
+6. If planning is unnecessary, direct workstreams are created from classification.
+7. If decomposition is useful, Planner creates or repairs a Mission Graph.
+8. Workstreams are converted into executable tasks.
+9. Tasks become ready when dependencies are satisfied.
+10. Ready tasks can run in parallel only when parallelism is useful.
+11. Assigned agents produce structured outputs.
+12. Risk Critic only participates when useful work or real risk context exists.
+13. Conflicts are created only from real conflict signals or material objections.
+14. Mediator runs only when an actual conflict needs resolution.
+15. Finalizer synthesizes completed work into a final report.
+16. The report is validated and rendered for humans.
+17. Mission history and replay events are saved locally.
 
 ## Mission Classification Engine
 
@@ -66,6 +68,8 @@ It stores:
 Planning is not mandatory. Simple translation, summarization, direct Q&A, conversation, or small writing tasks skip Planner and run through a minimal specialist path. Complex startup, ERP, architecture, business, and multi-step execution tasks use Planner and a Mission Graph.
 
 General Mission is the default high-level execution style. `Direct Result` is the default output-format preference. When selected, the classifier leans toward concise direct execution for simple requests and the report composer keeps orchestration details out of the primary answer. Complex requests can still use Planner if decomposition is genuinely useful.
+
+The Mission Brief composer can call the classifier locally after the user pauses typing. It suggests mission type, depth, output format, time horizon, budget range, and risk tolerance with a short explanation of why the configuration fits the prompt. Applying the suggestion updates configuration values. Dismissing it hides that suggestion for the current text. Manual configuration remains authoritative unless the user explicitly applies a new suggestion.
 
 ## Strict Agent Categories
 
@@ -317,6 +321,30 @@ It displays:
 - Dependency count
 - Supporting agents
 - Deliverables, acceptance criteria, or expected outputs
+
+Workstream cards are actionable drilldown sources. Clicking one opens a Drilldown Mission drawer with parent mission context, selected card text, related agent/workstream metadata, and a suggested sub-mission prompt.
+
+## Mission Drilldown And Sub-Missions
+
+Mission Drilldown turns completed mission advice into follow-up work without replacing the parent mission.
+
+The drilldown source model stores:
+
+- Stable card id
+- Parent mission id
+- Source type, such as recommendation, workstream, practical step, decision, risk, or timeline
+- Source text
+- Optional source agent id
+- Optional source workstream id
+- Creation timestamp
+
+The drawer supports three actions:
+
+- Quick Expand: uses Qwen/mock to generate focused detail for the selected card inside the drawer. The expansion must do the selected task directly, not describe a generic process.
+- Launch Sub-Mission: starts a normal Mission Engine run using parent context and the selected card as the new mission brief. The child mission stores parent/source relationship fields in mission history.
+- Add to Mission Backlog: stores the selected follow-up on the parent mission so it can be reopened later.
+
+Sub-missions remain separate missions. They inherit context through the launch prompt and relation fields, but they do not overwrite the parent mission result. Mission History and Reports show a Sub-Mission badge when an entry has a `parentMissionId`.
 
 ### Dialogue
 

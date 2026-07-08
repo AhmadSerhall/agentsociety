@@ -14,6 +14,7 @@ import {
   type ConflictInfo,
   type EfficiencyMetrics,
   type MissionReport,
+  type DrilldownSource,
   DEFAULT_CONFIGURATION,
 } from "@/types";
 import { generateId } from "@/utils";
@@ -22,16 +23,22 @@ interface MissionStateSlice {
   context: MissionContext | null;
   isRunning: boolean;
 
-  initMission: (brief: string, config?: Partial<MissionConfiguration>) => MissionContext;
+  initMission: (brief: string, config?: Partial<MissionConfiguration>, relation?: Partial<Pick<MissionContext, "parentMissionId" | "sourceCardId" | "sourceCardText" | "sourceAgentId" | "sourceWorkstreamId">>) => MissionContext;
   setContext: (ctx: MissionContext) => void;
   appendDialogue: (entry: AgentDialogueEntry) => void;
+  addBacklogItem: (source: DrilldownSource) => void;
   reset: () => void;
 }
 
-const createEmptyContext = (brief: string, config: MissionConfiguration): MissionContext => ({
+const createEmptyContext = (
+  brief: string,
+  config: MissionConfiguration,
+  relation?: Partial<Pick<MissionContext, "parentMissionId" | "sourceCardId" | "sourceCardText" | "sourceAgentId" | "sourceWorkstreamId">>
+): MissionContext => ({
   missionId: generateId(),
   missionBrief: brief,
   configuration: config,
+  ...relation,
   missionClassification: undefined,
   workstreams: [],
   researchSummary: "",
@@ -65,15 +72,16 @@ const createEmptyContext = (brief: string, config: MissionConfiguration): Missio
   startedAt: null,
   completedAt: null,
   replayEvents: [],
+  missionBacklog: [],
 });
 
 export const useMissionStore = create<MissionStateSlice>((set, get) => ({
   context: null,
   isRunning: false,
 
-  initMission: (brief, partialConfig) => {
+  initMission: (brief, partialConfig, relation) => {
     const config: MissionConfiguration = { ...DEFAULT_CONFIGURATION, ...partialConfig };
-    const ctx = createEmptyContext(brief, config);
+    const ctx = createEmptyContext(brief, config, relation);
     set({ context: ctx, isRunning: false });
     return ctx;
   },
@@ -82,6 +90,10 @@ export const useMissionStore = create<MissionStateSlice>((set, get) => ({
 
   appendDialogue: (entry) => set((state) => state.context
     ? { context: { ...state.context, dialogue: [...state.context.dialogue, entry] } }
+    : state),
+
+  addBacklogItem: (source) => set((state) => state.context
+    ? { context: { ...state.context, missionBacklog: [...(state.context.missionBacklog ?? []), source] } }
     : state),
 
   reset: () => set({ context: null, isRunning: false }),

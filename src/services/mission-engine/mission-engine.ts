@@ -379,6 +379,51 @@ export class MissionEngine {
     return this.contextRef;
   }
 
+  suggestMissionConfiguration(brief: string, currentConfig?: Partial<MissionConfiguration>) {
+    const baseConfig: MissionConfiguration = {
+      missionType: currentConfig?.missionType ?? "general-mission",
+      depth: currentConfig?.depth ?? "balanced",
+      timeHorizon: currentConfig?.timeHorizon ?? "30-days",
+      budgetRange: currentConfig?.budgetRange ?? "none",
+      riskTolerance: currentConfig?.riskTolerance ?? "balanced",
+      outputFormat: currentConfig?.outputFormat ?? "direct-result",
+    };
+    const classification = this.classifyMission(brief, baseConfig);
+    const lowered = sanitizeUserFacingText(brief).toLowerCase();
+    const config: MissionConfiguration = {
+      missionType: this.suggestMissionType(classification.strategy.missionType),
+      depth: classification.strategy.complexity >= 7 ? "deep-analysis" : classification.strategy.complexity <= 2 ? "fast" : "balanced",
+      outputFormat: this.suggestOutputFormat(classification.strategy.deliverableMode, classification.strategy.missionType),
+      timeHorizon: /\b(today|now|quick|asap|urgent|1 day)\b/.test(lowered) ? "7-days" : /\b(90 days|quarter|3 months)\b/.test(lowered) ? "90-days" : /\b(year|12 months)\b/.test(lowered) ? "1-year" : /\b(6 months|half year)\b/.test(lowered) ? "6-months" : "30-days",
+      budgetRange: /\b(no budget|free|zero cost)\b/.test(lowered) ? "none" : /\b(low budget|cheap|lean|bootstrap)\b/.test(lowered) ? "low" : /\b(enterprise|large budget|corporate)\b/.test(lowered) ? "enterprise" : /\b(budget|cost|pricing|paid)\b/.test(lowered) ? "medium" : "none",
+      riskTolerance: classification.strategy.requiresConflictResolution || classification.strategy.complexity >= 8 ? "conservative" : classification.strategy.complexity <= 2 ? "none" : "balanced",
+    };
+    const why = [
+      `Detected ${classification.strategy.missionType.replace(/_/g, " ")} mission`,
+      `${classification.strategy.complexity}/10 complexity`,
+      classification.strategy.requiresPlanning ? "planning is useful" : "direct specialist execution is enough",
+      `${classification.strategy.deliverableMode.replace(/_/g, " ")} deliverable`,
+    ].join(" with ");
+    return { config, why, classification: classification.strategy };
+  }
+
+  private suggestMissionType(missionType: MissionKind): MissionConfiguration["missionType"] {
+    if (["software_architecture", "programming", "debugging", "erp_design", "code_review"].includes(missionType)) return "software-architecture";
+    if (missionType === "startup_launch") return "startup-launch";
+    if (["business_planning", "financial_analysis"].includes(missionType)) return "business-plan";
+    if (["research", "summarization", "question_answering", "education", "file_analysis"].includes(missionType)) return "research-plan";
+    if (["creative_writing", "brainstorming"].includes(missionType)) return "product-strategy";
+    return "general-mission";
+  }
+
+  private suggestOutputFormat(deliverableMode: DeliverableMode, missionType: MissionKind): MissionConfiguration["outputFormat"] {
+    if (deliverableMode === "direct_answer") return "direct-result";
+    if (["software_architecture", "programming", "debugging", "erp_design", "code_review"].includes(missionType)) return "technical-plan";
+    if (["startup_launch", "business_planning"].includes(missionType)) return "strategy-brief";
+    if (missionType === "research") return "executive-report";
+    return "execution-roadmap";
+  }
+
   cancelMission() {
     this.abortController?.abort();
   }

@@ -4,7 +4,7 @@
 
 import type { MissionConfiguration } from "./config.types";
 import type { AgentDialogueEntry } from "./agent.types";
-import type { TimelineEntry, Workstream, ConflictInfo, MissionReport, EfficiencyMetrics, MissionReplayEvent } from "./mission.types";
+import type { TimelineEntry, Workstream, ConflictInfo, MissionReport, EfficiencyMetrics, MissionReplayEvent, DrilldownSource } from "./mission.types";
 
 export interface MissionHistoryEntry {
   id: string;
@@ -21,4 +21,10 @@ export interface MissionHistoryEntry {
   finalReport: MissionReport | null;
   efficiencyMetrics: EfficiencyMetrics | null;
   replayEvents?: MissionReplayEvent[];
+  parentMissionId?: string;
+  sourceCardId?: string;
+  sourceCardText?: string;
+  sourceAgentId?: string;
+  sourceWorkstreamId?: string;
+  missionBacklog?: DrilldownSource[];
 }

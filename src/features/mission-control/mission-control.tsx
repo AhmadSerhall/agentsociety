@@ -9,14 +9,14 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CheckCircle2, Clock3, Download, FileText, KeyRound, Menu, RotateCcw, Save, Settings, ShieldAlert, SlidersHorizontal, Target, WalletCards, Zap } from "lucide-react";
+import { CheckCircle2, Clock3, Download, FileText, KeyRound, ListPlus, Menu, RotateCcw, Save, Settings, ShieldAlert, SlidersHorizontal, Target, Telescope, WalletCards, Zap } from "lucide-react";
 import { useMissionEngine } from "@/hooks";
 import { useMissionStore } from "@/store";
 import { useHistoryStore, useRuntimeSettingsStore, useReplayStore } from "@/store";
 import { useFadeInUp, useStaggerContainer } from "@/hooks";
 import { hasUsableQwenKey, hideApiKeyOnboardingPermanently, isApiKeyOnboardingHidden } from "@/lib/qwenConfig";
 import { getQwenRuntimeInfo } from "@/services/qwen";
-import { MISSION_TYPE_LABELS, DEPTH_LABELS, TIME_HORIZON_LABELS, BUDGET_RANGE_LABELS, RISK_TOLERANCE_LABELS, OUTPUT_FORMAT_LABELS, MissionState, AgentRole, type MissionConfiguration, type MissionType, type Depth, type TimeHorizon, type BudgetRange, type RiskTolerance, type OutputFormat } from "@/types";
+import { MISSION_TYPE_LABELS, DEPTH_LABELS, TIME_HORIZON_LABELS, BUDGET_RANGE_LABELS, RISK_TOLERANCE_LABELS, OUTPUT_FORMAT_LABELS, MissionState, AgentRole, type DrilldownSource, type MissionConfiguration, type MissionType, type Depth, type TimeHorizon, type BudgetRange, type RiskTolerance, type OutputFormat } from "@/types";
 import {
   AgentWorkflowPanel, WorkstreamsPanel, DialoguePanel,
   ConflictPanel, ReportPanel, TimelinePanel, EfficiencyPanel,
@@ -30,6 +30,7 @@ import { SidebarPageView } from "./components/sidebar-pages";
 import { ReplayControlBar } from "./components/replay-control-bar";
 import { AgentCouncilRoom } from "./components/council/agent-council-room";
 import { CompactMissionHeader } from "./components/council/compact-mission-header";
+import { DrilldownDrawer } from "./components/drilldown-drawer";
 import { downloadText, generateId, reportToMarkdown } from "@/utils";
 import { toast } from "@/hooks/use-toast";
 
@@ -56,17 +57,21 @@ export function MissionControl() {
   const [replayComingOpen, setReplayComingOpen] = useState(false);
   const [highlightReportTab, setHighlightReportTab] = useState(false);
   const [completionToastOpen, setCompletionToastOpen] = useState(false);
+  const [drilldownOpen, setDrilldownOpen] = useState(false);
+  const [drilldownSource, setDrilldownSource] = useState<DrilldownSource | null>(null);
   const [activeView, setActiveView] = useState<MissionView>("mission-control");
   const [activeMissionTab, setActiveMissionTab] = useState("workflow");
   const tabsRef = useRef<HTMLDivElement | null>(null);
   const previousStatus = useRef<MissionState | undefined>(undefined);
   const { context, isRunning, launch, cancel } = useMissionEngine();
   const loadHistory = useHistoryStore((s) => s.load);
+  const addHistory = useHistoryStore((s) => s.add);
   const loadRuntimeSettings = useRuntimeSettingsStore((s) => s.load);
   const qwenApiKey = useRuntimeSettingsStore((s) => s.qwenApiKey);
   const progress = useMissionStore((s) => s.context?.progress ?? 0);
   const status = useMissionStore((s) => s.context?.status);
   const resetMission = useMissionStore((s) => s.reset);
+  const addBacklogItem = useMissionStore((s) => s.addBacklogItem);
   const replayMode = useReplayStore((s) => s.mode);
   const replayEvents = useReplayStore((s) => s.replayEvents);
   const replayTime = useReplayStore((s) => s.replayTime);
@@ -140,6 +145,17 @@ export function MissionControl() {
     loadHistory();
     loadRuntimeSettings();
   }, [loadHistory, loadRuntimeSettings]);
+
+  useEffect(() => {
+    const handleDrilldown = (event: Event) => {
+      const source = (event as CustomEvent<DrilldownSource>).detail;
+      if (!source) return;
+      setDrilldownSource(source);
+      setDrilldownOpen(true);
+    };
+    window.addEventListener("agentSociety:drilldown", handleDrilldown);
+    return () => window.removeEventListener("agentSociety:drilldown", handleDrilldown);
+  }, []);
 
   useEffect(() => {
     const resetSessionDismissal = () => setApiKeyOnboardingDismissed(false);
@@ -245,6 +261,49 @@ export function MissionControl() {
     setReplayComingOpen(true);
   };
 
+  const handleLaunchSubMission = (prompt: string, nextConfig: Partial<MissionConfiguration>, source: DrilldownSource) => {
+    setDrilldownOpen(false);
+    setDrilldownSource(null);
+    setActiveView("mission-control");
+    setActiveMissionTab("workflow");
+    launch(prompt, { ...nextConfig, outputFormat: "direct-result" }, {
+      parentMissionId: source.parentMissionId,
+      sourceCardId: source.id,
+      sourceCardText: source.sourceText,
+      sourceAgentId: source.sourceAgentId,
+      sourceWorkstreamId: source.sourceWorkstreamId,
+    });
+  };
+
+  const handleAddBacklog = (source: DrilldownSource) => {
+    addBacklogItem(source);
+    if (context) {
+      addHistory({
+        id: context.missionId,
+        missionBrief: context.missionBrief,
+        configuration: context.configuration,
+        timestamp: context.completedAt ?? new Date().toISOString(),
+        startedAt: context.startedAt,
+        completedAt: context.completedAt,
+        savedAt: context.completedAt ?? new Date().toISOString(),
+        workstreams: context.workstreams,
+        dialogue: context.dialogue,
+        timeline: context.timeline,
+        conflicts: context.conflicts.map((conflict) => ({ description: conflict.description, resolution: conflict.resolution ?? conflict.mediatorDecision })),
+        finalReport: context.finalReport,
+        efficiencyMetrics: context.efficiencyMetrics,
+        replayEvents: context.replayEvents,
+        parentMissionId: context.parentMissionId,
+        sourceCardId: context.sourceCardId,
+        sourceCardText: context.sourceCardText,
+        sourceAgentId: context.sourceAgentId,
+        sourceWorkstreamId: context.sourceWorkstreamId,
+        missionBacklog: [...(context.missionBacklog ?? []), source],
+      });
+    }
+    toast({ title: "Added to mission backlog", description: "This follow-up is saved with the parent mission." });
+  };
+
   return (
     <div className="relative h-screen overflow-hidden">
       <SpaceBackground />
@@ -339,8 +398,10 @@ export function MissionControl() {
                       exit={{ opacity: 0 }}
                       className="space-y-4"
                     >
+                      {context?.parentMissionId && <ParentMissionBadge context={context} />}
                       <CompactMissionHeader involvedAgents={involvedAgents} onCancel={cancel} onStartNew={handleStartNewMission} />
                       <AgentCouncilRoom onViewReport={handleViewFullReport} onReplayMission={handleReplayMission} onStartNew={handleStartNewMission} />
+                      {context?.missionBacklog?.length ? <MissionBacklogPanel items={context.missionBacklog} onSelect={(source) => { setDrilldownSource(source); setDrilldownOpen(true); }} /> : null}
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -533,7 +594,57 @@ export function MissionControl() {
           </Button>
         </DialogContent>
       </Dialog>
+
+      <DrilldownDrawer
+        source={drilldownSource}
+        parentContext={context}
+        open={drilldownOpen}
+        onOpenChange={setDrilldownOpen}
+        onLaunchSubMission={handleLaunchSubMission}
+        onAddBacklog={handleAddBacklog}
+      />
     </div>
+  );
+}
+
+function ParentMissionBadge({ context }: { context: NonNullable<ReturnType<typeof useMissionStore.getState>["context"]> }) {
+  return (
+    <div className="rounded-2xl border border-purple-200/15 bg-purple-400/[0.055] px-4 py-3 text-sm text-purple-50/75 shadow-[0_18px_60px_rgba(168,85,247,0.10)]">
+      <span className="font-semibold text-purple-100">Sub-Mission</span>
+      <span className="mx-2 text-white/30">of</span>
+      <span className="font-mono text-xs text-white/48">{context.parentMissionId}</span>
+      {context.sourceCardText ? <span className="ml-3 text-white/58">Expanded from: {context.sourceCardText}</span> : null}
+    </div>
+  );
+}
+
+function MissionBacklogPanel({ items, onSelect }: { items: DrilldownSource[]; onSelect: (source: DrilldownSource) => void }) {
+  return (
+    <section className="rounded-[1.5rem] border border-cyan-200/10 bg-white/[0.04] p-4 shadow-[0_20px_70px_rgba(0,0,0,0.22)] backdrop-blur-2xl">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <ListPlus className="h-4 w-4 text-cyan-100" />
+          <h3 className="text-sm font-semibold text-white">Mission Backlog</h3>
+        </div>
+        <span className="rounded-full border border-cyan-200/15 bg-cyan-300/10 px-2.5 py-1 text-xs text-cyan-100/70">{items.length} follow-ups</span>
+      </div>
+      <div className="mt-3 grid gap-2 md:grid-cols-2">
+        {items.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => onSelect(item)}
+            className="group rounded-2xl border border-white/10 bg-black/20 p-3 text-left transition hover:border-cyan-200/35 hover:bg-cyan-300/[0.07] hover:shadow-[0_18px_50px_rgba(34,211,238,0.12)]"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[0.65rem] uppercase tracking-[0.16em] text-cyan-100/48">{item.sourceType.replace(/_/g, " ")}</span>
+              <span className="inline-flex items-center gap-1 text-xs text-white/35 group-hover:text-cyan-100/75"><Telescope className="h-3.5 w-3.5" />Open</span>
+            </div>
+            <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-white/68">{item.sourceText}</p>
+          </button>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -609,6 +720,12 @@ function MissionOutcomeCard({
       finalReport: context.finalReport,
       efficiencyMetrics: context.efficiencyMetrics,
       replayEvents: context.replayEvents,
+      parentMissionId: context.parentMissionId,
+      sourceCardId: context.sourceCardId,
+      sourceCardText: context.sourceCardText,
+      sourceAgentId: context.sourceAgentId,
+      sourceWorkstreamId: context.sourceWorkstreamId,
+      missionBacklog: context.missionBacklog,
     });
     toast({ title: type === "completed" ? "Mission saved" : "Partial mission saved", description: "Saved to local Mission History." });
   };

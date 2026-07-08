@@ -111,6 +111,12 @@ function contextFromHistory(entry: MissionHistoryEntry): MissionContext {
       missionId: entry.id,
       missionBrief: entry.missionBrief,
       configuration: entry.configuration,
+      parentMissionId: entry.parentMissionId,
+      sourceCardId: entry.sourceCardId,
+      sourceCardText: entry.sourceCardText,
+      sourceAgentId: entry.sourceAgentId,
+      sourceWorkstreamId: entry.sourceWorkstreamId,
+      missionBacklog: entry.missionBacklog ?? [],
       finalReport: entry.finalReport ?? reconstructed.finalReport,
       efficiencyMetrics: entry.efficiencyMetrics ?? reconstructed.efficiencyMetrics,
       status: entry.finalReport ? MissionState.Completed : MissionState.Cancelled,
@@ -145,6 +151,12 @@ function contextFromHistory(entry: MissionHistoryEntry): MissionContext {
     missionId: entry.id,
     missionBrief: entry.missionBrief,
     configuration: entry.configuration,
+    parentMissionId: entry.parentMissionId,
+    sourceCardId: entry.sourceCardId,
+    sourceCardText: entry.sourceCardText,
+    sourceAgentId: entry.sourceAgentId,
+    sourceWorkstreamId: entry.sourceWorkstreamId,
+    missionBacklog: entry.missionBacklog ?? [],
     workstreams: entry.workstreams,
     researchSummary: "",
     productStrategy: "",
@@ -495,6 +507,7 @@ function MissionHistoryPage({ onOpenMissionControl, onReplay }: { onOpenMissionC
               <div>
                 <div>
                   <h3 className="break-words text-base font-semibold leading-relaxed text-white">{entry.missionBrief}</h3>
+                  {entry.parentMissionId && <ParentEntryBadge entry={entry} />}
                   <p className="mt-1 text-sm text-white/45">{new Date(entry.timestamp).toLocaleString()} · {entry.finalReport ? "Completed" : "Cancelled / partial"}</p>
                 </div>
                 <div className="mt-5 flex flex-wrap justify-end gap-2">
@@ -568,6 +581,7 @@ function HistoryGroup({
           <div>
             <div>
               <h3 className="break-words text-base font-semibold leading-relaxed text-white">{entry.missionBrief}</h3>
+              {entry.parentMissionId && <ParentEntryBadge entry={entry} />}
               <p className="mt-1 text-sm text-white/45">{new Date(entry.savedAt ?? entry.timestamp).toLocaleString()} - Saved</p>
             </div>
             <div className="mt-5 flex flex-wrap justify-end gap-2">
@@ -583,6 +597,16 @@ function HistoryGroup({
         </article>
       ))}
     </section>
+  );
+}
+
+function ParentEntryBadge({ entry }: { entry: MissionHistoryEntry }) {
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-white/46">
+      <span className="rounded-full border border-purple-200/15 bg-purple-400/10 px-2.5 py-1 text-purple-100/75">Sub-Mission</span>
+      <span className="font-mono">{entry.parentMissionId}</span>
+      {entry.sourceCardText ? <span className="line-clamp-1 max-w-3xl text-white/50">Expanded from: {entry.sourceCardText}</span> : null}
+    </div>
   );
 }
 
@@ -603,6 +627,7 @@ function ReportsPage() {
                 <div>
                   <div>
                     <h3 className="break-words text-base font-semibold leading-relaxed text-white">{entry.missionBrief}</h3>
+                    {entry.parentMissionId && <ParentEntryBadge entry={entry} />}
                     <p className="mt-1 text-sm text-white/45">{new Date(entry.timestamp).toLocaleString()}</p>
                   </div>
                   <div className="mt-5 flex flex-wrap justify-end gap-2">

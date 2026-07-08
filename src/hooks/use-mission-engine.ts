@@ -32,6 +32,12 @@ function saveMissionHistory(ctx: MissionContext, addHistory: ReturnType<typeof u
     finalReport: ctx.finalReport,
     efficiencyMetrics: ctx.efficiencyMetrics,
     replayEvents: ctx.replayEvents,
+    parentMissionId: ctx.parentMissionId,
+    sourceCardId: ctx.sourceCardId,
+    sourceCardText: ctx.sourceCardText,
+    sourceAgentId: ctx.sourceAgentId,
+    sourceWorkstreamId: ctx.sourceWorkstreamId,
+    missionBacklog: ctx.missionBacklog,
   });
 }
 
@@ -52,7 +58,7 @@ export function useMissionEngine() {
   }, []);
 
   const launch = useCallback(
-    (brief: string, config?: Partial<MissionConfiguration>) => {
+    (brief: string, config?: Partial<MissionConfiguration>, relation?: Partial<Pick<MissionContext, "parentMissionId" | "sourceCardId" | "sourceCardText" | "sourceAgentId" | "sourceWorkstreamId">>) => {
       if (!hasUsableQwenKey()) {
         toast({ title: "Qwen API key required", description: "Go to Settings and paste your Qwen API key to run missions.", variant: "destructive" });
         return;
@@ -67,7 +73,7 @@ export function useMissionEngine() {
         currentStatus !== MissionState.Cancelled
       ) return;
 
-      const ctx = initMission(brief, config);
+      const ctx = initMission(brief, config, relation);
       const engine = new MissionEngine();
       engineRef.current = engine;
 

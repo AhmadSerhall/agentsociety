@@ -28,6 +28,7 @@ export type {
   MissionKind,
   DeliverableMode,
   MissionExecutionStrategy,
+  DrilldownSource,
   TimelineEntry,
   MissionContext,
   MissionReplayEvent,

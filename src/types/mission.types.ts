@@ -190,6 +190,16 @@ export interface EfficiencyMetrics {
   singleAgentPerspectiveBaseline?: number;
 }
 
+export interface DrilldownSource {
+  id: string;
+  parentMissionId: string;
+  sourceType: "recommendation" | "workstream" | "practical_step" | "decision" | "risk" | "timeline";
+  sourceText: string;
+  sourceAgentId?: string;
+  sourceWorkstreamId?: string;
+  createdAt: string;
+}
+
 export type MissionKind =
   | "translation"
   | "summarization"
@@ -328,4 +338,10 @@ export interface MissionContext {
   startedAt: string | null;
   completedAt: string | null;
   replayEvents: MissionReplayEvent[];
+  parentMissionId?: string;
+  sourceCardId?: string;
+  sourceCardText?: string;
+  sourceAgentId?: string;
+  sourceWorkstreamId?: string;
+  missionBacklog?: DrilldownSource[];
 }

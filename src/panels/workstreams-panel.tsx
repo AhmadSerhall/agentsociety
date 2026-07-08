@@ -9,9 +9,11 @@ import { useMissionStore } from "@/store";
 import { extractActionItemsFromText } from "@/utils";
 import { CheckCircle2, CircleDashed, GitBranch, Loader2, Lock, RefreshCw } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
+import type { DrilldownSource } from "@/types";
 
 export function WorkstreamsPanel() {
   const workstreams = useMissionStore(useShallow((s) => s.context?.workstreams ?? []));
+  const context = useMissionStore((s) => s.context);
 
   if (workstreams.length === 0) {
     return <p className="text-sm italic text-white/45">Workstreams will appear once the Planner finishes.</p>;
@@ -27,7 +29,30 @@ export function WorkstreamsPanel() {
         const ownerLabel = owner?.name ?? rendered.owner;
         const bullets = rendered.bullets.length > 0 ? rendered.bullets : extractActionItemsFromText(ws.output || ws.description, 4);
         return (
-          <div key={ws.id} className={`rounded-2xl border p-4 ${ws.status === "blocked" ? "border-amber-200/30 bg-amber-400/10" : ws.status === "revised" ? "border-blue-200/25 bg-blue-400/10" : "border-cyan-200/10 bg-black/20"}`}>
+          <div
+            key={ws.id}
+            role="button"
+            tabIndex={0}
+            onClick={() => {
+              if (!context) return;
+              const source: DrilldownSource = {
+                id: `${context.missionId}-workstream-${ws.id}`,
+                parentMissionId: context.missionId,
+                sourceType: "workstream",
+                sourceText: `${rendered.title}: ${rendered.subtitle}`,
+                sourceAgentId: ws.assignedAgent ?? undefined,
+                sourceWorkstreamId: ws.id,
+                createdAt: new Date().toISOString(),
+              };
+              window.dispatchEvent(new CustomEvent("agentSociety:drilldown", { detail: source }));
+            }}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter" && event.key !== " ") return;
+              event.preventDefault();
+              event.currentTarget.click();
+            }}
+            className={`group cursor-pointer rounded-2xl border p-4 transition hover:border-cyan-200/35 hover:bg-cyan-300/[0.055] hover:shadow-[0_20px_60px_rgba(34,211,238,0.12)] ${ws.status === "blocked" ? "border-amber-200/30 bg-amber-400/10" : ws.status === "revised" ? "border-blue-200/25 bg-blue-400/10" : "border-cyan-200/10 bg-black/20"}`}
+          >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <h4 className="text-sm font-semibold text-white">{rendered.title}</h4>
@@ -38,6 +63,7 @@ export function WorkstreamsPanel() {
                 {ws.status.replace("_", " ")}
               </Badge>
             </div>
+            <p className="mt-2 text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-cyan-100/0 transition group-hover:text-cyan-100/60">Drill deeper</p>
 
             <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-relaxed text-white/62">{rendered.subtitle}</p>
 

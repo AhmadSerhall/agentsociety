@@ -61,12 +61,16 @@ Before launch, the user can:
 - Adjust mission configuration
 - Launch the mission
 - Use recommended mission prompts
+- Press Enter to launch, Shift+Enter to insert a line break, or Ctrl/Cmd+Enter to launch
+- Review local AI Mission Config Suggestions after typing
 
 When the user types in the mission brief, the Mission Config button can draw attention so the user remembers to configure parameters.
 
 Configuration includes options such as mission type, depth, time horizon, budget range, risk tolerance, and output format. Time horizon and risk tolerance support a "None specified" style state.
 
 General Mission is the first mission type and the default selection. Output format defaults to `Direct Result`, which tells the engine to prefer a concise final answer for simple missions. It does not hard-disable planning for complex missions; the classifier still decides whether a mission graph is necessary.
+
+AI Mission Config Suggestions use the same Mission Classification Engine before launch. After the user pauses typing, the composer can suggest mission type, depth, output format, time horizon, budget range, and risk tolerance with an explainable "Why?" line. The user can apply the suggestion, open the manual config drawer, or dismiss it for the current text. Manual configuration remains respected unless the user explicitly applies a new suggestion.
 
 ## Agent Society Model
 
@@ -300,6 +304,29 @@ The renderer:
 - Hides Resources when no meaningful resource content exists
 - Keeps orchestration details secondary to the user-facing answer
 
+Actionable report bullets and practical-step cards can include stable drilldown ids. These cards do not expose internal payloads; they call the drilldown layer with human-readable source text and parent mission metadata.
+
+## Mission Drilldown And Sub-Missions
+
+Completed mission outputs are no longer static advice.
+
+Actionable cards from final reports, structured action lists, practical steps, recommendations, and workstreams can open a Drilldown Mission drawer. The drawer shows:
+
+- Parent mission title
+- Selected card text
+- Source type
+- Related agent and workstream when available
+- Suggested sub-mission prompt
+- Quick Expand
+- Launch Sub-Mission
+- Add to Mission Backlog
+
+Quick Expand uses the active Qwen/mock runtime to generate focused detail for the selected card without replacing the parent mission. It is scoped to the selected item and follows the existing deliverable-mode logic so simple expansions stay direct and implementation-focused.
+
+Launch Sub-Mission starts a normal Mission Engine run with parent context and source-card metadata. Child missions store `parentMissionId`, `sourceCardId`, `sourceCardText`, `sourceAgentId`, and `sourceWorkstreamId`. Mission History and Reports show a Sub-Mission badge so parent/child relationships remain visible.
+
+Add to Mission Backlog saves the selected follow-up on the parent mission record. The Mission Control page shows a Mission Backlog panel listing pending follow-ups, each of which can reopen the drilldown drawer.
+
 ## Workflow Tab
 
 The Workflow tab shows graph execution structure.
@@ -330,6 +357,8 @@ Each card can show:
 - Deliverables
 - Acceptance criteria
 - Expected outputs
+
+Workstream cards are actionable drilldown sources. Clicking a meaningful workstream opens the Drilldown Mission drawer so the user can expand that exact piece of work, launch it as a linked sub-mission, or store it in the parent mission backlog.
 
 ## Conflicts Tab
 

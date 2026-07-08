@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { motion } from "framer-motion";
 import { Loader2, Rocket, Settings2, SlidersHorizontal, Sparkles, X } from "lucide-react";
@@ -11,12 +11,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { getSavedSettingsOptions } from "@/lib/settingsPreferences";
 import { useHistoryStore } from "@/store";
 import {
+  BUDGET_RANGE_LABELS,
   DEPTH_LABELS,
   MISSION_TYPE_LABELS,
   OUTPUT_FORMAT_LABELS,
+  RISK_TOLERANCE_LABELS,
   TIME_HORIZON_LABELS,
   type MissionConfiguration,
 } from "@/types";
+import { MissionEngine } from "@/services/mission-engine";
 
 type PromptSuggestion = {
   label: string;
@@ -27,6 +30,7 @@ type PromptSuggestion = {
 type MatchedPromptSuggestion = PromptSuggestion & { match: RegExp };
 
 const EMPTY_HISTORY: ReturnType<typeof useHistoryStore.getState>["entries"] = [];
+type ConfigSuggestion = ReturnType<MissionEngine["suggestMissionConfiguration"]>;
 
 const EXAMPLE_PROMPTS: PromptSuggestion[] = [
   {
@@ -97,6 +101,28 @@ export function MissionBriefComposer({
   const recommendedPrompts = useMemo(() => buildRecommendedPrompts(sourceHistory), [sourceHistory]);
   const hasHistoryRecommendations = sourceHistory.length > 0 && recommendedPrompts.length > 0;
   const configNeedsAttention = brief.trim().length > 0 && !showConfig && !isRunning;
+  const [suggestion, setSuggestion] = useState<ConfigSuggestion | null>(null);
+  const [dismissedText, setDismissedText] = useState("");
+  const trimmedBrief = brief.trim();
+  const suggestionVisible = Boolean(suggestion && !showConfig && !isRunning && trimmedBrief.length >= 18 && trimmedBrief !== dismissedText);
+
+  useEffect(() => {
+    const text = trimmedBrief;
+    if (isRunning || text.length < 18 || text === dismissedText) {
+      return;
+    }
+    const timeout = window.setTimeout(() => {
+      const engine = new MissionEngine();
+      setSuggestion(engine.suggestMissionConfiguration(text, config));
+    }, 400);
+    return () => window.clearTimeout(timeout);
+  }, [trimmedBrief, config, dismissedText, isRunning]);
+
+  const applySuggestion = () => {
+    if (!suggestion) return;
+    onExampleSelect(brief, suggestion.config);
+    setSuggestion(null);
+  };
 
   return (
     <motion.section
@@ -174,10 +200,28 @@ export function MissionBriefComposer({
           }
           value={brief}
           onChange={(event) => onBriefChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter") return;
+            if (event.shiftKey) return;
+            event.preventDefault();
+            if (!isRunning && brief.trim()) onLaunch();
+          }}
           disabled={isRunning}
           rows={8}
           className="min-h-[220px] resize-none rounded-2xl border-cyan-200/15 bg-[#08111f]/78 p-5 text-base leading-7 text-white shadow-inner shadow-black/30 placeholder:text-white/30 focus-visible:border-cyan-200/40 focus-visible:ring-cyan-300/25 md:text-lg"
         />
+
+        {suggestionVisible && suggestion && (
+          <MissionConfigSuggestionOverlay
+            suggestion={suggestion}
+            onApply={applySuggestion}
+            onEdit={() => onConfigOpenChange(true)}
+            onDismiss={() => {
+              setDismissedText(brief.trim());
+              setSuggestion(null);
+            }}
+          />
+        )}
 
         <div className="mt-4 flex flex-wrap gap-2">
           <ConfigChip label="Type" value={MISSION_TYPE_LABELS[config.missionType ?? "general-mission"]} />
@@ -227,6 +271,62 @@ export function MissionBriefComposer({
         </div>
       </div>
     </motion.section>
+  );
+}
+
+function MissionConfigSuggestionOverlay({
+  suggestion,
+  onApply,
+  onEdit,
+  onDismiss,
+}: {
+  suggestion: ConfigSuggestion;
+  onApply: () => void;
+  onEdit: () => void;
+  onDismiss: () => void;
+}) {
+  const config = suggestion.config;
+  const chips = [
+    ["Type", MISSION_TYPE_LABELS[config.missionType]],
+    ["Depth", DEPTH_LABELS[config.depth]],
+    ["Horizon", TIME_HORIZON_LABELS[config.timeHorizon]],
+    ["Budget", BUDGET_RANGE_LABELS[config.budgetRange]],
+    ["Risk", RISK_TOLERANCE_LABELS[config.riskTolerance]],
+    ["Format", OUTPUT_FORMAT_LABELS[config.outputFormat]],
+  ];
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      className="mt-4 rounded-2xl border border-cyan-200/20 bg-[#071424]/92 p-4 shadow-[0_24px_80px_rgba(34,211,238,0.16)] backdrop-blur-2xl"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="flex items-center gap-2 text-sm font-semibold text-white">
+            <Sparkles className="h-4 w-4 text-cyan-200" />
+            Agents suggest this mission configuration
+          </p>
+          <p className="mt-1 text-xs leading-relaxed text-white/50">Why? {suggestion.why}.</p>
+        </div>
+        <button type="button" onClick={onDismiss} className="rounded-full border border-white/10 bg-white/[0.04] p-1.5 text-white/45 hover:text-white">
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {chips.map(([label, value]) => (
+          <div key={label} className="rounded-xl border border-white/10 bg-white/[0.04] p-2">
+            <p className="text-[0.62rem] uppercase tracking-[0.14em] text-white/35">{label}</p>
+            <p className="mt-1 text-sm font-semibold text-cyan-50">{value}</p>
+          </div>
+        ))}
+      </div>
+      <div className="mt-4 flex flex-wrap justify-end gap-2">
+        <Button type="button" size="sm" variant="outline" onClick={onDismiss} className="rounded-full border-white/10 bg-white/[0.04] text-white/62">Dismiss</Button>
+        <Button type="button" size="sm" variant="outline" onClick={onEdit} className="rounded-full border-purple-200/20 bg-purple-400/10 text-purple-100">Edit Manually</Button>
+        <Button type="button" size="sm" onClick={onApply} className="rounded-full bg-cyan-300 text-[#06101f] hover:bg-cyan-200">Apply Suggestion</Button>
+      </div>
+    </motion.div>
   );
 }
 
