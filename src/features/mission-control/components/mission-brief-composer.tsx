@@ -183,7 +183,7 @@ export function MissionBriefComposer({
           <ConfigChip label="Type" value={MISSION_TYPE_LABELS[config.missionType ?? "general-mission"]} />
           <ConfigChip label="Depth" value={DEPTH_LABELS[config.depth ?? "balanced"]} />
           <ConfigChip label="Horizon" value={TIME_HORIZON_LABELS[config.timeHorizon ?? "30-days"]} />
-          <ConfigChip label="Format" value={OUTPUT_FORMAT_LABELS[config.outputFormat ?? "execution-roadmap"]} />
+          <ConfigChip label="Format" value={OUTPUT_FORMAT_LABELS[config.outputFormat ?? "direct-result"]} />
         </div>
 
         <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

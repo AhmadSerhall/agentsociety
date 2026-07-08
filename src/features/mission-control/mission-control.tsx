@@ -1,8 +1,3 @@
-/**
- * Agent Society — Mission Control
- *
- * The main experience. Single-page mission command center.
- */
 
 "use client";
 
@@ -669,7 +664,7 @@ function ConfigForm({ config, onChange, onApply, onReset }: { config: Partial<Mi
         <div className="mt-4 space-y-4">
           <ConfigSelect icon={<Target className="h-4 w-4" />} label="Mission Type" value={config.missionType ?? "general-mission"} options={MISSION_TYPE_LABELS} onChange={(v) => onChange({ ...config, missionType: v as MissionType })} />
           <ConfigSelect icon={<Zap className="h-4 w-4" />} label="Depth" value={config.depth ?? "balanced"} options={DEPTH_LABELS} onChange={(v) => onChange({ ...config, depth: v as Depth })} />
-          <ConfigSelect icon={<SlidersHorizontal className="h-4 w-4" />} label="Output Format" value={config.outputFormat ?? "execution-roadmap"} options={OUTPUT_FORMAT_LABELS} onChange={(v) => onChange({ ...config, outputFormat: v as OutputFormat })} />
+          <ConfigSelect icon={<SlidersHorizontal className="h-4 w-4" />} label="Output Format" value={config.outputFormat ?? "direct-result"} options={OUTPUT_FORMAT_LABELS} onChange={(v) => onChange({ ...config, outputFormat: v as OutputFormat })} />
         </div>
       </div>
       <div className="rounded-2xl border border-purple-200/10 bg-purple-400/[0.045] p-4 shadow-inner shadow-purple-950/20">

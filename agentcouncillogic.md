@@ -65,7 +65,7 @@ It stores:
 
 Planning is not mandatory. Simple translation, summarization, direct Q&A, conversation, or small writing tasks skip Planner and run through a minimal specialist path. Complex startup, ERP, architecture, business, and multi-step execution tasks use Planner and a Mission Graph.
 
-`Direct Result` is an output-format preference. When selected, the classifier leans toward concise direct execution for simple requests and the report composer keeps orchestration details out of the primary answer. Complex requests can still use Planner if decomposition is genuinely useful.
+General Mission is the default high-level execution style. `Direct Result` is the default output-format preference. When selected, the classifier leans toward concise direct execution for simple requests and the report composer keeps orchestration details out of the primary answer. Complex requests can still use Planner if decomposition is genuinely useful.
 
 ## Strict Agent Categories
 
@@ -520,11 +520,12 @@ The board shows:
 - Recent signal rows for prior updates with one-line summaries, timestamps, and inspect behavior
 - A compact metrics strip for task completion, active agents, average response, tracked tokens, estimated cost, and success rate
 - Mission Intelligence as a high-z-index overlay instead of a permanent right column
+- Mission Intelligence shows the selected mission configuration, live/final mission metrics, and a short complete Current Decision summary
 - Full Transcript for complete dialogue review
 
 This keeps live communication readable while preserving the same underlying `MissionContext.dialogue`, `agentStates`, and `currentAgent` data.
 
-Long agent text is clamped on the dashboard and remains available through Inspect or Full Transcript. The running presentation uses compact cards with natural vertical page scrolling and small internal scroll areas only where useful. It avoids fixed viewport-height clipping so live context and agent messages remain readable.
+Long agent text is clamped on the dashboard and remains available through Inspect or Full Transcript. Current Decision in Mission Intelligence should summarize complete context without ellipses. The running presentation uses compact cards with natural vertical page scrolling and small internal scroll areas only where useful. It avoids fixed viewport-height clipping so live context and agent messages remain readable.
 
 ## Qwen Key Gate
 

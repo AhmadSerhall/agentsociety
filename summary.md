@@ -66,7 +66,7 @@ When the user types in the mission brief, the Mission Config button can draw att
 
 Configuration includes options such as mission type, depth, time horizon, budget range, risk tolerance, and output format. Time horizon and risk tolerance support a "None specified" style state.
 
-Output format includes `Direct Result`, which tells the engine to prefer a concise final answer for simple missions. It does not hard-disable planning for complex missions; the classifier still decides whether a mission graph is necessary.
+General Mission is the first mission type and the default selection. Output format defaults to `Direct Result`, which tells the engine to prefer a concise final answer for simple missions. It does not hard-disable planning for complex missions; the classifier still decides whether a mission graph is necessary.
 
 ## Agent Society Model
 
@@ -540,9 +540,10 @@ The active mission council view no longer uses the old solar-system orbit layout
 - Recent signal rows with one-line summaries, timestamps, status chips, hover, and inspect behavior
 - A compact metrics strip for tasks completed, active agents, average response, tracked tokens, estimated cost, and success rate
 - Mission Intelligence opens as a z-[9999] overlay instead of consuming a fixed right column
+- Mission Intelligence shows the selected mission configuration and live/final mission metrics for the current run
 - Full Transcript remains available for the complete message history
 
-Long agent outputs are clamped in the dashboard and can be opened through Inspect or Full Transcript. The running board uses compact cards, internal scrolling only where useful, and natural page scrolling. It does not force the Mission Engine area into a fixed 100vh-style container, so context is not clipped.
+Long agent outputs are clamped in the dashboard and can be opened through Inspect or Full Transcript. Mission Intelligence uses a short complete summary for Current Decision instead of clipped text with ellipses. The running board uses compact cards, internal scrolling only where useful, and natural page scrolling. It does not force the Mission Engine area into a fixed 100vh-style container, so context is not clipped.
 
 ## Direct Answer Output
 

@@ -3,13 +3,13 @@
  */
 
 export type MissionType =
+  | "general-mission"
   | "startup-launch"
   | "product-strategy"
   | "software-architecture"
   | "marketing-campaign"
   | "research-plan"
-  | "business-plan"
-  | "general-mission";
+  | "business-plan";
 
 export type Depth = "fast" | "balanced" | "deep-analysis";
 
@@ -46,13 +46,13 @@ export interface MissionConfiguration {
 }
 
 export const MISSION_TYPE_LABELS: Record<MissionType, string> = {
+  "general-mission": "General Mission",
   "startup-launch": "Startup Launch",
   "product-strategy": "Product Strategy",
   "software-architecture": "Software Architecture",
   "marketing-campaign": "Marketing Campaign",
   "research-plan": "Research Plan",
   "business-plan": "Business Plan",
-  "general-mission": "General Mission",
 };
 
 export const DEPTH_LABELS: Record<Depth, string> = {
@@ -98,5 +98,5 @@ export const DEFAULT_CONFIGURATION: MissionConfiguration = {
   timeHorizon: "30-days",
   budgetRange: "none",
   riskTolerance: "balanced",
-  outputFormat: "execution-roadmap",
+  outputFormat: "direct-result",
 };
