@@ -3,7 +3,7 @@
 import { Progress } from "@/components/ui/progress";
 import { AGENT_DEFINITIONS } from "@/agents";
 import { useMissionStore } from "@/store";
-import { AgentRole, type MissionContext } from "@/types";
+import type { MissionContext } from "@/types";
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { TooltipProps } from "recharts";
 import type { NameType, ValueType } from "recharts/types/component/DefaultTooltipContent";
@@ -18,10 +18,10 @@ export function EfficiencyPanel() {
   const analytics = buildMissionAnalytics(context);
 
   const data = [
-    { name: "Quality", multi: metrics.qualityScore, single: analytics.singleAgentQualityBaseline },
-    { name: "Coverage", multi: metrics.taskCoverage, single: analytics.singleAgentCoverageBaseline },
-    { name: "Confidence", multi: metrics.finalConfidenceScore, single: analytics.singleAgentConfidenceBaseline },
-    { name: "Perspectives", multi: analytics.societyPerspectiveScore, single: analytics.singleAgentPerspectiveBaseline },
+    { name: "Quality", multi: metrics.qualityScore, single: analytics.singleAgentQualityBaseline, multiColor: "#22d3ee" },
+    { name: "Coverage", multi: metrics.taskCoverage, single: analytics.singleAgentCoverageBaseline, multiColor: "#8b5cf6" },
+    { name: "Confidence", multi: metrics.finalConfidenceScore, single: analytics.singleAgentConfidenceBaseline, multiColor: "#10b981" },
+    { name: "Perspectives", multi: analytics.societyPerspectiveScore, single: analytics.singleAgentPerspectiveBaseline, multiColor: "#f59e0b" },
   ];
 
   return (
@@ -86,8 +86,8 @@ export function EfficiencyPanel() {
             <Tooltip cursor={{ fill: "rgba(34,211,238,0.06)" }} content={<EfficiencyTooltip />} />
             <Bar dataKey="single" fill="#334155" radius={[6, 6, 0, 0]} name="Single Agent" />
             <Bar dataKey="multi" radius={[6, 6, 0, 0]} name="Agent Society">
-              {data.map((_, index) => (
-                <Cell key={index} fill={["#22d3ee", "#8b5cf6", "#10b981", "#f59e0b"][index]} />
+              {data.map((item) => (
+                <Cell key={item.name} fill={item.multiColor} />
               ))}
             </Bar>
           </BarChart>
@@ -123,8 +123,7 @@ function buildMissionAnalytics(context: MissionContext) {
   const parallelismPercent = metrics?.parallelismPercent ?? Math.round((independentWorkstreams / Math.max(1, context.executionTasks.length || context.workstreams.length)) * 100);
   const consensusPercent = metrics?.consensusPercent ?? (context.conflicts.length ? Math.round((context.conflicts.filter((conflict) => conflict.resolved || conflict.status === "resolved").length / context.conflicts.length) * 100) : 100);
   const participatingAgents = new Set(context.dialogue.map((entry) => entry.agentRole));
-  const requiredAgents = new Set([ ...context.executionTasks.map((task) => task.agent), ...context.workstreams.map((workstream) => workstream.assignedAgent).filter((role): role is AgentRole => Boolean(role)) ]);
-  const agentUtilizationPercent = Math.min(100, metrics?.agentUtilizationPercent ?? Math.round((participatingAgents.size / Math.max(1, requiredAgents.size || participatingAgents.size)) * 100));
+  const agentUtilizationPercent = Math.round((participatingAgents.size / Math.max(1, AGENT_DEFINITIONS.length)) * 100);
   const maxEvents = Math.max(1, ...AGENT_DEFINITIONS.map((agent) => replayEvents.filter((event) => event.agentRole === agent.role).length + context.dialogue.filter((entry) => entry.agentRole === agent.role).length));
   const agentUtilization = AGENT_DEFINITIONS.map((agent) => {
     const events = replayEvents.filter((event) => event.agentRole === agent.role).length + context.dialogue.filter((entry) => entry.agentRole === agent.role).length;
@@ -202,7 +201,7 @@ function EfficiencyTooltip({ active, payload, label }: TooltipProps<ValueType, N
         {payload.map((item) => (
           <div key={String(item.dataKey)} className="flex items-center justify-between gap-5">
             <span className="flex items-center gap-2 text-white/60">
-              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: item.color }} />
+              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: item.dataKey === "multi" ? (item.payload as { multiColor?: string })?.multiColor ?? item.color : item.color }} />
               {item.name}
             </span>
             <span className="font-semibold text-white">{item.value}</span>

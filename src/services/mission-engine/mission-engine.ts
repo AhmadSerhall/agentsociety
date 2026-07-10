@@ -2614,7 +2614,6 @@ export class MissionEngine {
     const independentTasks = ctx.executionTasks.filter((task) => task.dependencies.length === 0).length;
     const parallelismPercent = Math.round((independentTasks / Math.max(1, ctx.executionTasks.length)) * 100);
     const consensusPercent = ctx.conflicts.length === 0 ? 100 : Math.round((resolved / Math.max(1, ctx.conflicts.length)) * 100);
-    const requiredAgents = new Set(ctx.executionTasks.map((task) => task.agent));
     const complexity = ctx.missionClassification?.complexity ?? Math.max(1, Math.min(10, Math.ceil(totalWorkstreams * 1.2)));
     const directMode = ctx.missionClassification?.deliverableMode === "direct_answer";
     const dependencyLoad = ctx.executionTasks.reduce((sum, task) => sum + task.dependencies.length, 0);
@@ -2642,7 +2641,7 @@ export class MissionEngine {
       failureCount: ctx.executionTasks.filter((task) => task.status === "blocked" || task.status === "cancelled").length + (ctx.status === MissionState.Failed ? 1 : 0),
       parallelismPercent,
       consensusPercent,
-      agentUtilizationPercent: Math.min(100, Math.round((participatingAgents.size / Math.max(1, requiredAgents.size || participatingAgents.size)) * 100)),
+      agentUtilizationPercent: Math.round((participatingAgents.size / Math.max(1, AGENT_DEFINITIONS.length)) * 100),
       singleAgentBaseline,
       singleAgentCoverageBaseline,
       singleAgentConfidenceBaseline,
@@ -2668,6 +2667,11 @@ export class MissionEngine {
 
   private generateReport(ctx: MissionContext): MissionReport {
     const classification = this.classifyMission(ctx.missionBrief, ctx.configuration);
+    const completedParticipants = ctx.missionClassification?.recommendedAgents;
+    if (completedParticipants?.length) {
+      classification.selectedAgents = completedParticipants;
+      classification.strategy = { ...classification.strategy, recommendedAgents: completedParticipants };
+    }
     ctx.missionClassification = classification.strategy;
     const metrics = ctx.efficiencyMetrics ?? this.generateEfficiencyMetrics(ctx, ctx.conflicts.length > 0);
     const parallelGroups = ctx.missionGraph?.parallelGroups ?? this.buildNamedParallelGroups(ctx.executionTasks);
