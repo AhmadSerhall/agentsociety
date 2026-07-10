@@ -489,6 +489,7 @@ function agentCollaborationMeta(agentId: string) {
 
 function MissionHistoryPage({ onOpenMissionControl, onReplay }: { onOpenMissionControl: () => void; onReplay: (events: MissionReplayEvent[]) => void }) {
   const entries = useHistoryStore((state) => state.entries);
+  const add = useHistoryStore((state) => state.add);
   const remove = useHistoryStore((state) => state.remove);
   const setContext = useMissionStore((state) => state.setContext);
   const [deleteTarget, setDeleteTarget] = useState<MissionHistoryEntry | null>(null);
@@ -512,6 +513,7 @@ function MissionHistoryPage({ onOpenMissionControl, onReplay }: { onOpenMissionC
                 </div>
                 <div className="mt-5 flex flex-wrap justify-end gap-2">
                   <Button size="sm" variant="outline" onClick={() => { setContext(contextFromHistory(entry)); onOpenMissionControl(); }} className="border-white/10 bg-white/[0.04] text-white/70">Reopen</Button>
+                  <Button size="sm" variant="outline" onClick={() => { add({ ...entry, savedAt: new Date().toISOString() }); toast({ title: "Mission saved", description: "This mission is now available in Saved Missions." }); }} className="gap-1 border-cyan-200/20 bg-cyan-300/10 text-cyan-100 hover:border-cyan-200/45 hover:bg-cyan-300/15"><Save className="h-3.5 w-3.5" /> Save Mission</Button>
                   {entry.finalReport && entry.replayEvents?.length ? (
                     <Button size="sm" onClick={() => onReplay(entry.replayEvents ?? [])} className="gap-1 bg-cyan-300 text-[#06101f] hover:bg-cyan-200"><PlayCircle className="h-3.5 w-3.5" /> Replay Mission</Button>
                   ) : entry.finalReport ? (

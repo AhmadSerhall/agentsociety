@@ -23,6 +23,7 @@ import {
   NetworkGraphPanel,
 } from "@/panels";
 import { SpaceBackground } from "@/components/space-background";
+import { ScrollToTop } from "@/components/scroll-to-top";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { MissionBriefComposer } from "./components/mission-brief-composer";
 import { MissionSidebar, MissionSidebarContent, type MissionView } from "./components/mission-sidebar";
@@ -60,6 +61,7 @@ export function MissionControl() {
   const [drilldownOpen, setDrilldownOpen] = useState(false);
   const [drilldownSource, setDrilldownSource] = useState<DrilldownSource | null>(null);
   const [activeView, setActiveView] = useState<MissionView>("mission-control");
+  const [scrollContainer, setScrollContainer] = useState<HTMLElement | null>(null);
   const [activeMissionTab, setActiveMissionTab] = useState("workflow");
   const tabsRef = useRef<HTMLDivElement | null>(null);
   const previousStatus = useRef<MissionState | undefined>(undefined);
@@ -311,7 +313,7 @@ export function MissionControl() {
       <div className="relative z-10 flex h-full">
         <MissionSidebar activeView={activeView} onViewChange={handleViewChange} />
 
-        <main className="h-screen min-w-0 flex-1 overflow-y-auto px-4 py-4 [scrollbar-color:rgba(34,211,238,0.65)_transparent] [scrollbar-width:thin] md:px-7 md:py-6">
+        <main ref={setScrollContainer} className="h-screen min-w-0 flex-1 overflow-y-auto px-4 py-4 [scrollbar-color:rgba(34,211,238,0.65)_transparent] [scrollbar-width:thin] md:px-7 md:py-6">
           <motion.div
             className="mx-auto flex max-w-7xl flex-col gap-7"
             variants={stagger}
@@ -448,6 +450,7 @@ export function MissionControl() {
             <ReplayControlBar />
           </motion.div>
         </main>
+        <ScrollToTop scrollContainer={scrollContainer} resetKey={activeView} />
       </div>
 
       <AnimatePresence>

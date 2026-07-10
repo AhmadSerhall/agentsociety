@@ -8,6 +8,13 @@ The product lets a user enter a complex mission brief, configure execution style
 
 The project is now a Mission Graph driven agent society with a dedicated presentation layer.
 
+## Recent Updates
+
+- Final-report Risk Summary and Success Measures now use mission runtime data and display as clear, structured insights instead of generic term fragments or dense metric sentences.
+- Shared structured content renders markdown tables as responsive, polished tables and blockquotes as callouts without raw markdown markers.
+- Every Mission Control view now has a bottom-right scroll-to-top control with a circular scroll-progress indicator that resets on navigation.
+- Recent Mission History entries can now be manually saved into the Saved Missions group.
+
 ## Current App Type
 
 The current workspace is a frontend-first Next.js application.
