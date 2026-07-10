@@ -2172,9 +2172,13 @@ export class MissionEngine {
   }
 
   private detectRiskThemes(text: string, primaryDomain: string, secondaryDomains: string[], skills: string[]) {
-    const terms = this.extractObjectiveTerms(`${primaryDomain} ${secondaryDomains.join(" ")} ${skills.join(" ")} ${text}`);
-    if (terms.length < 3) return [];
-    return [`Validate assumptions around ${terms.slice(0, 4).map((term) => this.titleCase(term)).join(", ")}`];
+    const genericTerms = new Set([
+      "about", "action", "against", "build", "from", "for", "into", "mission", "plan", "selected", "the", "this", "using", "with",
+    ]);
+    const terms = this.extractObjectiveTerms(text)
+      .filter((term) => !genericTerms.has(term) && !/^\d+$/.test(term));
+    if (terms.length < 2) return [];
+    return [`Validate whether ${terms.slice(0, 4).map((term) => this.titleCase(term)).join(", ")} can meet the mission constraints.`];
   }
 
   private buildSemanticWorkstreams(semantic: SemanticMissionAnalysis): SemanticWorkstreamBlueprint[] {
@@ -2746,12 +2750,54 @@ export class MissionEngine {
       executionRoadmap: classification.strategy.requiresPlanning ? this.generateExecutionRoadmap(ctx, classification) : "No roadmap was required; the request was handled through direct specialist execution.",
       timeline: ctx.timeline.map((entry) => `- ${entry.label}: ${entry.description ?? entry.state}`).join("\n"),
       budgetEstimate: classification.strategy.requiresPlanning || classification.needsFinance ? this.generateResourceEstimate(ctx, classification) : "No budget or resource model was required for this request.",
-      riskAssessment: ctx.riskReview || (classification.strategy.requiresConflictResolution || semantic.riskThemes.length ? semantic.riskThemes.map((risk) => `- ${risk}`).join("\n") : "No mission-specific risk review was required."),
-      successMetrics: `Task coverage: ${metrics.taskCoverage}%. Confidence score: ${metrics.finalConfidenceScore}%. Perspectives considered: ${metrics.perspectivesConsidered}. Strategy: ${classification.strategy.selectedStrategy}. Synchronization status: ${ctx.missionGraph?.finalizationReadiness.status ?? "ready_for_synthesis"}.`,
+      riskAssessment: this.generateRiskAssessment(ctx, classification),
+      successMetrics: this.generateSuccessMetrics(ctx, metrics),
       finalRecommendations: this.generateFinalRecommendations(ctx, classification),
       singleAgentComparison: `Single-agent baseline: ${metrics.singleAgentBaseline}%. Agent Society quality score: ${metrics.qualityScore}%. Estimated efficiency gain: ${Math.max(0, metrics.qualityScore - metrics.singleAgentBaseline)} points.`,
     };
     return this.validateFinalReport(report, classification);
+  }
+
+  private generateRiskAssessment(ctx: MissionContext, classification: MissionClassification) {
+    const reviewedRisk = sanitizeMissionText(ctx.riskReview);
+    if (reviewedRisk) return reviewedRisk;
+
+    const risks: string[] = [];
+    const constraints = [
+      ctx.configuration.timeHorizon !== "none" ? `delivery horizon of ${TIME_HORIZON_LABELS[ctx.configuration.timeHorizon]}` : "",
+      ctx.configuration.budgetRange !== "none" ? `budget range of ${BUDGET_RANGE_LABELS[ctx.configuration.budgetRange]}` : "",
+    ].filter(Boolean);
+    if (constraints.length) {
+      risks.push(`Validate the ${classification.semantic.primaryDomain.toLowerCase()} scope against the selected ${constraints.join(" and ")}.`);
+    }
+
+    const unresolvedConflicts = ctx.conflicts.filter((conflict) => !conflict.resolved);
+    if (unresolvedConflicts.length) {
+      risks.push(`Resolve ${unresolvedConflicts.length} active conflict${unresolvedConflicts.length === 1 ? "" : "s"}: ${unresolvedConflicts.map((conflict) => sanitizeMissionText(conflict.title)).filter(Boolean).join("; ")}.`);
+    }
+
+    const uncertainWorkstreams = ctx.workstreams.filter((workstream) => (workstream.confidence ?? 100) < 70);
+    if (uncertainWorkstreams.length) {
+      risks.push(`Recheck low-confidence workstreams before execution: ${uncertainWorkstreams.map((workstream) => sanitizeMissionText(workstream.title)).filter(Boolean).join("; ")}.`);
+    }
+
+    return risks.length ? risks.map((risk) => `- ${risk}`).join("\n") : "No unresolved conflicts or low-confidence workstreams were recorded.";
+  }
+
+  private generateSuccessMetrics(ctx: MissionContext, metrics: EfficiencyMetrics) {
+    const completedWorkstreams = ctx.workstreams.filter((workstream) => workstream.status === "completed").length;
+    const workstreamTotal = ctx.workstreams.length;
+    const synchronization = ctx.missionGraph?.finalizationReadiness.status?.replace(/_/g, " ");
+    const measures = [
+      workstreamTotal ? `Workstreams completed: ${completedWorkstreams}/${workstreamTotal}.` : "",
+      `Task coverage: ${metrics.taskCoverage}%.`,
+      `Quality score: ${metrics.qualityScore}%.`,
+      `Final confidence: ${metrics.finalConfidenceScore}%.`,
+      `Perspectives considered: ${metrics.perspectivesConsidered}.`,
+      synchronization ? `Synthesis status: ${synchronization}.` : "",
+    ].filter(Boolean);
+
+    return measures.map((measure) => `- ${measure}`).join("\n");
   }
 
   private composeObjectiveAnswer(ctx: MissionContext, classification: MissionClassification) {

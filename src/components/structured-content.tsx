@@ -15,7 +15,9 @@ type ContentBlock =
   | { type: "paragraph"; text: string }
   | { type: "heading"; text: string }
   | { type: "ordered"; items: string[] }
-  | { type: "unordered"; items: string[] };
+  | { type: "unordered"; items: string[] }
+  | { type: "quote"; text: string }
+  | { type: "table"; headers: string[]; rows: string[][] };
 
 export function StructuredContent({ text, className = "", drilldownBase, onDrilldown }: StructuredContentProps) {
   const blocks = parseContentBlocks(text);
@@ -43,6 +45,33 @@ export function StructuredContent({ text, className = "", drilldownBase, onDrill
                 <DrilldownListItem key={`${item}-${itemIndex}`} text={item} index={itemIndex} drilldownBase={drilldownBase} onDrilldown={onDrilldown} />
               ))}
             </ul>
+          );
+        }
+        if (block.type === "quote") {
+          return (
+            <blockquote key={`${block.type}-${index}`} className="rounded-xl border border-cyan-200/15 border-l-2 border-l-cyan-300/65 bg-cyan-300/[0.05] px-4 py-3 text-sm leading-relaxed text-cyan-50/75">
+              {block.text}
+            </blockquote>
+          );
+        }
+        if (block.type === "table") {
+          return (
+            <div key={`${block.type}-${index}`} className="overflow-x-auto rounded-xl border border-cyan-200/15 bg-slate-950/35 shadow-[0_14px_36px_rgba(8,47,73,0.14)]">
+              <table className="min-w-full border-collapse text-left text-sm">
+                <thead className="bg-cyan-300/[0.09] text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-cyan-100/80">
+                  <tr>
+                    {block.headers.map((header, headerIndex) => <th key={`${header}-${headerIndex}`} className="border-b border-cyan-200/15 px-4 py-3 font-semibold">{header}</th>)}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/7 text-white/70">
+                  {block.rows.map((row, rowIndex) => (
+                    <tr key={`${row.join("-")}-${rowIndex}`} className="transition-colors hover:bg-cyan-300/[0.045]">
+                      {block.headers.map((_, cellIndex) => <td key={`${rowIndex}-${cellIndex}`} className="px-4 py-3 align-top leading-relaxed">{row[cellIndex] ?? ""}</td>)}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           );
         }
         return <p key={`${block.type}-${index}`} className="text-sm leading-relaxed text-white/64">{block.text}</p>;
@@ -132,9 +161,25 @@ function parseContentBlocks(value: string): ContentBlock[] {
     }
   };
 
-  for (const rawLine of normalized.split(/\n+/)) {
+  const lines = normalized.split(/\n+/);
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const rawLine = lines[lineIndex];
     const line = rawLine.trim();
     if (!line) continue;
+
+    if (isMarkdownTableRow(line) && isMarkdownTableDivider(lines[lineIndex + 1]?.trim() ?? "")) {
+      flush();
+      const headers = parseMarkdownTableRow(line);
+      const rows: string[][] = [];
+      lineIndex += 2;
+      while (lineIndex < lines.length && isMarkdownTableRow(lines[lineIndex].trim())) {
+        rows.push(parseMarkdownTableRow(lines[lineIndex].trim()));
+        lineIndex += 1;
+      }
+      lineIndex -= 1;
+      if (headers.length && rows.length) blocks.push({ type: "table", headers, rows });
+      continue;
+    }
 
     const heading = line.match(/^(What to do|Practical steps|Key context|Timing|Watch-outs):$/i);
     if (heading) {
@@ -157,10 +202,29 @@ function parseContentBlocks(value: string): ContentBlock[] {
       continue;
     }
 
+    const quoteMatch = line.match(/^>\s*(.+)$/);
+    if (quoteMatch) {
+      flush();
+      blocks.push({ type: "quote", text: quoteMatch[1].trim() });
+      continue;
+    }
+
     flush();
     blocks.push({ type: "paragraph", text: line });
   }
 
   flush();
   return blocks;
+}
+
+function isMarkdownTableRow(line: string) {
+  return /^\|.+\|\s*$/.test(line);
+}
+
+function isMarkdownTableDivider(line: string) {
+  return /^\|\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|\s*$/.test(line);
+}
+
+function parseMarkdownTableRow(line: string) {
+  return line.trim().replace(/^\|\s*|\s*\|$/g, "").split("|").map((cell) => cell.trim());
 }
