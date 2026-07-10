@@ -1,8 +1,18 @@
 /**
- * Agent Society — Qwen LLM Client
+ * Agent Society — Alibaba Cloud / Qwen Cloud Integration
  *
- * Pure browser-side adapter for the Qwen chat completions API.
- * Uses frontend-provided Qwen credentials when available.
+ * This browser-side client connects Agent Society to Alibaba Cloud's
+ * Qwen/DashScope OpenAI-compatible Chat Completions API.
+ *
+ * Default endpoint:
+ * https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+ *
+ * Default model:
+ * qwen-turbo
+ *
+ * The API key is provided by the user through Settings or local environment
+ * configuration. This file is the main proof of Alibaba Cloud API usage for
+ * the hackathon submission.
  */
 
 import type {
