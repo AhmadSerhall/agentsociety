@@ -7,6 +7,8 @@ import type { AgentRole, AgentThinkingState } from "@/types";
 import { AgentIconGlyph } from "../agent-icons";
 
 export function AgentRoster({ currentAgent, states }: { currentAgent: AgentRole | null; states: Record<AgentRole, AgentThinkingState> }) {
+  const participatingAgents = AGENT_DEFINITIONS.filter((agent) => states[agent.role] !== "waiting" || currentAgent === agent.role);
+
   return (
     <aside className="rounded-[1.35rem] border border-cyan-200/10 bg-black/24 p-3 shadow-[0_20px_70px_rgba(0,0,0,0.24)] backdrop-blur-xl">
       <div className="flex items-center justify-between">
@@ -14,10 +16,10 @@ export function AgentRoster({ currentAgent, states }: { currentAgent: AgentRole 
         <Badge className="bg-cyan-300/10 text-cyan-100 hover:bg-cyan-300/10">Live</Badge>
       </div>
       <div className="mt-3 space-y-1.5">
-        {AGENT_DEFINITIONS.map((agent) => {
+        {participatingAgents.map((agent) => {
           const active = currentAgent === agent.role || states[agent.role] === "thinking" || states[agent.role] === "analyzing" || states[agent.role] === "reviewing";
           const complete = states[agent.role] === "complete";
-          const stateLabel = active ? "Working" : complete ? "Finished" : "Waiting";
+          const stateLabel = active ? "Working" : complete ? "Finished" : "Assigned";
           return (
             <div
               key={agent.id}

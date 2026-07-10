@@ -79,7 +79,7 @@ export function MissionIntelligencePanel({ context }: { context: MissionContext 
           <dl className="grid gap-2 text-xs sm:grid-cols-2">
             <InfoLine label="Progress" value={`${Math.round((context.progress ?? 0) * 100)}%`} />
             <InfoLine label="Tasks" value={`${completedTasks}/${Math.max(1, context.executionTasks.length)}`} />
-            <InfoLine label="Agents" value={String(new Set(context.dialogue.map((entry) => entry.agentRole)).size)} />
+            <InfoLine label="Agents" value={String(classification?.recommendedAgents.length ?? new Set(context.dialogue.map((entry) => entry.agentRole)).size)} />
             <InfoLine label="Duration" value={formatDuration(durationMs)} />
             <InfoLine label="Confidence" value={`${metrics?.finalConfidenceScore ?? (averageConfidence || 0)}%`} />
             <InfoLine label="Strategy" value={classification?.selectedStrategy.replace(/_/g, " ") ?? "pending"} />

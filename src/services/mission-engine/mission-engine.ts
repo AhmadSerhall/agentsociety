@@ -542,6 +542,7 @@ export class MissionEngine {
       this.reachSynchronizationPoint(ctx);
       onUpdate({ ...ctx });
       await this.runAgentPhase(ctx, MissionState.Finalizing, mockMode, qwenClient, signal, onUpdate, classification);
+      this.reconcileMissionParticipants(ctx, classification);
       ctx.efficiencyMetrics = this.generateEfficiencyMetrics(ctx, shouldMediate);
       devLog("final metrics", ctx.efficiencyMetrics);
       ctx.finalReport = this.generateReport(ctx);
@@ -2558,11 +2559,30 @@ export class MissionEngine {
     return roles.map((role) => getAgentByRole(role)?.name ?? role);
   }
 
+  private reconcileMissionParticipants(ctx: MissionContext, classification: MissionClassification) {
+    const participantRoles = new Set(
+      ctx.replayEvents
+        .filter((event) => event.agentRole && ["PLANNER_STARTED", "AGENT_STARTED", "MEDIATOR_STARTED", "MEDIATION_STARTED", "FINALIZER_STARTED"].includes(event.type))
+        .map((event) => event.agentRole!)
+    );
+    const selectedAgents = AGENT_DEFINITIONS.map((agent) => agent.role).filter((role) => participantRoles.has(role));
+
+    if (selectedAgents.length === 0) return;
+
+    classification.selectedAgents = selectedAgents;
+    classification.strategy = { ...classification.strategy, recommendedAgents: selectedAgents };
+    ctx.missionClassification = classification.strategy;
+  }
+
   private generateEfficiencyMetrics(ctx: MissionContext, hadConflicts: boolean): EfficiencyMetrics {
     const totalWorkstreams = Math.max(1, ctx.workstreams.length);
     const completedWorkstreams = ctx.workstreams.filter((workstream) => workstream.status === "completed").length;
     const taskCoverage = Math.round((completedWorkstreams / totalWorkstreams) * 100);
-    const participatingAgents = new Set(ctx.dialogue.map((entry) => entry.agentRole));
+    const participatingAgents = new Set(
+      ctx.missionClassification?.recommendedAgents.length
+        ? ctx.missionClassification.recommendedAgents
+        : ctx.dialogue.map((entry) => entry.agentRole)
+    );
     const confidenceValues = ctx.workstreams.map((workstream) => workstream.confidence ?? 70);
     const confidence = Math.round(confidenceValues.reduce((sum, value) => sum + value, 0) / Math.max(1, confidenceValues.length));
     const resolved = ctx.conflicts.filter((conflict) => conflict.resolved).length;
