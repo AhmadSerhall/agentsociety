@@ -24,6 +24,16 @@ export enum AgentStatus {
 
 export type AgentThinkingState = "waiting" | "thinking" | "analyzing" | "reviewing" | "complete";
 
+export interface AgentActivity {
+  state: AgentThinkingState;
+  label: string;
+  detail: string;
+  updatedAt: string;
+  confidence?: number;
+  confidenceDelta?: number;
+  confidenceReason?: string;
+}
+
 export interface AgentDefinition {
   id: string;
   name: string;

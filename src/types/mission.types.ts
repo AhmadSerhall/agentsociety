@@ -2,7 +2,7 @@
  * Agent Society — Mission Type Definitions
  */
 
-import type { AgentDialogueEntry, AgentThinkingState } from "./agent.types";
+import type { AgentActivity, AgentDialogueEntry, AgentThinkingState } from "./agent.types";
 import type { MissionConfiguration } from "./config.types";
 
 // Import AgentRole as a type-only to avoid circular initialization.
@@ -277,6 +277,7 @@ export type MissionReplayEventType =
   | "AGENT_THINKING"
   | "AGENT_ANALYZING"
   | "AGENT_REVIEWING"
+  | "CONFIDENCE_UPDATED"
   | "AGENT_STREAM"
   | "AGENT_FINISHED"
   | "DIALOGUE_CREATED"
@@ -331,6 +332,7 @@ export interface MissionContext {
   efficiencyMetrics: EfficiencyMetrics | null;
   currentAgent: AgentRole | null;
   agentStates: Record<AgentRole, AgentThinkingState>;
+  agentActivities: Partial<Record<AgentRole, AgentActivity>>;
   executionTasks: ExecutionTask[];
   missionGraph: MissionGraph | null;
   progress: number;

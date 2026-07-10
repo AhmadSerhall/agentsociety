@@ -7,7 +7,7 @@ import { AGENT_DEFINITIONS } from "@/agents";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useMissionStore } from "@/store";
-import { MissionState, type AgentDialogueEntry, type AgentRole, type AgentThinkingState, type ExecutionTask, type MissionContext } from "@/types";
+import { MissionState, type AgentActivity, type AgentDialogueEntry, type AgentRole, type AgentThinkingState, type ExecutionTask, type MissionContext } from "@/types";
 import { sanitizeUserFacingText } from "@/utils";
 import { AgentIconGlyph } from "../agent-icons";
 import { AgentContributionDrawer } from "./agent-contribution-drawer";
@@ -104,7 +104,7 @@ export function AgentCouncilRoom({
         </div>
       ) : (
         <div className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)]">
-          <AgentRoster currentAgent={context.currentAgent} states={context.agentStates} />
+          <AgentRoster currentAgent={context.currentAgent} states={context.agentStates} activities={context.agentActivities} />
           <MissionOperationsBoard
             context={context}
             currentAgent={context.currentAgent}
@@ -127,7 +127,7 @@ export function AgentCouncilRoom({
       <WorkstreamInspector task={selectedTask} conflicts={selectedConflicts} open={inspectorOpen} onOpenChange={setInspectorOpen} />
       <AnimatePresence>
         {intelligenceOpen && <MissionIntelligenceOverlay context={context} onClose={() => setIntelligenceOpen(false)} />}
-        {completed && rosterOpen && <AgentRosterOverlay currentAgent={context.currentAgent} states={context.agentStates} onClose={() => setRosterOpen(false)} />}
+        {completed && rosterOpen && <AgentRosterOverlay currentAgent={context.currentAgent} states={context.agentStates} activities={context.agentActivities} onClose={() => setRosterOpen(false)} />}
       </AnimatePresence>
     </motion.section>
   );
@@ -152,6 +152,7 @@ function MissionOperationsBoard({
 }) {
   const activeAgent = AGENT_DEFINITIONS.find((agent) => agent.role === currentAgent) ?? AGENT_DEFINITIONS[0];
   const activeState = activeAgent ? states[activeAgent.role] : "waiting";
+  const activeActivity = currentAgent ? context.agentActivities[currentAgent] : undefined;
   const latestEntry = dialogue[0] ?? null;
 
   return (
@@ -196,7 +197,7 @@ function MissionOperationsBoard({
             </div>
           </div>
         </div>
-        <ActiveAgentCard agent={activeAgent} state={activeState} />
+        <ActiveAgentCard agent={activeAgent} state={activeState} activity={activeActivity} />
       </div>
 
       <section className="relative z-10 mt-3 rounded-[1.2rem] border border-white/10 bg-black/24 p-3 shadow-[0_18px_60px_rgba(0,0,0,0.2)]">
@@ -215,7 +216,7 @@ function MissionOperationsBoard({
 
         <div className="mt-3 grid min-h-0 gap-3 lg:grid-cols-[0.95fr_1.05fr]">
           <AnimatePresence mode="wait">
-            {latestEntry ? <LatestDispatchCard key={`${latestEntry.agentId}-${latestEntry.timestamp}`} entry={latestEntry} onExpand={onExpand} /> : <WaitingDispatch />}
+            {latestEntry ? <LatestDispatchCard key={`${latestEntry.agentId}-${latestEntry.timestamp}`} entry={latestEntry} onExpand={onExpand} /> : <WaitingDispatch activity={activeActivity} />}
           </AnimatePresence>
 
           <div className="min-h-0 space-y-2">
@@ -270,10 +271,12 @@ function MissionIntelligenceOverlay({ context, onClose }: { context: NonNullable
 function AgentRosterOverlay({
   currentAgent,
   states,
+  activities,
   onClose,
 }: {
   currentAgent: AgentRole | null;
   states: Record<AgentRole, AgentThinkingState>;
+  activities: Partial<Record<AgentRole, AgentActivity>>;
   onClose: () => void;
 }) {
   return (
@@ -302,13 +305,13 @@ function AgentRosterOverlay({
             <span className="sr-only">Close agent roster</span>
           </Button>
         </div>
-        <AgentRoster currentAgent={currentAgent} states={states} />
+        <AgentRoster currentAgent={currentAgent} states={states} activities={activities} />
       </motion.aside>
     </motion.div>
   );
 }
 
-function ActiveAgentCard({ agent, state }: { agent: typeof AGENT_DEFINITIONS[number]; state: AgentThinkingState }) {
+function ActiveAgentCard({ agent, state, activity }: { agent: typeof AGENT_DEFINITIONS[number]; state: AgentThinkingState; activity?: AgentActivity }) {
   return (
     <motion.div
       layout
@@ -329,7 +332,7 @@ function ActiveAgentCard({ agent, state }: { agent: typeof AGENT_DEFINITIONS[num
         <div className="min-w-0">
           <p className="text-xs uppercase tracking-[0.18em] text-white/42">Active specialist</p>
           <h4 className="mt-1 truncate text-lg font-semibold text-white">{agent.name}</h4>
-          <p className="mt-1 line-clamp-1 text-sm text-white/52">{agent.capabilities[0]}</p>
+          <p className="mt-1 line-clamp-1 text-sm text-white/52">{activity?.label ?? agent.capabilities[0]}</p>
         </div>
       </div>
       <div className="relative mt-3 flex items-center gap-2">
@@ -342,6 +345,10 @@ function ActiveAgentCard({ agent, state }: { agent: typeof AGENT_DEFINITIONS[num
           />
         </span>
         <span className="rounded-full border border-white/10 bg-black/22 px-2 py-1 text-xs capitalize text-white/60">{state.replace(/_/g, " ")}</span>
+      </div>
+      <div className="relative mt-2 flex items-center justify-between gap-3 text-xs text-white/45">
+        <motion.p key={activity?.updatedAt ?? "idle"} initial={{ opacity: 0, y: 3 }} animate={{ opacity: 1, y: 0 }} className="min-w-0 truncate">{activity?.detail ?? "Preparing the assigned specialist work."}</motion.p>
+        {activity?.confidence != null && <span className="shrink-0 font-medium text-cyan-100/80">{activity.confidence}%</span>}
       </div>
     </motion.div>
   );
@@ -429,11 +436,18 @@ function SignalRow({ entry, onExpand }: { entry: AgentDialogueEntry; onExpand: (
   );
 }
 
-function WaitingDispatch() {
+function WaitingDispatch({ activity }: { activity?: AgentActivity }) {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
-      <p className="text-sm font-medium text-white">Waiting for first specialist update</p>
-      <p className="mt-2 text-sm leading-relaxed text-white/48">The Planner is preparing the graph. Live dispatch will show the newest agent message here without covering the execution board.</p>
+      <p className="text-sm font-medium text-white">{activity?.label ?? "Waiting for first specialist update"}</p>
+      <motion.p key={activity?.updatedAt ?? "waiting"} initial={{ opacity: 0 }} animate={{ opacity: [0.45, 0.8, 0.45] }} transition={{ duration: 1.6, repeat: Infinity }} className="mt-2 text-sm leading-relaxed text-white/48">{activity?.detail ?? "The council is preparing shared context before the first specialist response."}</motion.p>
+      <div className="mt-4 space-y-2">
+        {["Context synchronized", "Dependencies checked", "Recommendation in progress"].map((label, index) => (
+          <motion.div key={label} className="h-1.5 overflow-hidden rounded-full bg-white/10" initial={{ opacity: 0.35 }} animate={{ opacity: [0.35, 0.8, 0.35] }} transition={{ duration: 1.8, delay: index * 0.2, repeat: Infinity }}>
+            <motion.span className="block h-full rounded-full bg-cyan-300/70" animate={{ x: ["-100%", "100%"] }} transition={{ duration: 1.8, delay: index * 0.2, repeat: Infinity, ease: "easeInOut" }} />
+          </motion.div>
+        ))}
+      </div>
     </motion.div>
   );
 }

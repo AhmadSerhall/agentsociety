@@ -178,6 +178,7 @@ function contextFromHistory(entry: MissionHistoryEntry): MissionContext {
     efficiencyMetrics: entry.efficiencyMetrics,
     currentAgent: null,
     agentStates: agentStatesFromWorkedRoles(workedRoles),
+    agentActivities: {},
     executionTasks,
     missionGraph: null,
     progress: entry.finalReport ? 1 : 0.5,

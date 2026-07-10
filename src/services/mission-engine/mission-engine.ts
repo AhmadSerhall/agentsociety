@@ -16,6 +16,7 @@ import {
   STATE_AGENT_MAP,
   TIME_HORIZON_LABELS,
   type AgentDialogueEntry,
+  type AgentActivity,
   type AgentThinkingState,
   type ConflictInfo,
   type DeliverableMode,
@@ -263,6 +264,7 @@ Rules:
 - For direct missions in Finalizing, merge the verified worker output and return the artifact itself. Do not say it was completed.
 - Forbidden for direct missions: "mission complete", "translation completed", "the answer is ready", budget, timeline, stakeholders, roadmap, deliverables, next steps, implementation phases, unless the user explicitly asked for them.
 - Do not repeat the mission brief except when a single short reference is necessary.
+- Treat completed workstreams, dialogue, confidence changes, planner revisions, and active conflicts above as shared memory. When they materially affect your contribution, acknowledge the specific prior finding or decision you are building on. Never claim a finding that is not present in this context.
 - Do not write generic contribution titles. Produce direct useful content inside your assigned workstream.
 - Treat Mission Type as an execution style, not the domain. Use Semantic Mission Analysis to decide what the user is actually trying to accomplish.
 - Use the inferred domain, concepts, and your user-facing role. Stay inside the assigned workstream.
@@ -437,6 +439,7 @@ export class MissionEngine {
       ...initialContext,
       timeline: [...initialContext.timeline],
       agentStates: initialContext.agentStates ?? createAgentStates(),
+      agentActivities: initialContext.agentActivities ?? {},
       executionTasks: [...(initialContext.executionTasks ?? [])],
       missionGraph: initialContext.missionGraph,
       replayEvents: [...(initialContext.replayEvents ?? [])],
@@ -588,14 +591,14 @@ export class MissionEngine {
 
     ctx.status = phase;
     ctx.currentAgent = agentRole;
-    this.setAgentState(ctx, agentRole, "thinking");
+    const thinkingActivity = this.setAgentActivity(ctx, agentRole, "thinking", "Reviewing council context", this.activityDetail(ctx), this.averageConfidence(ctx));
     this.recordReplayEvent(ctx, phase === MissionState.Finalizing ? "FINALIZER_STARTED" : phase === MissionState.ConflictResolution ? "MEDIATOR_STARTED" : phase === MissionState.Planning ? "PLANNER_STARTED" : "AGENT_STARTED", {
       agentId: agentDef.id,
       agentName: agentDef.name,
       agentRole,
-      payload: { phase },
+      payload: { phase, activity: thinkingActivity },
     });
-    this.recordReplayEvent(ctx, "AGENT_THINKING", { agentId: agentDef.id, agentName: agentDef.name, agentRole, payload: { phase } });
+    this.recordReplayEvent(ctx, "AGENT_THINKING", { agentId: agentDef.id, agentName: agentDef.name, agentRole, payload: { phase, activity: thinkingActivity } });
     this.addTimeline(ctx, agentRole, phase, `${agentDef.name} activated`, this.timelineDescription(phase), "agent");
     this.emit({ type: MissionEventType.AgentStarted, timestamp: now(), payload: { agentRole, agentName: agentDef.name, phase } });
     this.emit({ type: MissionEventType.AgentThinking, timestamp: now(), payload: { agentRole, agentName: agentDef.name } });
@@ -606,16 +609,21 @@ export class MissionEngine {
 
     if (mockMode) {
       await this.delay(Math.floor(this.mockRunner.getDelay(phase) * 0.35), signal);
-      this.setAgentState(ctx, agentRole, "analyzing");
-      this.recordReplayEvent(ctx, "AGENT_ANALYZING", { agentId: agentDef.id, agentName: agentDef.name, agentRole, payload: { phase } });
+      const analyzingActivity = this.setAgentActivity(ctx, agentRole, "analyzing", "Evaluating shared findings", this.activityDetail(ctx), this.averageConfidence(ctx));
+      this.recordReplayEvent(ctx, "AGENT_ANALYZING", { agentId: agentDef.id, agentName: agentDef.name, agentRole, payload: { phase, activity: analyzingActivity } });
       onUpdate({ ...ctx });
       await this.delay(Math.floor(this.mockRunner.getDelay(phase) * 0.25), signal);
-      this.setAgentState(ctx, agentRole, "reviewing");
-      this.recordReplayEvent(ctx, "AGENT_REVIEWING", { agentId: agentDef.id, agentName: agentDef.name, agentRole, payload: { phase } });
+      const reviewingActivity = this.setAgentActivity(ctx, agentRole, "reviewing", "Checking assumptions and revisions", "Comparing the proposed contribution with the current council state.", this.averageConfidence(ctx));
+      this.recordReplayEvent(ctx, "AGENT_REVIEWING", { agentId: agentDef.id, agentName: agentDef.name, agentRole, payload: { phase, activity: reviewingActivity } });
       onUpdate({ ...ctx });
       await this.delay(this.mockRunner.getDelay(phase), signal);
       result = this.mockRunner.generate(phase, ctx, undefined, classification);
     } else if (qwenClient) {
+      await this.delay(240, signal);
+      const analyzingActivity = this.setAgentActivity(ctx, agentRole, "analyzing", "Preparing a role-specific recommendation", this.activityDetail(ctx), this.averageConfidence(ctx));
+      this.recordReplayEvent(ctx, "AGENT_ANALYZING", { agentId: agentDef.id, agentName: agentDef.name, agentRole, payload: { phase, activity: analyzingActivity } });
+      onUpdate({ ...ctx });
+      const stopLiveReview = this.scheduleLiveReview(ctx, agentDef, agentRole, phase, onUpdate);
       try {
         result = await qwenClient.chat([
           { role: "system", content: agentDef.systemPrompt },
@@ -627,16 +635,25 @@ export class MissionEngine {
           throw new Error(`Qwen request failed during ${agentDef.name}: ${error instanceof Error ? error.message : String(error)}`);
         }
         result = this.mockRunner.generate(phase, ctx, undefined, classification);
+      } finally {
+        stopLiveReview();
       }
       if (signal.aborted) throw new DOMException("Mission cancelled", "AbortError");
     } else {
       result = this.mockRunner.generate(phase, ctx, undefined, classification);
     }
 
+    if (ctx.agentStates[agentRole] !== "reviewing") {
+      const reviewingActivity = this.setAgentActivity(ctx, agentRole, "reviewing", "Cross-checking the recommendation", "Verifying the contribution against the current council decisions.", this.averageConfidence(ctx));
+      this.recordReplayEvent(ctx, "AGENT_REVIEWING", { agentId: agentDef.id, agentName: agentDef.name, agentRole, payload: { phase, activity: reviewingActivity } });
+      onUpdate({ ...ctx });
+      await this.delay(140, signal);
+    }
+
     result = this.normalizeAgentResult(ctx, phase, agentRole, result, classification ?? this.classifyMission(ctx.missionBrief, ctx.configuration));
     this.recordStreamEvents(ctx, phase === MissionState.Planning ? "PLANNER_STREAM" : phase === MissionState.Finalizing ? "FINALIZER_STREAM" : "AGENT_STREAM", result, agentDef.id, agentDef.name, agentRole, phaseStart);
     this.storePhaseResult(ctx, phase, result, classification ?? this.classifyMission(ctx.missionBrief, ctx.configuration));
-    this.setAgentState(ctx, agentRole, "complete");
+    const completeActivity = this.setAgentActivity(ctx, agentRole, "complete", "Contribution shared with the council", "This phase output is available to the next decision point.", this.averageConfidence(ctx));
     this.addDialogue(ctx, agentDef.id, agentDef.name, agentDef.role, result, phase === MissionState.ConflictResolution, {
       phase,
       status: "complete",
@@ -648,7 +665,7 @@ export class MissionEngine {
       agentId: agentDef.id,
       agentName: agentDef.name,
       agentRole,
-      payload: { phase, output: result },
+      payload: { phase, output: result, activity: completeActivity },
       confidence: this.averageConfidence(ctx),
     });
     this.emit({ type: MissionEventType.AgentFinished, timestamp: now(), payload: { agentRole, agentName: agentDef.name, phase } });
@@ -744,14 +761,14 @@ export class MissionEngine {
     this.updateWorkstream(ctx, task.workstreamId, { status: "in_progress", startedAt: now() });
     ctx.status = phase;
     ctx.currentAgent = task.agent;
-    this.setAgentState(ctx, task.agent, "thinking");
+    const thinkingActivity = this.setAgentActivity(ctx, task.agent, "thinking", "Reviewing shared council context", this.activityDetail(ctx, task), task.confidence);
     this.recordReplayEvent(ctx, "AGENT_STARTED", {
       agentId: agentDef.id,
       agentName: agentDef.name,
       agentRole: task.agent,
       workstreamId: task.workstreamId,
       workstreamTitle: task.title,
-      payload: { task },
+      payload: { task, activity: thinkingActivity },
       confidence: task.confidence,
       dependencies: task.dependencies,
     });
@@ -765,7 +782,7 @@ export class MissionEngine {
       confidence: task.confidence,
       dependencies: task.dependencies,
     });
-    this.recordReplayEvent(ctx, "AGENT_THINKING", { agentId: agentDef.id, agentName: agentDef.name, agentRole: task.agent, workstreamId: task.workstreamId, workstreamTitle: task.title, confidence: task.confidence, dependencies: task.dependencies });
+    this.recordReplayEvent(ctx, "AGENT_THINKING", { agentId: agentDef.id, agentName: agentDef.name, agentRole: task.agent, workstreamId: task.workstreamId, workstreamTitle: task.title, payload: { activity: thinkingActivity }, confidence: task.confidence, dependencies: task.dependencies });
     this.emit({ type: MissionEventType.AgentStarted, timestamp: now(), payload: { agentRole: task.agent, agentName: agentDef.name, phase, taskId: task.id } });
     this.emit({ type: MissionEventType.AgentThinking, timestamp: now(), payload: { agentRole: task.agent, agentName: agentDef.name, taskId: task.id } });
     onUpdate({ ...ctx });
@@ -774,18 +791,24 @@ export class MissionEngine {
     if (mockMode) {
       const delay = this.mockRunner.getDelay(phase);
       await this.delay(Math.floor(delay * 0.35), signal);
-      this.setAgentState(ctx, task.agent, "analyzing");
-      this.recordReplayEvent(ctx, "AGENT_ANALYZING", { agentId: agentDef.id, agentName: agentDef.name, agentRole: task.agent, workstreamId: task.workstreamId, workstreamTitle: task.title, confidence: task.confidence, dependencies: task.dependencies });
+      const analyzingActivity = this.setAgentActivity(ctx, task.agent, "analyzing", "Evaluating evidence and alternatives", this.activityDetail(ctx, task), task.confidence);
+      this.recordReplayEvent(ctx, "AGENT_ANALYZING", { agentId: agentDef.id, agentName: agentDef.name, agentRole: task.agent, workstreamId: task.workstreamId, workstreamTitle: task.title, payload: { activity: analyzingActivity }, confidence: task.confidence, dependencies: task.dependencies });
+      this.recordConfidenceTransition(ctx, task, agentDef, task.confidence + 2, "More mission evidence is now available for this workstream.");
       onUpdate({ ...ctx });
       await this.delay(Math.floor(delay * 0.35), signal);
-      this.setAgentState(ctx, task.agent, "reviewing");
-      this.recordReplayEvent(ctx, "AGENT_REVIEWING", { agentId: agentDef.id, agentName: agentDef.name, agentRole: task.agent, workstreamId: task.workstreamId, workstreamTitle: task.title, confidence: task.confidence, dependencies: task.dependencies });
+      const reviewingActivity = this.setAgentActivity(ctx, task.agent, "reviewing", "Cross-checking assumptions", "Verifying the recommendation against shared dependencies and constraints.", task.confidence);
+      this.recordReplayEvent(ctx, "AGENT_REVIEWING", { agentId: agentDef.id, agentName: agentDef.name, agentRole: task.agent, workstreamId: task.workstreamId, workstreamTitle: task.title, payload: { activity: reviewingActivity }, confidence: task.confidence, dependencies: task.dependencies });
+      this.recordConfidenceTransition(ctx, task, agentDef, task.confidence + 4, "Dependencies and assumptions were cross-checked.");
       onUpdate({ ...ctx });
       await this.delay(Math.floor(delay * 0.3), signal);
       result = this.mockRunner.generate(phase, ctx, task, classification);
     } else if (qwenClient) {
-      this.setAgentState(ctx, task.agent, "analyzing");
+      await this.delay(240, signal);
+      const analyzingActivity = this.setAgentActivity(ctx, task.agent, "analyzing", "Evaluating evidence and alternatives", this.activityDetail(ctx, task), task.confidence);
+      this.recordReplayEvent(ctx, "AGENT_ANALYZING", { agentId: agentDef.id, agentName: agentDef.name, agentRole: task.agent, workstreamId: task.workstreamId, workstreamTitle: task.title, payload: { activity: analyzingActivity }, confidence: task.confidence, dependencies: task.dependencies });
+      this.recordConfidenceTransition(ctx, task, agentDef, task.confidence + 2, "The assigned context and available evidence have been incorporated.");
       onUpdate({ ...ctx });
+      const stopLiveReview = this.scheduleLiveReview(ctx, agentDef, task.agent, phase, onUpdate, task);
       try {
         result = await qwenClient.chat([
           { role: "system", content: agentDef.systemPrompt },
@@ -797,21 +820,27 @@ export class MissionEngine {
           throw new Error(`Qwen request failed during ${agentDef.name}: ${error instanceof Error ? error.message : String(error)}`);
         }
         result = this.mockRunner.generate(phase, ctx, task, classification);
+      } finally {
+        stopLiveReview();
       }
-      this.setAgentState(ctx, task.agent, "reviewing");
-      this.recordReplayEvent(ctx, "AGENT_REVIEWING", { agentId: agentDef.id, agentName: agentDef.name, agentRole: task.agent, workstreamId: task.workstreamId, workstreamTitle: task.title, confidence: task.confidence, dependencies: task.dependencies });
-      onUpdate({ ...ctx });
+      if (ctx.agentStates[task.agent] !== "reviewing") {
+        const reviewingActivity = this.setAgentActivity(ctx, task.agent, "reviewing", "Preparing recommendation", "Cross-checking the generated recommendation against the shared mission context.");
+        this.recordReplayEvent(ctx, "AGENT_REVIEWING", { agentId: agentDef.id, agentName: agentDef.name, agentRole: task.agent, workstreamId: task.workstreamId, workstreamTitle: task.title, payload: { activity: reviewingActivity }, confidence: task.confidence, dependencies: task.dependencies });
+        this.recordConfidenceTransition(ctx, task, agentDef, task.confidence + 4, "The recommendation was checked against dependencies and constraints.");
+        onUpdate({ ...ctx });
+      }
     } else {
       result = this.mockRunner.generate(phase, ctx, task, classification);
     }
 
     result = this.normalizeAgentResult(ctx, phase, task.agent, result, classification, task);
-    const nextConfidence = this.evolveConfidence(task.confidence, result, ctx);
+    const currentConfidence = ctx.executionTasks.find((candidate) => candidate.id === task.id)?.confidence ?? task.confidence;
+    const nextConfidence = this.evolveConfidence(currentConfidence, result, ctx);
     this.recordStreamEvents(ctx, "AGENT_STREAM", result, agentDef.id, agentDef.name, task.agent, phaseStart, task);
     this.storePhaseResult(ctx, phase, result, classification);
     this.updateTask(ctx, task.id, { status: "completed", output: result, completedAt: now(), confidence: nextConfidence });
     this.updateWorkstream(ctx, task.workstreamId, { status: "completed", output: result, completedAt: now(), confidence: nextConfidence });
-    this.setAgentState(ctx, task.agent, "complete");
+    const completeActivity = this.setAgentActivity(ctx, task.agent, "complete", "Findings shared with the council", "The workstream result is now available to downstream agents.", nextConfidence, "Recommendation finalized", nextConfidence - currentConfidence);
     if (task.agent !== AgentRole.Finalizer) {
       this.addDialogue(ctx, agentDef.id, agentDef.name, agentDef.role, result, phase === MissionState.RiskReview, {
         phase,
@@ -828,7 +857,7 @@ export class MissionEngine {
       agentRole: task.agent,
       workstreamId: task.workstreamId,
       workstreamTitle: task.title,
-      payload: { task: { ...task, status: "completed", output: result, confidence: nextConfidence }, output: result },
+      payload: { task: { ...task, status: "completed", output: result, confidence: nextConfidence }, output: result, activity: completeActivity },
       confidence: nextConfidence,
       dependencies: task.dependencies,
     });
@@ -2476,6 +2505,94 @@ export class MissionEngine {
 
   private setAgentState(ctx: MissionContext, role: AgentRole, state: AgentThinkingState) {
     ctx.agentStates = { ...ctx.agentStates, [role]: state };
+  }
+
+  private setAgentActivity(
+    ctx: MissionContext,
+    role: AgentRole,
+    state: AgentThinkingState,
+    label: string,
+    detail: string,
+    confidence?: number,
+    confidenceReason?: string,
+    confidenceDelta?: number,
+  ) {
+    this.setAgentState(ctx, role, state);
+    const activity: AgentActivity = {
+      state,
+      label,
+      detail,
+      updatedAt: now(),
+      ...(confidence != null ? { confidence } : {}),
+      ...(confidenceReason ? { confidenceReason } : {}),
+      ...(confidenceDelta != null ? { confidenceDelta } : {}),
+    };
+    ctx.agentActivities = { ...ctx.agentActivities, [role]: activity };
+    return activity;
+  }
+
+  private activityDetail(ctx: MissionContext, task?: ExecutionTask) {
+    const dependencies = task?.dependencies
+      .map((id) => ctx.executionTasks.find((candidate) => candidate.id === id)?.title)
+      .filter((title): title is string => Boolean(title));
+    if (dependencies?.length) return `Using completed dependency findings from ${dependencies.join(", ")}.`;
+    const previousContribution = ctx.dialogue.at(-1);
+    if (previousContribution) return `Reviewing the latest contribution from ${previousContribution.displayRole ?? previousContribution.agentName}.`;
+    return task ? `Framing the assigned workstream: ${task.title}.` : "Reviewing the mission objective, constraints, and assigned role.";
+  }
+
+  private recordConfidenceTransition(
+    ctx: MissionContext,
+    task: ExecutionTask,
+    agentDef: NonNullable<ReturnType<typeof getAgentByRole>>,
+    confidence: number,
+    reason: string,
+  ) {
+    const current = ctx.executionTasks.find((candidate) => candidate.id === task.id)?.confidence ?? task.confidence;
+    const next = clampConfidence(confidence);
+    if (next === current) return current;
+    this.updateTask(ctx, task.id, { confidence: next });
+    this.updateWorkstream(ctx, task.workstreamId, { confidence: next });
+    const activity = this.setAgentActivity(ctx, task.agent, ctx.agentStates[task.agent], "Updating confidence", reason, next, reason, next - current);
+    this.recordReplayEvent(ctx, "CONFIDENCE_UPDATED", {
+      agentId: agentDef.id,
+      agentName: agentDef.name,
+      agentRole: task.agent,
+      workstreamId: task.workstreamId,
+      workstreamTitle: task.title,
+      confidence: next,
+      dependencies: task.dependencies,
+      payload: { previousConfidence: current, reason, activity },
+    });
+    this.addTimeline(ctx, task.agent, this.phaseForAgent(task.agent), `${agentDef.name} confidence updated`, `${current}% → ${next}% — ${reason}`, "agent");
+    return next;
+  }
+
+  private scheduleLiveReview(
+    ctx: MissionContext,
+    agentDef: NonNullable<ReturnType<typeof getAgentByRole>>,
+    role: AgentRole,
+    phase: MissionState,
+    onUpdate: (ctx: MissionContext) => void,
+    task?: ExecutionTask,
+  ) {
+    const timer = window.setTimeout(() => {
+      if (ctx.agentStates[role] !== "analyzing") return;
+      const activity = this.setAgentActivity(ctx, role, "reviewing", "Cross-checking assumptions", task ? this.activityDetail(ctx, task) : "Re-evaluating the contribution against the shared council context.");
+      this.recordReplayEvent(ctx, "AGENT_REVIEWING", {
+        agentId: agentDef.id,
+        agentName: agentDef.name,
+        agentRole: role,
+        workstreamId: task?.workstreamId,
+        workstreamTitle: task?.title,
+        payload: { phase, activity },
+        confidence: task?.confidence,
+        dependencies: task?.dependencies,
+      });
+      if (task) this.recordConfidenceTransition(ctx, task, agentDef, task.confidence + 4, "Shared dependencies were cross-checked before the recommendation was finalized.");
+      onUpdate({ ...ctx });
+    }, 900);
+    return () => window.clearTimeout(timer);
   }
 
   private updateTask(ctx: MissionContext, taskId: string, patch: Partial<ExecutionTask>) {

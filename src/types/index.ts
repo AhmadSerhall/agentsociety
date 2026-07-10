@@ -9,6 +9,7 @@ export {
 export type {
   AgentDefinition,
   AgentDialogueEntry,
+  AgentActivity,
   AgentThinkingState,
 } from "./agent.types";
 

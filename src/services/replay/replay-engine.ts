@@ -3,6 +3,7 @@ import {
   AgentRole,
   DEFAULT_CONFIGURATION,
   MissionState,
+  type AgentActivity,
   type AgentDialogueEntry,
   type ConflictInfo,
   type EfficiencyMetrics,
@@ -72,6 +73,7 @@ function baseContext(events: MissionReplayEvent[]): MissionContext {
     efficiencyMetrics: null,
     currentAgent: null,
     agentStates: emptyAgentStates(),
+    agentActivities: {},
     executionTasks: [],
     missionGraph: null,
     progress: 0,
@@ -182,6 +184,9 @@ function applyReplayEvent(ctx: MissionContext, event: MissionReplayEvent) {
     case "FINALIZER_FINISHED":
       finishAgent(ctx, event);
       break;
+    case "CONFIDENCE_UPDATED":
+      applyConfidenceTransition(ctx, event);
+      break;
     case "DIALOGUE_CREATED":
       ctx.dialogue = [...ctx.dialogue, event.payload?.dialogue as AgentDialogueEntry].filter(Boolean);
       break;
@@ -270,6 +275,17 @@ function applyAgentState(ctx: MissionContext, event: MissionReplayEvent) {
   if (!role) return;
   const state = event.type === "AGENT_ANALYZING" ? "analyzing" : event.type === "AGENT_REVIEWING" ? "reviewing" : event.type === "AGENT_WAITING" ? "waiting" : "thinking";
   ctx.agentStates[role] = state;
+  const activity = event.payload?.activity as AgentActivity | undefined;
+  ctx.agentActivities = {
+    ...ctx.agentActivities,
+    [role]: activity ?? {
+      state,
+      label: state === "analyzing" ? "Evaluating shared findings" : state === "reviewing" ? "Cross-checking assumptions" : state === "waiting" ? "Waiting for dependencies" : "Reviewing council context",
+      detail: event.workstreamTitle ?? "Replay restored this agent activity.",
+      updatedAt: event.timestamp,
+      confidence: event.confidence,
+    },
+  };
   ctx.currentAgent = role;
   if (event.workstreamId) patchWorkstream(ctx, event.workstreamId, { status: state === "waiting" ? "pending" : "in_progress", confidence: event.confidence });
   if (event.type === "AGENT_STARTED" || event.type === "MEDIATOR_STARTED" || event.type === "FINALIZER_STARTED") {
@@ -281,12 +297,48 @@ function finishAgent(ctx: MissionContext, event: MissionReplayEvent) {
   const role = event.agentRole;
   if (!role) return;
   ctx.agentStates[role] = "complete";
+  const activity = event.payload?.activity as AgentActivity | undefined;
+  ctx.agentActivities = {
+    ...ctx.agentActivities,
+    [role]: activity ?? {
+      state: "complete",
+      label: "Contribution shared with the council",
+      detail: event.workstreamTitle ?? "Replay restored the completed contribution.",
+      updatedAt: event.timestamp,
+      confidence: event.confidence,
+    },
+  };
   ctx.currentAgent = null;
   if (event.workstreamId) {
     patchWorkstream(ctx, event.workstreamId, { status: "completed", output: String(event.payload?.output ?? ""), confidence: event.confidence, completedAt: event.timestamp });
     patchTask(ctx, event.workstreamId, { status: "completed", output: String(event.payload?.output ?? ""), confidence: event.confidence ?? 80, completedAt: event.timestamp });
   }
   addTimeline(ctx, event, `${event.agentName ?? getAgentByRole(role)?.name ?? role} finished`, event.workstreamTitle ?? "Agent work finished.");
+}
+
+function applyConfidenceTransition(ctx: MissionContext, event: MissionReplayEvent) {
+  const role = event.agentRole;
+  if (!role) return;
+  const activity = event.payload?.activity as AgentActivity | undefined;
+  const previous = Number(event.payload?.previousConfidence ?? 0);
+  const reason = String(event.payload?.reason ?? "Shared context was updated.");
+  if (event.workstreamId) {
+    patchWorkstream(ctx, event.workstreamId, { confidence: event.confidence });
+    patchTask(ctx, event.workstreamId, { confidence: event.confidence });
+  }
+  ctx.agentActivities = {
+    ...ctx.agentActivities,
+    [role]: activity ?? {
+      state: ctx.agentStates[role],
+      label: "Updating confidence",
+      detail: reason,
+      updatedAt: event.timestamp,
+      confidence: event.confidence,
+      confidenceDelta: event.confidence != null && previous ? event.confidence - previous : undefined,
+      confidenceReason: reason,
+    },
+  };
+  addTimeline(ctx, event, `${event.agentName ?? getAgentByRole(role)?.name ?? role} confidence updated`, previous ? `${previous}% → ${event.confidence ?? previous}% — ${reason}` : reason);
 }
 
 function upsertWorkstream(ctx: MissionContext, workstream: Workstream) {

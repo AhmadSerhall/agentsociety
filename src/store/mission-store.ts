@@ -65,6 +65,7 @@ const createEmptyContext = (
     [AgentRole.Mediator]: "waiting",
     [AgentRole.Finalizer]: "waiting",
   },
+  agentActivities: {},
   executionTasks: [],
   missionGraph: null,
   progress: 0,

@@ -3,10 +3,10 @@
 import { CheckCircle2, Loader2 } from "lucide-react";
 import { AGENT_DEFINITIONS } from "@/agents";
 import { Badge } from "@/components/ui/badge";
-import type { AgentRole, AgentThinkingState } from "@/types";
+import type { AgentActivity, AgentRole, AgentThinkingState } from "@/types";
 import { AgentIconGlyph } from "../agent-icons";
 
-export function AgentRoster({ currentAgent, states }: { currentAgent: AgentRole | null; states: Record<AgentRole, AgentThinkingState> }) {
+export function AgentRoster({ currentAgent, states, activities = {} }: { currentAgent: AgentRole | null; states: Record<AgentRole, AgentThinkingState>; activities?: Partial<Record<AgentRole, AgentActivity>> }) {
   const participatingAgents = AGENT_DEFINITIONS.filter((agent) => states[agent.role] !== "waiting" || currentAgent === agent.role);
 
   return (
@@ -19,7 +19,7 @@ export function AgentRoster({ currentAgent, states }: { currentAgent: AgentRole 
         {participatingAgents.map((agent) => {
           const active = currentAgent === agent.role || states[agent.role] === "thinking" || states[agent.role] === "analyzing" || states[agent.role] === "reviewing";
           const complete = states[agent.role] === "complete";
-          const stateLabel = active ? "Working" : complete ? "Finished" : "Assigned";
+          const stateLabel = active ? activities[agent.role]?.label ?? "Working" : complete ? "Finished" : "Assigned";
           return (
             <div
               key={agent.id}
