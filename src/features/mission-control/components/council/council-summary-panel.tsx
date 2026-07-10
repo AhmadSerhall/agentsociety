@@ -16,7 +16,7 @@ export function CouncilSummaryPanel({ context }: { context: MissionContext }) {
   const summary = sanitizeUserFacingText(report?.executiveSummary || "The agent society completed the workstreams, resolved required coordination points, and synthesized the final execution plan.");
 
   return (
-    <section className="relative overflow-hidden rounded-[1.6rem] border border-emerald-300/20 bg-[radial-gradient(circle_at_50%_0%,rgba(16,185,129,0.15),transparent_38%),linear-gradient(135deg,rgba(3,7,18,0.9),rgba(15,23,42,0.72))] p-6 shadow-[0_26px_100px_rgba(16,185,129,0.12)] backdrop-blur-xl">
+    <section className="relative w-full overflow-hidden rounded-[1.6rem] border border-emerald-300/20 bg-[radial-gradient(circle_at_50%_0%,rgba(16,185,129,0.15),transparent_38%),linear-gradient(135deg,rgba(3,7,18,0.9),rgba(15,23,42,0.72))] p-6 shadow-[0_26px_100px_rgba(16,185,129,0.12)] backdrop-blur-xl">
       <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-emerald-300/70 to-transparent" />
       <div className="mx-auto grid h-16 w-16 place-items-center rounded-full border border-emerald-300/35 bg-emerald-300/10 shadow-[0_0_40px_rgba(16,185,129,0.25)]">
         <CheckCircle2 className="h-8 w-8 text-emerald-200" />

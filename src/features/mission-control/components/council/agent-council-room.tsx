@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Activity, ArrowRight, BrainCircuit, CheckCircle2, Clock3, Eye, Gauge, MessageSquareText, Network, PlayCircle, RotateCcw, ShieldCheck, X, Zap } from "lucide-react";
+import { Activity, ArrowRight, BrainCircuit, CheckCircle2, Clock3, Eye, Gauge, MessageSquareText, Network, PanelLeftOpen, PanelRightOpen, PlayCircle, RotateCcw, ShieldCheck, X, Zap } from "lucide-react";
 import { AGENT_DEFINITIONS } from "@/agents";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -35,6 +35,7 @@ export function AgentCouncilRoom({
   const [selectedTask, setSelectedTask] = useState<ExecutionTask | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [intelligenceOpen, setIntelligenceOpen] = useState(false);
+  const [rosterOpen, setRosterOpen] = useState(false);
 
   const latestDialogue = useMemo(() => (context?.dialogue ?? []).slice(-5).reverse(), [context?.dialogue]);
 
@@ -87,10 +88,19 @@ export function AgentCouncilRoom({
       )}
 
       {completed ? (
-        <div className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)_340px]">
-          <AgentRoster currentAgent={context.currentAgent} states={context.agentStates} />
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <Button variant="outline" onClick={() => setRosterOpen(true)} className="gap-2 border-cyan-200/20 bg-cyan-300/[0.06] text-cyan-100 hover:bg-cyan-300/[0.12]">
+              <PanelLeftOpen className="h-4 w-4" />
+              Agent Roster
+            </Button>
+            <Badge className="hidden bg-emerald-300/10 text-emerald-100 sm:inline-flex">Completed mission brief</Badge>
+            <Button variant="outline" onClick={() => setIntelligenceOpen(true)} className="gap-2 border-purple-200/20 bg-purple-300/[0.06] text-purple-100 hover:bg-purple-300/[0.12]">
+              Mission Intelligence
+              <PanelRightOpen className="h-4 w-4" />
+            </Button>
+          </div>
           <CouncilSummaryPanel context={context} />
-          <MissionIntelligencePanel context={context} />
         </div>
       ) : (
         <div className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)]">
@@ -116,9 +126,8 @@ export function AgentCouncilRoom({
       <AgentContributionDrawer entry={contributionEntry} context={context} open={contributionOpen} onOpenChange={setContributionOpen} />
       <WorkstreamInspector task={selectedTask} conflicts={selectedConflicts} open={inspectorOpen} onOpenChange={setInspectorOpen} />
       <AnimatePresence>
-        {!completed && intelligenceOpen && (
-          <MissionIntelligenceOverlay context={context} onClose={() => setIntelligenceOpen(false)} />
-        )}
+        {intelligenceOpen && <MissionIntelligenceOverlay context={context} onClose={() => setIntelligenceOpen(false)} />}
+        {completed && rosterOpen && <AgentRosterOverlay currentAgent={context.currentAgent} states={context.agentStates} onClose={() => setRosterOpen(false)} />}
       </AnimatePresence>
     </motion.section>
   );
@@ -253,6 +262,47 @@ function MissionIntelligenceOverlay({ context, onClose }: { context: NonNullable
           </Button>
         </div>
         <MissionIntelligencePanel context={context} />
+      </motion.aside>
+    </motion.div>
+  );
+}
+
+function AgentRosterOverlay({
+  currentAgent,
+  states,
+  onClose,
+}: {
+  currentAgent: AgentRole | null;
+  states: Record<AgentRole, AgentThinkingState>;
+  onClose: () => void;
+}) {
+  return (
+    <motion.div
+      className="fixed inset-0 z-[9999] bg-black/50 backdrop-blur-sm"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onClick={onClose}
+    >
+      <motion.aside
+        initial={{ opacity: 0, x: -32, scale: 0.98 }}
+        animate={{ opacity: 1, x: 0, scale: 1 }}
+        exit={{ opacity: 0, x: -32, scale: 0.98 }}
+        transition={{ duration: 0.22, ease: "easeOut" }}
+        onClick={(event) => event.stopPropagation()}
+        className="absolute left-4 top-4 w-[min(360px,calc(100vw-2rem))] rounded-[1.6rem] border border-cyan-200/18 bg-[#06111f]/96 p-4 shadow-[0_28px_120px_rgba(34,211,238,0.22)] backdrop-blur-2xl"
+      >
+        <div className="mb-3 flex items-center justify-between gap-3 px-1">
+          <div>
+            <Badge className="border-cyan-200/20 bg-cyan-300/10 text-cyan-100 hover:bg-cyan-300/10">Mission team</Badge>
+            <h3 className="mt-2 text-lg font-semibold text-white">Agent Roster</h3>
+          </div>
+          <Button size="icon" variant="outline" onClick={onClose} className="h-9 w-9 rounded-full border-white/10 bg-white/[0.04] text-white/70 hover:bg-white/[0.08] hover:text-white">
+            <X className="h-4 w-4" />
+            <span className="sr-only">Close agent roster</span>
+          </Button>
+        </div>
+        <AgentRoster currentAgent={currentAgent} states={states} />
       </motion.aside>
     </motion.div>
   );
