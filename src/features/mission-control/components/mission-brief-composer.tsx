@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import { Loader2, Rocket, Settings2, SlidersHorizontal, Sparkles, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { getSavedSettingsOptions } from "@/lib/settingsPreferences";
@@ -103,6 +104,7 @@ export function MissionBriefComposer({
   const configNeedsAttention = brief.trim().length > 0 && !showConfig && !isRunning;
   const [suggestion, setSuggestion] = useState<ConfigSuggestion | null>(null);
   const [dismissedText, setDismissedText] = useState("");
+  const [appliedSuggestion, setAppliedSuggestion] = useState<ConfigSuggestion | null>(null);
   const trimmedBrief = brief.trim();
   const suggestionVisible = Boolean(suggestion && !showConfig && !isRunning && trimmedBrief.length >= 18 && trimmedBrief !== dismissedText);
 
@@ -121,6 +123,8 @@ export function MissionBriefComposer({
   const applySuggestion = () => {
     if (!suggestion) return;
     onExampleSelect(brief, suggestion.config);
+    setDismissedText(trimmedBrief);
+    setAppliedSuggestion(suggestion);
     setSuggestion(null);
   };
 
@@ -223,6 +227,13 @@ export function MissionBriefComposer({
           />
         )}
 
+        <MissionConfigAppliedDialog
+          suggestion={appliedSuggestion}
+          onOpenChange={(open) => {
+            if (!open) setAppliedSuggestion(null);
+          }}
+        />
+
         <div className="mt-4 flex flex-wrap gap-2">
           <ConfigChip label="Type" value={MISSION_TYPE_LABELS[config.missionType ?? "general-mission"]} />
           <ConfigChip label="Depth" value={DEPTH_LABELS[config.depth ?? "balanced"]} />
@@ -271,6 +282,43 @@ export function MissionBriefComposer({
         </div>
       </div>
     </motion.section>
+  );
+}
+
+function MissionConfigAppliedDialog({ suggestion, onOpenChange }: { suggestion: ConfigSuggestion | null; onOpenChange: (open: boolean) => void }) {
+  const config = suggestion?.config;
+  const chips = config ? [
+    ["Type", MISSION_TYPE_LABELS[config.missionType]],
+    ["Depth", DEPTH_LABELS[config.depth]],
+    ["Horizon", TIME_HORIZON_LABELS[config.timeHorizon]],
+    ["Budget", BUDGET_RANGE_LABELS[config.budgetRange]],
+    ["Risk", RISK_TOLERANCE_LABELS[config.riskTolerance]],
+    ["Format", OUTPUT_FORMAT_LABELS[config.outputFormat]],
+  ] : [];
+
+  return (
+    <Dialog open={Boolean(suggestion)} onOpenChange={onOpenChange}>
+      <DialogContent className="border-emerald-200/20 bg-[#071424]/96 text-white shadow-[0_28px_100px_rgba(16,185,129,0.18)] backdrop-blur-2xl sm:max-w-lg">
+        <DialogHeader>
+          <div className="mb-2 grid h-11 w-11 place-items-center rounded-2xl border border-emerald-200/25 bg-emerald-300/10">
+            <Sparkles className="h-5 w-5 text-emerald-100" />
+          </div>
+          <DialogTitle className="text-xl text-white">Agents updated this mission configuration</DialogTitle>
+          <DialogDescription className="text-white/58">The suggested settings are now applied to this brief. You can continue refining the mission or launch it when ready.</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {chips.map(([label, value]) => (
+            <div key={label} className="rounded-xl border border-white/10 bg-white/[0.04] p-2.5">
+              <p className="text-[0.62rem] uppercase tracking-[0.14em] text-white/35">{label}</p>
+              <p className="mt-1 text-sm font-semibold text-emerald-50">{value}</p>
+            </div>
+          ))}
+        </div>
+        <div className="flex justify-end">
+          <Button onClick={() => onOpenChange(false)} className="rounded-full bg-emerald-300 text-[#06101f] hover:bg-emerald-200">Continue</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

@@ -35,11 +35,11 @@ export function DrilldownDrawer({ source, parentContext, open, onOpenChange, onL
       const messages: QwenMessage[] = [
         {
           role: "system",
-          content: "You are an Agent Society drilldown specialist. Expand exactly the selected mission card into concrete useful work. Do not write generic consulting sections. Do the selected task directly.",
+          content: "You are an Agent Society drilldown specialist. Execute exactly the selected action with concrete, decision-ready guidance. Do not repeat the parent mission or summarize unrelated report sections.",
         },
         {
           role: "user",
-          content: `${prompt}\n\nReturn a focused expansion with practical steps, commands, structure, examples, or comparisons only when relevant to this exact selected card.`,
+          content: `${prompt}\n\nReturn only the focused result for this selected action. Make the advice specific enough to act on immediately.`,
         },
       ];
       const result = isMockMode()
@@ -123,13 +123,27 @@ export function DrilldownDrawer({ source, parentContext, open, onOpenChange, onL
 function buildSubMissionPrompt(parentContext: MissionContext, source: DrilldownSource) {
   const parentTitle = sanitizeUserFacingText(parentContext.missionBrief);
   const card = sanitizeUserFacingText(source.sourceText);
-  const relatedContext = parentContext.finalReport?.finalAnswer || parentContext.finalReport?.executiveSummary || parentContext.workstreams.map((workstream) => workstream.title).join("; ");
+  const workstream = source.sourceWorkstreamId
+    ? parentContext.workstreams.find((item) => item.id === source.sourceWorkstreamId)
+    : undefined;
+  const constraints = [
+    parentContext.configuration.timeHorizon !== "none" ? `timeline: ${parentContext.configuration.timeHorizon.replace(/-/g, " ")}` : "",
+    parentContext.configuration.budgetRange !== "none" ? `budget: ${parentContext.configuration.budgetRange}` : "",
+    `output: ${parentContext.configuration.outputFormat.replace(/-/g, " ")}`,
+  ].filter(Boolean).join(", ");
   return [
-    `Based on the parent mission "${parentTitle}", expand this selected item into concrete execution detail:`,
-    card,
+    `Selected action: ${card}`,
     "",
-    `Use relevant parent context: ${sanitizeUserFacingText(relatedContext).slice(0, 1200)}`,
+    `Parent objective for constraints only: ${parentTitle}`,
+    `Mission constraints: ${constraints}`,
+    workstream ? `Related workstream: ${sanitizeUserFacingText(workstream.title)} — ${sanitizeUserFacingText(workstream.description)}` : "",
     "",
-    "Create a focused sub-mission deliverable that directly performs the selected work and stays scoped to it.",
-  ].join("\n");
+    "Deliver a focused sub-mission result for the selected action only:",
+    "1. The immediate decision or recommendation.",
+    "2. Three to five concrete execution steps.",
+    "3. Relevant tools, frameworks, or implementation details.",
+    "4. A cost or timing guardrail when it matters.",
+    "5. One clear success check.",
+    "Do not restate the parent mission or repeat the selected action.",
+  ].filter(Boolean).join("\n");
 }
