@@ -6,8 +6,10 @@ import { renderTimelineEntry } from "@/features/mission-control/components/counc
 import { useMissionStore } from "@/store";
 import { formatDuration } from "@/utils";
 
+const EMPTY_TIMELINE: NonNullable<ReturnType<typeof useMissionStore.getState>["context"]>["timeline"] = [];
+
 export function TimelinePanel() {
-  const timeline = useMissionStore((s) => s.context?.timeline ?? []);
+  const timeline = useMissionStore((s) => s.context?.timeline ?? EMPTY_TIMELINE);
 
   if (timeline.length === 0) {
     return <p className="text-sm italic text-white/45">Timeline entries appear as the mission unfolds.</p>;

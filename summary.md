@@ -14,6 +14,11 @@ The project is now a Mission Graph driven agent society with a dedicated present
 - Shared structured content renders markdown tables as responsive, polished tables and blockquotes as callouts without raw markdown markers.
 - Every Mission Control view now has a bottom-right scroll-to-top control with a circular scroll-progress indicator that resets on navigation.
 - Recent Mission History entries can now be manually saved into the Saved Missions group.
+- Agents now receive shared mission memory through prior workstream outputs, dialogue, dependencies, conflicts, planner revisions, and confidence context. Prompts require agents to acknowledge relevant earlier findings without inventing context.
+- Agent confidence evolves through evidence and dependency checks instead of jumping directly to a final value. Each transition includes a reason, updates the timeline, and is stored as a replay event through the `CONFIDENCE_UPDATED` event type.
+- Agent prompts now reinforce distinct role voices: Planner is structured and milestone-oriented, Research is evidence-first, Technical is implementation-focused, Marketing is customer-oriented, Finance is numerical, Risk Critic is skeptical, Mediator is diplomatic, and Finalizer is executive and concise.
+- Live execution now exposes contextual activity stages such as reviewing shared context, evaluating evidence, cross-checking assumptions, preparing recommendations, and sharing findings. The Agent Council animates these updates in the active specialist card, roster, and Live Dispatch area.
+- Replay reconstructs agent activity details and confidence transitions from recorded Mission Engine events, preserving the execution evolution for inspection.
 
 ## Current App Type
 
