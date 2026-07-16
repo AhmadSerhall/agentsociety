@@ -922,7 +922,7 @@ function ConfigForm({ config, onChange, onApply, onReset }: { config: Partial<Mi
             </div>
           )}
           <ConfigSelect icon={<WalletCards className="h-4 w-4" />} label="Budget Range" value={config.budgetRange ?? "none"} options={BUDGET_RANGE_LABELS} onChange={(v) => onChange({ ...config, budgetRange: v as BudgetRange })} />
-          <ConfigSelect icon={<ShieldAlert className="h-4 w-4" />} label="Risk Tolerance" value={config.riskTolerance ?? "balanced"} options={RISK_TOLERANCE_LABELS} onChange={(v) => onChange({ ...config, riskTolerance: v as RiskTolerance })} />
+          <ConfigSelect icon={<ShieldAlert className="h-4 w-4" />} label="Risk Tolerance" value={config.riskTolerance ?? "none"} options={RISK_TOLERANCE_LABELS} onChange={(v) => onChange({ ...config, riskTolerance: v as RiskTolerance })} />
         </div>
       </div>
       <div className="flex gap-2 border-t border-cyan-200/10 pt-5">

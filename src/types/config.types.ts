@@ -107,6 +107,6 @@ export const DEFAULT_CONFIGURATION: MissionConfiguration = {
   depth: "balanced",
   timeHorizon: "none",
   budgetRange: "none",
-  riskTolerance: "balanced",
+  riskTolerance: "none",
   outputFormat: "direct-result",
 };

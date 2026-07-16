@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { motion } from "framer-motion";
-import { Loader2, Rocket, Settings2, SlidersHorizontal, Sparkles, X } from "lucide-react";
+import { Loader2, Rocket, Settings2, ShieldAlert, SlidersHorizontal, Sparkles, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -120,6 +120,9 @@ export function MissionBriefComposer({
   const [suggestion, setSuggestion] = useState<ConfigSuggestion | null>(null);
   const [dismissedText, setDismissedText] = useState("");
   const [appliedSuggestion, setAppliedSuggestion] = useState<ConfigSuggestion | null>(null);
+  const [suggestionReviewed, setSuggestionReviewed] = useState(false);
+  const [configReviewOpen, setConfigReviewOpen] = useState(false);
+  const [launchAfterConfigApplied, setLaunchAfterConfigApplied] = useState(false);
   const trimmedBrief = brief.trim();
   const [understandingSnapshot, setUnderstandingSnapshot] = useState<{
     brief: string;
@@ -145,7 +148,7 @@ export function MissionBriefComposer({
           : localResult;
         if (!cancelled) setUnderstandingSnapshot({ brief: text, result });
       })();
-    }, 2000);
+    }, 1000);
     return () => {
       cancelled = true;
       window.clearTimeout(timeout);
@@ -160,16 +163,44 @@ export function MissionBriefComposer({
     const timeout = window.setTimeout(() => {
       const engine = new MissionEngine();
       setSuggestion(engine.suggestMissionConfiguration(text, config));
-    }, 400);
+      setSuggestionReviewed(false);
+    }, 200);
     return () => window.clearTimeout(timeout);
   }, [trimmedBrief, config, dismissedText, isRunning, isValidating, understanding?.valid]);
 
-  const applySuggestion = () => {
+  const applySuggestion = (options?: { launchAfterConfirm?: boolean }) => {
     if (!suggestion) return;
     onExampleSelect(brief, suggestion.config);
     setDismissedText(trimmedBrief);
     setAppliedSuggestion(suggestion);
+    setSuggestionReviewed(true);
     setSuggestion(null);
+    setConfigReviewOpen(false);
+    if (options?.launchAfterConfirm) {
+      setLaunchAfterConfigApplied(true);
+    }
+  };
+
+  const dismissSuggestion = () => {
+    setDismissedText(brief.trim());
+    setSuggestionReviewed(true);
+    setSuggestion(null);
+    setConfigReviewOpen(false);
+  };
+
+  const editSuggestionManually = () => {
+    setSuggestionReviewed(true);
+    setConfigReviewOpen(false);
+    onConfigOpenChange(true);
+  };
+
+  const requestLaunch = () => {
+    if (suggestionVisible && suggestion && !suggestionReviewed) {
+      setLaunchAfterConfigApplied(true);
+      setConfigReviewOpen(true);
+      return;
+    }
+    onLaunch();
   };
 
   return (
@@ -252,7 +283,7 @@ export function MissionBriefComposer({
             if (event.key !== "Enter") return;
             if (event.shiftKey) return;
             event.preventDefault();
-            if (!isRunning && !isValidating && brief.trim()) onLaunch();
+            if (!isRunning && !isValidating && brief.trim()) requestLaunch();
           }}
           disabled={isRunning || isValidating}
           rows={8}
@@ -263,18 +294,28 @@ export function MissionBriefComposer({
           <MissionConfigSuggestionOverlay
             suggestion={suggestion}
             onApply={applySuggestion}
-            onEdit={() => onConfigOpenChange(true)}
-            onDismiss={() => {
-              setDismissedText(brief.trim());
-              setSuggestion(null);
-            }}
+            onEdit={editSuggestionManually}
+            onDismiss={dismissSuggestion}
           />
         )}
 
+        <MissionConfigReviewDialog
+          open={configReviewOpen}
+          suggestion={suggestion}
+          onOpenChange={setConfigReviewOpen}
+          onApply={() => applySuggestion({ launchAfterConfirm: true })}
+          onEdit={editSuggestionManually}
+        />
+
         <MissionConfigAppliedDialog
           suggestion={appliedSuggestion}
+          launchAfterConfirm={launchAfterConfigApplied}
+          onLaunch={onLaunch}
           onOpenChange={(open) => {
-            if (!open) setAppliedSuggestion(null);
+            if (!open) {
+              setAppliedSuggestion(null);
+              setLaunchAfterConfigApplied(false);
+            }
           }}
         />
 
@@ -333,7 +374,7 @@ export function MissionBriefComposer({
               type="button"
               whileHover={{ y: -2, scale: 1.015 }}
               whileTap={{ scale: 0.985 }}
-              onClick={onLaunch}
+              onClick={requestLaunch}
               disabled={isRunning || isValidating}
               className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-gradient-to-r from-cyan-300 via-sky-300 to-purple-400 px-6 text-sm font-bold text-[#06101f] shadow-[0_0_32px_rgba(34,211,238,0.32),0_0_54px_rgba(168,85,247,0.18)] transition disabled:cursor-not-allowed disabled:opacity-70 sm:min-w-44"
             >
@@ -356,7 +397,19 @@ export function MissionBriefComposer({
   );
 }
 
-function MissionConfigAppliedDialog({ suggestion, onOpenChange }: { suggestion: ConfigSuggestion | null; onOpenChange: (open: boolean) => void }) {
+function MissionConfigReviewDialog({
+  open,
+  suggestion,
+  onOpenChange,
+  onApply,
+  onEdit,
+}: {
+  open: boolean;
+  suggestion: ConfigSuggestion | null;
+  onOpenChange: (open: boolean) => void;
+  onApply: () => void;
+  onEdit: () => void;
+}) {
   const config = suggestion?.config;
   const chips = config ? [
     ["Type", MISSION_TYPE_LABELS[config.missionType]],
@@ -368,6 +421,98 @@ function MissionConfigAppliedDialog({ suggestion, onOpenChange }: { suggestion: 
   ] : [];
 
   return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="overflow-hidden border-cyan-200/20 bg-[radial-gradient(circle_at_80%_0%,rgba(34,211,238,0.14),transparent_42%),linear-gradient(145deg,rgba(7,17,31,0.98),rgba(15,23,42,0.96))] text-white shadow-[0_30px_120px_rgba(34,211,238,0.20)] backdrop-blur-2xl sm:max-w-lg">
+        <DialogHeader>
+          <div className="mb-2 flex items-center gap-3">
+            <div className="grid h-12 w-12 place-items-center rounded-2xl border border-cyan-200/25 bg-cyan-300/10">
+              <ShieldAlert className="h-5 w-5 text-cyan-100" />
+            </div>
+            <div>
+              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-cyan-100/60">Mission preflight</p>
+              <DialogTitle className="mt-1 text-xl text-white">Review the suggested configuration</DialogTitle>
+            </div>
+          </div>
+          <DialogDescription className="leading-relaxed text-white/58">
+            The agents prepared a mission configuration for this brief. Validate the suggestion or edit it manually for better results before launch.
+          </DialogDescription>
+        </DialogHeader>
+        {suggestion && (
+          <div className="rounded-2xl border border-cyan-200/15 bg-cyan-300/[0.045] p-4">
+            <p className="flex items-center gap-2 text-sm font-semibold text-white">
+              <Sparkles className="h-4 w-4 text-cyan-200" />
+              Suggested configuration
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-white/48">Why? {suggestion.why}.</p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              {chips.map(([label, value]) => (
+                <div key={label} className="rounded-xl border border-white/10 bg-white/[0.04] p-2.5">
+                  <p className="text-[0.62rem] uppercase tracking-[0.14em] text-white/35">{label}</p>
+                  <p className="mt-1 text-sm font-semibold text-cyan-50">{value}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            className="rounded-full border-white/10 bg-white/[0.04] text-white/70 hover:bg-white/[0.08] hover:text-white"
+          >
+            Not yet
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onEdit}
+            className="gap-2 rounded-full border-purple-200/20 bg-purple-400/10 text-purple-100 hover:bg-purple-400/15 hover:text-purple-50"
+          >
+            <SlidersHorizontal className="h-4 w-4" />
+            Edit Manually
+          </Button>
+          <Button
+            type="button"
+            onClick={onApply}
+            className="gap-2 rounded-full bg-cyan-300 text-[#06101f] hover:bg-cyan-200"
+          >
+            <Sparkles className="h-4 w-4" />
+            Apply Suggestion
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function MissionConfigAppliedDialog({
+  suggestion,
+  launchAfterConfirm,
+  onLaunch,
+  onOpenChange,
+}: {
+  suggestion: ConfigSuggestion | null;
+  launchAfterConfirm?: boolean;
+  onLaunch?: () => void;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const config = suggestion?.config;
+  const chips = config ? [
+    ["Type", MISSION_TYPE_LABELS[config.missionType]],
+    ["Depth", DEPTH_LABELS[config.depth]],
+    ["Horizon", getTimeHorizonLabel(config)],
+    ["Budget", BUDGET_RANGE_LABELS[config.budgetRange]],
+    ["Risk", RISK_TOLERANCE_LABELS[config.riskTolerance]],
+    ["Format", OUTPUT_FORMAT_LABELS[config.outputFormat]],
+  ] : [];
+
+  const handleContinue = () => {
+    onOpenChange(false);
+    if (launchAfterConfirm) onLaunch?.();
+  };
+
+  return (
     <Dialog open={Boolean(suggestion)} onOpenChange={onOpenChange}>
       <DialogContent className="border-emerald-200/20 bg-[#071424]/96 text-white shadow-[0_28px_100px_rgba(16,185,129,0.18)] backdrop-blur-2xl sm:max-w-lg">
         <DialogHeader>
@@ -375,7 +520,11 @@ function MissionConfigAppliedDialog({ suggestion, onOpenChange }: { suggestion: 
             <Sparkles className="h-5 w-5 text-emerald-100" />
           </div>
           <DialogTitle className="text-xl text-white">Agents updated this mission configuration</DialogTitle>
-          <DialogDescription className="text-white/58">The suggested settings are now applied to this brief. You can continue refining the mission or launch it when ready.</DialogDescription>
+          <DialogDescription className="text-white/58">
+            {launchAfterConfirm
+              ? "The suggested settings are applied. Continue to launch this mission immediately."
+              : "The suggested settings are now applied to this brief. You can continue refining the mission or launch it when ready."}
+          </DialogDescription>
         </DialogHeader>
         <div className="grid gap-2 sm:grid-cols-2">
           {chips.map(([label, value]) => (
@@ -386,7 +535,16 @@ function MissionConfigAppliedDialog({ suggestion, onOpenChange }: { suggestion: 
           ))}
         </div>
         <div className="flex justify-end">
-          <Button onClick={() => onOpenChange(false)} className="rounded-full bg-emerald-300 text-[#06101f] hover:bg-emerald-200">Continue</Button>
+          <Button onClick={handleContinue} className="gap-2 rounded-full bg-emerald-300 text-[#06101f] hover:bg-emerald-200">
+            {launchAfterConfirm ? (
+              <>
+                <Rocket className="h-4 w-4" />
+                Launch Mission
+              </>
+            ) : (
+              "Continue"
+            )}
+          </Button>
         </div>
       </DialogContent>
     </Dialog>

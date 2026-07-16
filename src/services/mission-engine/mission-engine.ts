@@ -224,6 +224,71 @@ function inferExplicitTimeHorizon(brief: string): Pick<MissionConfiguration, "ti
   };
 }
 
+function inferExplicitRiskTolerance(brief: string): MissionConfiguration["riskTolerance"] {
+  const lowered = sanitizeUserFacingText(brief).toLowerCase();
+
+  if (/\b(aggressive(?:ly)?|high[\s-]?risk|high risk tolerance|bold(?:ly)?|move fast|accept(?:ing)? risk|take risks|risky approach)\b/.test(lowered)) {
+    return "aggressive";
+  }
+  if (/\b(conservative(?:ly)?|concerned|cautious(?:ly)?|low[\s-]?risk|risk[\s-]?averse|minimal risk|reduce risk|avoid risk|play it safe|safety first)\b/.test(lowered)) {
+    return "conservative";
+  }
+  if (/\b(balanced(?:ly)?|moderate(?:ly)?|medium[\s-]?(?:risk|tolerance)|balanced risk tolerance)\b/.test(lowered)) {
+    return "balanced";
+  }
+
+  const riskContext = /\b(risk|risky|risk-averse|risk tolerance|tolerance for risk)\b/.test(lowered)
+    || /\b(to|want to|willing to)\s+risk\b/.test(lowered);
+  if (!riskContext) return "none";
+
+  if (/\b(high|more|greater|maximum|a lot of)\b/.test(lowered)) return "aggressive";
+  if (/\b(low|less|minimal|little)\b/.test(lowered)) return "conservative";
+  return "none";
+}
+
+function extractMoneyAmounts(text: string): number[] {
+  const amounts: number[] = [];
+  const patterns = [
+    /\$\s*([\d,]+(?:\.\d{1,2})?)/g,
+    /([\d,]+(?:\.\d{1,2})?)\s*\$/g,
+    /\b([\d,]+(?:\.\d{1,2})?)\s*(?:usd|dollars?)\b/gi,
+  ];
+  for (const pattern of patterns) {
+    for (const match of text.matchAll(pattern)) {
+      const value = Number(match[1].replace(/,/g, ""));
+      if (Number.isFinite(value) && value > 0) amounts.push(value);
+    }
+  }
+  return amounts;
+}
+
+function inferExplicitBudgetRange(brief: string): MissionConfiguration["budgetRange"] {
+  const lowered = sanitizeUserFacingText(brief).toLowerCase();
+  const amounts = extractMoneyAmounts(lowered);
+  const maxAmount = amounts.length ? Math.max(...amounts) : undefined;
+
+  if (/\b(no budget|zero budget|free|zero cost|no cost)\b/.test(lowered)) return "none";
+  if (/\b(enterprise|large budget|corporate|unlimited budget|big budget|seven[\s-]?figure|six[\s-]?figure)\b/.test(lowered)) {
+    return maxAmount !== undefined && maxAmount <= 25000 ? "medium" : "enterprise";
+  }
+
+  if (maxAmount !== undefined) {
+    if (maxAmount <= 2000) return "low";
+    if (maxAmount <= 50000) return "medium";
+    return "enterprise";
+  }
+
+  if (/\b(low budget|cheap|lean|bootstrap|small budget|tight budget|limited budget|minimal budget|shoestring)\b/.test(lowered)) {
+    return "low";
+  }
+  if (/\b(medium budget|moderate budget|mid[\s-]?range budget)\b/.test(lowered)) return "medium";
+
+  const mentionsSpending = /\b(spend|spending|spend up to|budget|cost|costs|pricing|paid|pay|invest|investment|cap(?:ped)? at|max(?:imum)?|limit(?:ed)? to|under|at most|no more than)\b/.test(lowered);
+  if (mentionsSpending) return "medium";
+
+  return "none";
+}
+
 function configuredHorizonInDays(config: MissionConfiguration) {
   const known: Partial<Record<MissionConfiguration["timeHorizon"], number>> = {
     "7-days": 7,
@@ -612,19 +677,18 @@ export class MissionEngine {
       timeHorizon: currentConfig?.timeHorizon ?? "none",
       customTimeHorizon: currentConfig?.customTimeHorizon,
       budgetRange: currentConfig?.budgetRange ?? "none",
-      riskTolerance: currentConfig?.riskTolerance ?? "balanced",
+      riskTolerance: currentConfig?.riskTolerance ?? "none",
       outputFormat: currentConfig?.outputFormat ?? "direct-result",
     };
     const classification = this.classifyMission(brief, baseConfig);
-    const lowered = sanitizeUserFacingText(brief).toLowerCase();
     const horizon = inferExplicitTimeHorizon(brief);
     const config: MissionConfiguration = {
       missionType: this.suggestMissionType(classification.strategy.missionType),
       depth: classification.strategy.complexity >= 7 ? "deep-analysis" : classification.strategy.complexity <= 2 ? "fast" : "balanced",
       outputFormat: this.suggestOutputFormat(classification.strategy.deliverableMode, classification.strategy.missionType),
       ...horizon,
-      budgetRange: /\b(no budget|free|zero cost)\b/.test(lowered) ? "none" : /\b(low budget|cheap|lean|bootstrap)\b/.test(lowered) ? "low" : /\b(enterprise|large budget|corporate)\b/.test(lowered) ? "enterprise" : /\b(budget|cost|pricing|paid)\b/.test(lowered) ? "medium" : "none",
-      riskTolerance: classification.strategy.requiresConflictResolution || classification.strategy.complexity >= 8 ? "conservative" : classification.strategy.complexity <= 2 ? "none" : "balanced",
+      budgetRange: inferExplicitBudgetRange(brief),
+      riskTolerance: inferExplicitRiskTolerance(brief),
     };
     const why = [
       `Detected ${classification.strategy.missionType.replace(/_/g, " ")} mission`,
