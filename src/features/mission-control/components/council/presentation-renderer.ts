@@ -140,13 +140,13 @@ export function composeReportSections(report: MissionReport): HumanReportSection
   const sections: Array<[string, string | undefined, string]> = [
     ["Consulting Summary", report.executiveSummary, "Primary answer"],
     ["Objective", report.missionObjective, "User request"],
-    ["Expert Contributions", report.agentContributions, "Specialist synthesis"],
-    ["Workstreams", report.workstreams, "Completed work"],
+    // ["Expert Contributions", report.agentContributions, "Specialist synthesis"],
+    // ["Workstreams", report.workstreams, "Completed work"],
     ["Decision Notes", report.keyDisagreements || report.mediatorDecisions, "Tradeoffs"],
-    ["Action Plan", report.executionRoadmap, "Next steps"],
-    ["Risk Summary", report.riskAssessment, "Executive risk view"],
+    // ["Action Plan", report.executionRoadmap, "Next steps"],
+    // ["Risk Summary", report.riskAssessment, "Executive risk view"],
     ["Resources", report.budgetEstimate, "Budget and constraints"],
-    ["Success Measures", report.successMetrics, "How to judge quality"],
+    // ["Success Measures", report.successMetrics, "How to judge quality"],
     ["Final Recommendations", report.finalRecommendations, "Recommended path"],
   ];
 
