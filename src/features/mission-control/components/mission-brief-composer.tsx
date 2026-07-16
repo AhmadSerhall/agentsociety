@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { motion } from "framer-motion";
-import { Loader2, Rocket, Settings2, ShieldAlert, SlidersHorizontal, Sparkles, X } from "lucide-react";
+import { Loader2, RefreshCw, Rocket, Settings2, ShieldAlert, SlidersHorizontal, Sparkles, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -20,63 +20,13 @@ import {
   getTimeHorizonLabel,
   type MissionConfiguration,
 } from "@/types";
-import { MissionEngine } from "@/services/mission-engine";
+import { MissionEngine, generateHistoryMissionSuggestions, replaceHistoryMissionSuggestion, type HistoryMissionSuggestion } from "@/services/mission-engine";
+import type { MissionHistoryEntry } from "@/types";
 
-type PromptSuggestion = {
-  label: string;
-  prompt: string;
-  config: Partial<MissionConfiguration>;
-};
-
-const EMPTY_HISTORY: ReturnType<typeof useHistoryStore.getState>["entries"] = [];
 type ConfigSuggestion = ReturnType<MissionEngine["suggestMissionConfiguration"]>;
 const MISSION_VALIDATOR = new MissionEngine();
-
-const INSPIRATION_PROMPTS: PromptSuggestion[] = [
-  {
-    label: "Startup Launch",
-    prompt: "Launch an AI SaaS startup for restaurants with an MVP, pricing, launch plan, and risk review.",
-    config: {
-      missionType: "startup-launch",
-      outputFormat: "execution-roadmap",
-      timeHorizon: "30-days",
-    },
-  },
-  {
-    label: "Software Architecture",
-    prompt: "Design a scalable software architecture for a multi-tenant AI operations platform with an execution roadmap.",
-    config: {
-      missionType: "software-architecture",
-      outputFormat: "technical-plan",
-    },
-  },
-  {
-    label: "Marketing Campaign",
-    prompt: "Create a multi-channel marketing campaign for a premium AI productivity product with budget and timeline.",
-    config: {
-      missionType: "marketing-campaign",
-      outputFormat: "strategy-brief",
-    },
-  },
-  {
-    label: "Research Plan",
-    prompt: "Build a rigorous research plan for validating a new AI agent product, including assumptions and deliverables.",
-    config: {
-      missionType: "research-plan",
-      outputFormat: "executive-report",
-    },
-  },
-  {
-    label: "Decision Review",
-    prompt: "Compare three viable approaches to an important decision, test the assumptions behind each option, and recommend a measurable next step.",
-    config: { missionType: "general-mission", outputFormat: "strategy-brief" },
-  },
-  {
-    label: "Process Improvement",
-    prompt: "Analyze an existing process, identify its largest source of friction, and create a prioritized improvement plan with success measures.",
-    config: { missionType: "general-mission", outputFormat: "execution-roadmap" },
-  },
-];
+const CONFIG_ENGINE = new MissionEngine();
+const EMPTY_HISTORY: MissionHistoryEntry[] = [];
 
 export function MissionBriefComposer({
   brief,
@@ -110,13 +60,13 @@ export function MissionBriefComposer({
   const historyEntries = useHistoryStore((state) => state.entries);
   const rememberPreviousContext = getSavedSettingsOptions().preferences.rememberContext;
   const sourceHistory = rememberPreviousContext ? historyEntries : EMPTY_HISTORY;
-  const [inspirationOffset, setInspirationOffset] = useState(0);
-  const recommendedPrompts = useMemo(
-    () => sourceHistory.length ? buildRecommendedPrompts(sourceHistory) : rotateInspirations(inspirationOffset),
-    [inspirationOffset, sourceHistory],
-  );
-  const hasHistoryRecommendations = sourceHistory.length > 0 && recommendedPrompts.length > 0;
+  const hasMissionHistory = sourceHistory.length > 0;
+  const quickPrompts = useMemo(() => buildRecommendedPrompts(sourceHistory), [sourceHistory]);
   const configNeedsAttention = brief.trim().length > 0 && !showConfig && !isRunning && !isValidating;
+  const [recommendationsOpen, setRecommendationsOpen] = useState(false);
+  const [historySuggestions, setHistorySuggestions] = useState<HistoryMissionSuggestion[]>([]);
+  const [historySuggestionsLoading, setHistorySuggestionsLoading] = useState(false);
+  const [historySuggestionsError, setHistorySuggestionsError] = useState("");
   const [suggestion, setSuggestion] = useState<ConfigSuggestion | null>(null);
   const [dismissedText, setDismissedText] = useState("");
   const [appliedSuggestion, setAppliedSuggestion] = useState<ConfigSuggestion | null>(null);
@@ -130,12 +80,6 @@ export function MissionBriefComposer({
   } | null>(null);
   const understanding = trimmedBrief.length > 0 && understandingSnapshot?.brief === trimmedBrief ? understandingSnapshot.result : null;
   const suggestionVisible = Boolean(suggestion && !showConfig && !isRunning && !isValidating && trimmedBrief.length >= 18 && trimmedBrief !== dismissedText);
-
-  useEffect(() => {
-    if (sourceHistory.length > 0) return;
-    const interval = window.setInterval(() => setInspirationOffset((current) => current + 1), 9000);
-    return () => window.clearInterval(interval);
-  }, [sourceHistory.length]);
 
   useEffect(() => {
     const text = trimmedBrief;
@@ -206,6 +150,40 @@ export function MissionBriefComposer({
     onLaunch();
   };
 
+  const selectHistorySuggestion = (prompt: string) => {
+    const suggestedConfig = CONFIG_ENGINE.suggestMissionConfiguration(prompt).config;
+    onExampleSelect(prompt, suggestedConfig);
+    setRecommendationsOpen(false);
+  };
+
+  const openHistoryRecommendations = () => {
+    if (!hasMissionHistory || isRunning || isValidating) return;
+    setRecommendationsOpen(true);
+    setHistorySuggestionsLoading(true);
+    setHistorySuggestionsError("");
+    void generateHistoryMissionSuggestions(sourceHistory)
+      .then((result) => {
+        setHistorySuggestions(result);
+      })
+      .catch((err) => {
+        setHistorySuggestionsError(err instanceof Error ? err.message : "Could not generate recommendations.");
+      })
+      .finally(() => {
+        setHistorySuggestionsLoading(false);
+      });
+  };
+
+  const replaceHistorySuggestionItem = async (current: HistoryMissionSuggestion) => {
+    const entry = sourceHistory.find((item) => item.id === current.historyId);
+    if (!entry) return null;
+    const excludePrompts = historySuggestions.filter((item) => item.historyId === entry.id).map((item) => item.prompt);
+    const replacement = await replaceHistoryMissionSuggestion(entry, excludePrompts);
+    if (replacement) {
+      setHistorySuggestions((prev) => prev.map((item) => (item.id === current.id ? replacement : item)));
+    }
+    return replacement;
+  };
+
   return (
     <motion.section
       initial={{ opacity: 0, y: 24, scale: 0.985 }}
@@ -220,11 +198,21 @@ export function MissionBriefComposer({
       <div className="relative">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-            <span className="flex items-center gap-2 rounded-full border border-cyan-300/15 bg-cyan-300/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-100/75">
+            <motion.button
+              type="button"
+              whileHover={hasMissionHistory ? { y: -2, scale: 1.02 } : undefined}
+              whileTap={hasMissionHistory ? { scale: 0.98 } : undefined}
+              onClick={openHistoryRecommendations}
+              disabled={!hasMissionHistory || isRunning || isValidating}
+              className="flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3.5 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-100/80 transition hover:border-cyan-200/40 hover:bg-cyan-300/15 hover:text-cyan-50 disabled:cursor-not-allowed disabled:opacity-45"
+            >
               <Sparkles className="h-3.5 w-3.5" />
-              {hasHistoryRecommendations ? "Recommended for you" : inspirationOffset % 2 === 0 ? "Random Inspiration" : "Explore Templates"}
-            </span>
-            {recommendedPrompts.map((example) => (
+              Recommended for you
+            </motion.button>
+            {!hasMissionHistory && (
+              <span className="text-xs text-white/38">Complete a mission to unlock AI recommendations.</span>
+            )}
+            {quickPrompts.map((example) => (
               <motion.button
                 key={example.label}
                 type="button"
@@ -273,6 +261,17 @@ export function MissionBriefComposer({
             </SheetContent>
           </Sheet>
         </div>
+
+        <HistoryRecommendationsSheet
+          open={recommendationsOpen}
+          entries={sourceHistory}
+          suggestions={historySuggestions}
+          loading={historySuggestionsLoading}
+          error={historySuggestionsError}
+          onOpenChange={setRecommendationsOpen}
+          onSelect={selectHistorySuggestion}
+          onReplace={replaceHistorySuggestionItem}
+        />
 
         <Textarea
           placeholder={
@@ -399,6 +398,131 @@ export function MissionBriefComposer({
         </div>
       </div>
     </motion.section>
+  );
+}
+
+function HistoryRecommendationsSheet({
+  open,
+  entries,
+  suggestions,
+  loading,
+  error,
+  onOpenChange,
+  onSelect,
+  onReplace,
+}: {
+  open: boolean;
+  entries: MissionHistoryEntry[];
+  suggestions: HistoryMissionSuggestion[];
+  loading: boolean;
+  error: string;
+  onOpenChange: (open: boolean) => void;
+  onSelect: (prompt: string) => void;
+  onReplace: (current: HistoryMissionSuggestion) => Promise<HistoryMissionSuggestion | null>;
+}) {
+  const [replacingId, setReplacingId] = useState<string | null>(null);
+  const [replaceError, setReplaceError] = useState("");
+
+  const grouped = useMemo(() => {
+    const map = new Map<string, { entry: MissionHistoryEntry; items: HistoryMissionSuggestion[] }>();
+    for (const entry of entries.slice(0, 5)) {
+      map.set(entry.id, { entry, items: suggestions.filter((item) => item.historyId === entry.id) });
+    }
+    return Array.from(map.values());
+  }, [entries, suggestions]);
+
+  const replaceSuggestion = async (current: HistoryMissionSuggestion) => {
+    setReplacingId(current.id);
+    setReplaceError("");
+    try {
+      await onReplace(current);
+    } catch (err) {
+      setReplaceError(err instanceof Error ? err.message : "Could not replace this recommendation.");
+    } finally {
+      setReplacingId(null);
+    }
+  };
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="w-full overflow-hidden border-l border-cyan-200/20 bg-[#06101d]/92 p-0 text-white shadow-[0_0_110px_rgba(34,211,238,0.22)] backdrop-blur-2xl sm:max-w-2xl">
+        <SheetHeader className="sticky top-0 z-10 border-b border-cyan-200/10 bg-[#06101d]/95 p-5 backdrop-blur-2xl">
+          <SheetTitle className="flex items-center gap-3 text-white">
+            <span className="grid h-10 w-10 place-items-center rounded-2xl border border-cyan-200/20 bg-cyan-300/10">
+              <Sparkles className="h-5 w-5 text-cyan-100" />
+            </span>
+            Recommended for you
+          </SheetTitle>
+          <p className="text-sm leading-relaxed text-white/55">
+            AI-generated follow-up missions inspired by your mission history. Each suggestion stays on the same topic but explores a fresh angle.
+          </p>
+        </SheetHeader>
+
+        <div className="h-full overflow-y-auto px-5 pb-10 [scrollbar-color:rgba(34,211,238,0.35)_transparent]">
+          {loading && (
+            <div className="flex items-center gap-3 rounded-2xl border border-cyan-200/15 bg-cyan-300/[0.045] p-4 text-sm text-cyan-100/80">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Generating recommendations from your mission history...
+            </div>
+          )}
+
+          {(error || replaceError) && (
+            <div className="mb-4 rounded-2xl border border-amber-200/20 bg-amber-300/[0.06] p-4 text-sm text-amber-100/80">
+              {error || replaceError}
+            </div>
+          )}
+
+          {!loading && grouped.map(({ entry, items }) => (
+            <div key={entry.id} className="mt-5 first:mt-0">
+              <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                <p className="text-[0.62rem] font-semibold uppercase tracking-[0.16em] text-white/38">Inspired by</p>
+                <p className="mt-1 text-sm leading-relaxed text-white/72">{entry.missionBrief}</p>
+              </div>
+
+              <div className="mt-3 space-y-3">
+                {items.map((item) => (
+                  <div key={item.id} className="rounded-2xl border border-cyan-200/15 bg-cyan-300/[0.045] p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-cyan-50">{item.label}</p>
+                        <p className="mt-2 text-xs leading-relaxed text-white/55">{item.prompt}</p>
+                      </div>
+                      <div className="flex shrink-0 flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={replacingId === item.id}
+                          onClick={() => void replaceSuggestion(item)}
+                          className="gap-1.5 rounded-full border-white/10 bg-white/[0.04] text-white/70 hover:bg-white/[0.08] hover:text-white"
+                        >
+                          {replacingId === item.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                          Replace
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => onSelect(item.prompt)}
+                          className="rounded-full bg-cyan-300 text-[#06101f] hover:bg-cyan-200"
+                        >
+                          Use Mission
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                {!loading && items.length === 0 && (
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-white/45">
+                    No suggestions generated for this mission yet.
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }
 
@@ -612,43 +736,92 @@ function MissionConfigSuggestionOverlay({
   );
 }
 
-function buildRecommendedPrompts(entries: ReturnType<typeof useHistoryStore.getState>["entries"]) {
-  const recent = entries.slice(0, 3);
-  const latest = recent[0];
-  if (!latest) return rotateInspirations(0);
+function buildRecommendedPrompts(entries: MissionHistoryEntry[]) {
+  const recent = entries.slice(0, 5);
+  const latestCancelled = recent.find((entry) => !entry.finalReport);
+  const latestCompleted = recent.find((entry) => Boolean(entry.finalReport));
+  const candidates: Array<{ label: string; prompt: string; config: Partial<MissionConfiguration> } | null> = [];
 
-  const recommendation = firstReportInsight(latest.finalReport?.finalRecommendations);
-  const nextStep = firstReportInsight(latest.finalReport?.executionRoadmap);
-  const risk = firstReportInsight(latest.finalReport?.riskAssessment);
-  const candidates: Array<PromptSuggestion | null> = [
-    {
+  if (latestCancelled) {
+    candidates.push({
+      label: "Continue Cancelled Mission",
+      prompt: compactPrompt(
+        `Resume the cancelled mission "${latestCancelled.missionBrief}".${describeCancelledMissionState(latestCancelled)} Continue from the last reliable checkpoint, finish incomplete workstreams, and deliver the remaining outcome.`,
+      ),
+      config: latestCancelled.configuration,
+    });
+  }
+
+  if (latestCompleted) {
+    const recommendation = firstReportInsight(latestCompleted.finalReport?.finalRecommendations);
+    const nextStep = firstReportInsight(latestCompleted.finalReport?.executionRoadmap);
+    const risk = firstReportInsight(latestCompleted.finalReport?.riskAssessment);
+
+    candidates.push({
       label: "Continue Last Mission",
-      prompt: compactPrompt(`Continue the completed mission "${latest.missionBrief}" as its next executable phase.${recommendation ? ` Start from this recommendation: ${recommendation}` : " Identify the strongest unfinished outcome, then define concrete deliverables and acceptance criteria."}`),
-      config: latest.configuration,
-    },
-    nextStep ? {
-      label: "Implement Next Step",
-      prompt: compactPrompt(`Turn this next step from "${latest.missionBrief}" into an implementation mission with owners, dependencies, acceptance criteria, and a verification plan: ${nextStep}`),
-      config: { ...latest.configuration, outputFormat: "execution-roadmap" },
-    } : null,
-    risk ? {
-      label: "Reduce Key Risk",
-      prompt: compactPrompt(`Investigate and reduce the leading risk identified by "${latest.missionBrief}". Validate the underlying assumption, compare practical mitigations, and recommend the safest next decision: ${risk}`),
-      config: { ...latest.configuration, riskTolerance: "conservative" as const },
-    } : null,
-    recent[1] ? {
-      label: "Improve Recent Work",
-      prompt: compactPrompt(`Review the completed result of "${recent[1].missionBrief}" against its intended outcome. Identify what evidence, implementation detail, or decision is still missing, then produce an improved version.`),
-      config: recent[1].configuration,
-    } : null,
-  ];
-  const prompts = candidates.filter((item): item is PromptSuggestion => item !== null);
+      prompt: compactPrompt(
+        `Continue the completed mission "${latestCompleted.missionBrief}" as its next executable phase.${recommendation ? ` Start from this recommendation: ${recommendation}` : " Identify the strongest unfinished outcome, then define concrete deliverables and acceptance criteria."}`,
+      ),
+      config: latestCompleted.configuration,
+    });
 
-  return prompts.slice(0, 4);
+    if (nextStep) {
+      candidates.push({
+        label: "Implement Next Step",
+        prompt: compactPrompt(
+          `Turn this next step from "${latestCompleted.missionBrief}" into an implementation mission with owners, dependencies, acceptance criteria, and a verification plan: ${nextStep}`,
+        ),
+        config: { ...latestCompleted.configuration, outputFormat: "execution-roadmap" },
+      });
+    }
+
+    if (risk) {
+      candidates.push({
+        label: "Reduce Key Risk",
+        prompt: compactPrompt(
+          `Investigate and reduce the leading risk identified by "${latestCompleted.missionBrief}". Validate the underlying assumption, compare practical mitigations, and recommend the safest next decision: ${risk}`,
+        ),
+        config: { ...latestCompleted.configuration, riskTolerance: "conservative" as const },
+      });
+    }
+  }
+
+  const secondary = recent.find((entry) => entry.id !== latestCompleted?.id && entry.id !== latestCancelled?.id);
+  if (secondary) {
+    candidates.push({
+      label: "Improve Recent Work",
+      prompt: compactPrompt(
+        `Review the result of "${secondary.missionBrief}" against its intended outcome. Identify what evidence, implementation detail, or decision is still missing, then produce an improved version.`,
+      ),
+      config: secondary.configuration,
+    });
+  }
+
+  const seen = new Set<string>();
+  return candidates
+    .filter((item): item is NonNullable<typeof item> => item !== null)
+    .filter((item) => {
+      if (seen.has(item.label)) return false;
+      seen.add(item.label);
+      return true;
+    })
+    .slice(0, 4);
 }
 
-function rotateInspirations(offset: number) {
-  return Array.from({ length: Math.min(4, INSPIRATION_PROMPTS.length) }, (_, index) => INSPIRATION_PROMPTS[(offset + index) % INSPIRATION_PROMPTS.length]);
+function describeCancelledMissionState(entry: MissionHistoryEntry) {
+  const completedWorkstreams = entry.workstreams.filter((workstream) => workstream.status === "completed").length;
+  const totalWorkstreams = entry.workstreams.length;
+  const latestDialogue = entry.dialogue.at(-1);
+  const dialogueSummary = latestDialogue && "content" in latestDialogue
+    ? latestDialogue.content
+    : "";
+  const progress = totalWorkstreams > 0
+    ? ` Partial progress: ${completedWorkstreams}/${totalWorkstreams} workstreams completed.`
+    : " The mission was cancelled before meaningful workstream completion.";
+  const signal = dialogueSummary
+    ? ` Latest agent signal: ${sanitizeBriefSnippet(dialogueSummary)}.`
+    : "";
+  return `${progress}${signal}`;
 }
 
 function firstReportInsight(value?: string) {
@@ -660,6 +833,10 @@ function firstReportInsight(value?: string) {
 
 function compactPrompt(value: string) {
   return value.replace(/\s+/g, " ").trim().slice(0, 520);
+}
+
+function sanitizeBriefSnippet(value: string) {
+  return value.replace(/\s+/g, " ").trim().slice(0, 180);
 }
 
 function ConfigChip({ label, value }: { label: string; value: string }) {
