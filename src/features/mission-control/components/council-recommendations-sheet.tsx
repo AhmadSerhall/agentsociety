@@ -225,51 +225,51 @@ export function buildFallbackSuggestion(
   const templates: Array<{ label: string; prompt: string; why: string; angle: string }> = [
     {
       angle: "compare options within the topic",
-      label: `Best Options for ${topic}`.slice(0, 72),
+      label: `Compare options for ${topic}`.slice(0, 72),
       prompt: `What are the best options I should consider for ${topic}?`,
-      why: `Suggested because comparing options is a useful next angle for ${topic}.`,
+      why: "The completed work leaves a decision open; comparing options makes the next move clearer.",
     },
     {
       angle: "investigate common mistakes",
-      label: `Common Mistakes in ${topic}`.slice(0, 72),
+      label: `Avoid pitfalls in ${topic}`.slice(0, 72),
       prompt: `What common mistakes should I avoid when working on ${topic}?`,
-      why: `Suggested because avoiding mistakes protects progress on ${topic}.`,
+      why: "This follows naturally from the work so far by protecting the plan from avoidable setbacks.",
     },
     {
       angle: "create a focused routine",
-      label: `Practice Routine for ${topic}`.slice(0, 72),
+      label: `Build a practical routine for ${topic}`.slice(0, 72),
       prompt: `Create a focused daily practice routine for ${topic}.`,
-      why: `Suggested because a routine turns ${topic} into steady progress.`,
+      why: "A repeatable routine turns the council's recommendations into steady progress.",
     },
     {
       angle: "improve a particular skill",
-      label: `Core Skills for ${topic}`.slice(0, 72),
+      label: `Strengthen the key skills for ${topic}`.slice(0, 72),
       prompt: `Which skills matter most for ${topic}, and how should I improve them?`,
-      why: `Suggested because skill focus is a high-leverage angle for ${topic}.`,
+      why: "This focuses effort on the capabilities most likely to improve the outcome.",
     },
     {
       angle: "review tools or resources",
-      label: `Useful Resources for ${topic}`.slice(0, 72),
+      label: `Choose the right tools for ${topic}`.slice(0, 72),
       prompt: `What tools or resources should I use to get better at ${topic}?`,
-      why: `Suggested because the right resources accelerate ${topic}.`,
+      why: "The right tools and resources can shorten the path from intent to execution.",
     },
     {
       angle: "solve a likely obstacle",
-      label: `Overcome Obstacles in ${topic}`.slice(0, 72),
+      label: `Clear likely blockers in ${topic}`.slice(0, 72),
       prompt: `What obstacles usually block progress on ${topic}, and how do I solve them?`,
-      why: `Suggested because clearing obstacles unblocks ${topic}.`,
+      why: "This addresses the obstacles most likely to slow down the next phase of work.",
     },
     {
       angle: "measure progress",
-      label: `Track Progress on ${topic}`.slice(0, 72),
+      label: `Measure progress on ${topic}`.slice(0, 72),
       prompt: `How should I measure progress on ${topic} week by week?`,
-      why: `Suggested because clear metrics keep ${topic} on track.`,
+      why: "Clear signals make it easier to see whether the next step is working.",
     },
     {
       angle: "explore an advanced subtopic",
-      label: `Advanced ${topic} Strategies`.slice(0, 72),
+      label: `Explore the next strategic angle for ${topic}`.slice(0, 72),
       prompt: `Explore the most important advanced strategies for ${topic}.`,
-      why: `Suggested because a deeper angle on ${topic} creates a useful follow-up mission.`,
+      why: "The current result creates a clear opportunity to go deeper where it will matter most.",
     },
   ];
 
@@ -281,12 +281,11 @@ export function buildFallbackSuggestion(
     return template;
   }
 
-  const serial = used.prompts.length + 1;
   return {
     angle,
-    label: `${topic} Follow-Up ${serial}`.slice(0, 72),
+    label: `Take the next practical step for ${topic}`.slice(0, 72),
     prompt: `Explore another useful angle of ${topic} that I have not covered yet.`,
-    why: `Suggested because this stays on ${topic} with a fresh angle.`,
+    why: "This keeps momentum by turning the completed work into a focused next decision.",
   };
 }
 

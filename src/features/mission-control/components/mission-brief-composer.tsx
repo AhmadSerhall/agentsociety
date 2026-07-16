@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { motion } from "framer-motion";
-import { Loader2, Rocket, Settings2, ShieldAlert, SlidersHorizontal, Sparkles, X } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import { BrainCircuit, FileOutput, Loader2, Network, Rocket, Settings2, ShieldAlert, SlidersHorizontal, Sparkles, UsersRound, X } from "lucide-react";
+import { getAgentByRole } from "@/agents/definitions";
 import { useTypewriterText } from "@/hooks/use-typewriter-text";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,12 @@ type ConfigSuggestion = ReturnType<MissionEngine["suggestMissionConfiguration"]>
 const MISSION_VALIDATOR = new MissionEngine();
 const CONFIG_ENGINE = new MissionEngine();
 const EMPTY_HISTORY: MissionHistoryEntry[] = [];
+const ROTATING_EXAMPLES = [
+  "Plan a focused product launch with a clear budget and timeline.",
+  "Compare practical approaches to an important decision and recommend the strongest next step.",
+  "Design a validation plan for a new idea, including evidence, risks, and a go or no-go decision.",
+];
+const LAUNCH_SEQUENCE = ["Mission accepted", "Dispatching Planner", "Initializing specialists", "Building Mission Graph", "Entering War Room"];
 
 export function MissionBriefComposer({
   brief,
@@ -77,6 +84,11 @@ export function MissionBriefComposer({
   const [suggestionReviewed, setSuggestionReviewed] = useState(false);
   const [configReviewOpen, setConfigReviewOpen] = useState(false);
   const [launchAfterConfigApplied, setLaunchAfterConfigApplied] = useState(false);
+  const [placeholderIndex, setPlaceholderIndex] = useState(0);
+  const [understandingPending, setUnderstandingPending] = useState(false);
+  const [activityIndex, setActivityIndex] = useState(0);
+  const [launchStage, setLaunchStage] = useState<number | null>(null);
+  const launchTimersRef = useRef<number[]>([]);
   const trimmedBrief = brief.trim();
   const [understandingSnapshot, setUnderstandingSnapshot] = useState<{
     brief: string;
@@ -84,24 +96,70 @@ export function MissionBriefComposer({
   } | null>(null);
   const understanding = trimmedBrief.length > 0 && understandingSnapshot?.brief === trimmedBrief ? understandingSnapshot.result : null;
   const suggestionVisible = Boolean(suggestion && !showConfig && !isRunning && !isValidating && trimmedBrief.length >= 18 && trimmedBrief !== dismissedText);
+  const councilIntake = useMemo(() => {
+    if (!trimmedBrief) return null;
+    const recommendation = CONFIG_ENGINE.suggestMissionConfiguration(trimmedBrief, config);
+    const strategy = recommendation.classification;
+    return {
+      domain: MISSION_TYPE_LABELS[recommendation.config.missionType],
+      objective: compactObjective(trimmedBrief),
+      complexity: strategy.complexity,
+      specialists: strategy.recommendedAgents.slice(0, 4).map((role) => getAgentByRole(role)?.name ?? role.replace(/-/g, " ")),
+      deliverable: OUTPUT_FORMAT_LABELS[recommendation.config.outputFormat],
+      workstreams: strategy.estimatedWorkstreams,
+    };
+  }, [config, trimmedBrief]);
+  const activityMessages = councilIntake ? [
+    `Planner is framing the ${councilIntake.deliverable.toLocaleLowerCase()}...`,
+    `Research is identifying the ${councilIntake.domain.toLocaleLowerCase()} domain...`,
+    `Architect is estimating ${councilIntake.workstreams} workstreams...`,
+  ] : [];
 
   useEffect(() => {
     const text = trimmedBrief;
     let cancelled = false;
+    if (!text) {
+      const resetTimer = window.setTimeout(() => {
+        setUnderstandingSnapshot(null);
+        setUnderstandingPending(false);
+      }, 0);
+      return () => window.clearTimeout(resetTimer);
+    }
+    const pendingTimer = window.setTimeout(() => setUnderstandingPending(true), 0);
     const timeout = window.setTimeout(() => {
-      void (async () => {
-        const localResult = MISSION_VALIDATOR.validateMissionBrief(text);
-        const result = localResult.valid
-          ? await MISSION_VALIDATOR.validateMissionBriefSemantically(text)
-          : localResult;
-        if (!cancelled) setUnderstandingSnapshot({ brief: text, result });
-      })();
-    }, 1000);
+      if (!cancelled) {
+        setUnderstandingSnapshot({ brief: text, result: MISSION_VALIDATOR.validateMissionBrief(text) });
+        setUnderstandingPending(false);
+      }
+    }, 260);
     return () => {
       cancelled = true;
+      window.clearTimeout(pendingTimer);
       window.clearTimeout(timeout);
     };
   }, [trimmedBrief]);
+
+  useEffect(() => {
+    if (trimmedBrief) return;
+    const interval = window.setInterval(() => setPlaceholderIndex((index) => (index + 1) % ROTATING_EXAMPLES.length), 4200);
+    return () => window.clearInterval(interval);
+  }, [trimmedBrief]);
+
+  useEffect(() => {
+    if (!activityMessages.length || isRunning || isValidating) return;
+    const interval = window.setInterval(() => setActivityIndex((index) => (index + 1) % activityMessages.length), 1350);
+    return () => window.clearInterval(interval);
+  }, [activityMessages.length, isRunning, isValidating]);
+
+  useEffect(() => () => {
+    launchTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+  }, []);
+
+  useEffect(() => {
+    if (!isRunning && !isValidating) return;
+    const clearSequence = window.setTimeout(() => setLaunchStage(null), 0);
+    return () => window.clearTimeout(clearSequence);
+  }, [isRunning, isValidating]);
 
   useEffect(() => {
     const text = trimmedBrief;
@@ -145,13 +203,31 @@ export function MissionBriefComposer({
     onConfigOpenChange(true);
   };
 
+  const startLaunchSequence = () => {
+    if (launchStage !== null || isRunning || isValidating || typingSheetMission) return;
+    const localValidation = MISSION_VALIDATOR.validateMissionBrief(trimmedBrief);
+    if (!localValidation.valid) {
+      onLaunch();
+      return;
+    }
+    setLaunchStage(0);
+    launchTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    launchTimersRef.current = [
+      360,
+      720,
+      1080,
+      1440,
+    ].map((delay, index) => window.setTimeout(() => setLaunchStage(index + 1), delay));
+    launchTimersRef.current.push(window.setTimeout(() => onLaunch(), 1800));
+  };
+
   const requestLaunch = () => {
     if (suggestionVisible && suggestion && !suggestionReviewed) {
       setLaunchAfterConfigApplied(true);
       setConfigReviewOpen(true);
       return;
     }
-    onLaunch();
+    startLaunchSequence();
   };
 
   const handleCouncilSuggestionSelect = (chip: CouncilSuggestionChip, visibleBrief: string) => {
@@ -273,24 +349,43 @@ export function MissionBriefComposer({
           onReplace={replaceHistorySuggestionItem}
         />
 
-        <Textarea
-          placeholder={
-            '"Launch an AI SaaS startup for restaurants..."\n' +
-            '"Plan a full MVP and go-to-market strategy for an AI support platform..."\n' +
-            '"Create an execution roadmap for a modern ERP system..."'
-          }
-          value={brief}
-          onChange={(event) => onBriefChange(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key !== "Enter") return;
-            if (event.shiftKey) return;
-            event.preventDefault();
-            if (!isRunning && !isValidating && !typingSheetMission && brief.trim()) requestLaunch();
-          }}
-          disabled={isRunning || isValidating || typingSheetMission}
-          rows={8}
-          className="min-h-[220px] resize-none rounded-2xl border-cyan-200/15 bg-[#08111f]/78 p-5 text-base leading-7 text-white shadow-inner shadow-black/30 placeholder:text-white/30 focus-visible:border-cyan-200/40 focus-visible:ring-cyan-300/25 md:text-lg"
-        />
+        <div className="relative">
+          <Textarea
+            aria-label="Mission objective"
+            placeholder=""
+            value={brief}
+            onChange={(event) => onBriefChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter") return;
+              if (event.shiftKey) return;
+              event.preventDefault();
+              if (!isRunning && !isValidating && !typingSheetMission && brief.trim()) requestLaunch();
+            }}
+            disabled={isRunning || isValidating || typingSheetMission || launchStage !== null}
+            rows={8}
+            className="min-h-[220px] resize-none rounded-2xl border-cyan-200/15 bg-[#08111f]/78 p-5 text-base leading-7 text-white shadow-inner shadow-black/30 focus-visible:border-cyan-200/40 focus-visible:ring-cyan-300/25 md:text-lg"
+          />
+          <AnimatePresence mode="wait">
+            {!brief && launchStage === null && (
+              <motion.div
+                key={placeholderIndex}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.34, ease: "easeOut" }}
+                className="pointer-events-none absolute inset-x-5 top-5 max-w-2xl text-base leading-7 text-white/34 md:text-lg"
+              >
+                <span className="mb-2 block text-[0.66rem] font-semibold uppercase tracking-[0.22em] text-cyan-100/45">Ask the council to</span>
+                {ROTATING_EXAMPLES[placeholderIndex]}
+              </motion.div>
+            )}
+          </AnimatePresence>
+          <AnimatePresence>
+            {launchStage !== null && (
+              <LaunchSequence stage={launchStage} />
+            )}
+          </AnimatePresence>
+        </div>
 
         {suggestionVisible && suggestion && (
           <MissionConfigSuggestionOverlay
@@ -312,7 +407,7 @@ export function MissionBriefComposer({
         <MissionConfigAppliedDialog
           suggestion={appliedSuggestion}
           launchAfterConfirm={launchAfterConfigApplied}
-          onLaunch={onLaunch}
+          onLaunch={startLaunchSequence}
           onOpenChange={(open) => {
             if (!open) {
               setAppliedSuggestion(null);
@@ -330,30 +425,49 @@ export function MissionBriefComposer({
           </div>
         )}
 
-        {understanding && (
-          <div className={`mt-4 overflow-hidden rounded-2xl border p-3.5 ${understanding.valid ? "border-cyan-200/15 bg-cyan-300/[0.055]" : "border-amber-200/20 bg-amber-300/[0.055]"}`}>
+        {(understanding || understandingPending) && councilIntake && (
+          <motion.div layout className={`mt-4 overflow-hidden rounded-2xl border p-3.5 ${understanding?.valid ? "border-cyan-200/15 bg-cyan-300/[0.055]" : "border-amber-200/20 bg-amber-300/[0.055]"}`}>
             <div className="flex flex-wrap items-center gap-3">
-              <div className={`grid h-11 w-11 shrink-0 place-items-center rounded-full border text-sm font-bold tabular-nums ${understanding.valid ? "border-cyan-200/30 bg-cyan-300/10 text-cyan-100" : "border-amber-200/30 bg-amber-300/10 text-amber-100"}`}>
-                {understanding.score}%
+              <div className={`grid h-11 w-11 shrink-0 place-items-center rounded-full border text-sm font-bold tabular-nums ${understanding?.valid ? "border-cyan-200/30 bg-cyan-300/10 text-cyan-100" : "border-amber-200/30 bg-amber-300/10 text-amber-100"}`}>
+                {understandingPending ? <Loader2 className="h-4 w-4 animate-spin" /> : `${understanding?.score ?? 0}%`}
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/58">Mission Understanding</p>
-                  <span className={`text-xs capitalize ${understanding.valid ? "text-cyan-100/75" : "text-amber-100/75"}`}>{understanding.level}</span>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/58">Council Understanding</p>
+                  <span className={`text-xs capitalize ${understanding?.valid ? "text-cyan-100/75" : "text-amber-100/75"}`}>{understandingPending ? "reading" : understanding?.level}</span>
                 </div>
                 <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/8">
                   <motion.div
-                    className={`h-full rounded-full ${understanding.valid ? "bg-gradient-to-r from-cyan-300 to-emerald-300" : "bg-gradient-to-r from-amber-300 to-orange-300"}`}
-                    animate={{ width: `${understanding.score}%` }}
+                    className={`h-full rounded-full ${understanding?.valid ? "bg-gradient-to-r from-cyan-300 to-emerald-300" : "bg-gradient-to-r from-amber-300 to-orange-300"}`}
+                    animate={{ width: `${understanding?.score ?? 16}%` }}
                     transition={{ duration: 0.35, ease: "easeOut" }}
                   />
                 </div>
-                <p className="mt-2 text-xs leading-relaxed text-white/52">{understanding.summary}</p>
+                <p className="mt-2 text-xs leading-relaxed text-white/52">{understandingPending ? "The council is reading intent, constraints, and the expected outcome locally." : understanding?.summary}</p>
               </div>
             </div>
-            {understanding.gaps.length > 0 && (
-              <p className="mt-2 text-xs leading-relaxed text-white/44">Improve it: {understanding.gaps[0]}</p>
-            )}
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+              <ConsoleSignal icon={BrainCircuit} label="Detected domain" value={councilIntake.domain} />
+              <ConsoleSignal icon={Network} label="Complexity" value={`${complexityLabel(councilIntake.complexity)} · ${councilIntake.complexity}/10`} />
+              <ConsoleSignal icon={UsersRound} label="Specialists" value={councilIntake.specialists.join(", ")} />
+              <ConsoleSignal icon={FileOutput} label="Deliverable" value={councilIntake.deliverable} />
+            </div>
+            <p className="mt-3 text-xs leading-relaxed text-white/52"><span className="font-semibold text-white/72">Objective:</span> {councilIntake.objective}</p>
+            {!understandingPending && understanding?.gaps.length ? <p className="mt-2 text-xs leading-relaxed text-white/44">Refine when ready: {understanding.gaps[0]}</p> : null}
+          </motion.div>
+        )}
+
+        {activityMessages.length > 0 && !isRunning && !isValidating && launchStage === null && (
+          <div className="mt-3 flex items-center gap-2.5 overflow-hidden rounded-xl border border-white/8 bg-black/15 px-3 py-2 text-xs text-white/55">
+            <span className="relative grid h-6 w-6 shrink-0 place-items-center rounded-full border border-cyan-200/20 bg-cyan-300/10 text-cyan-100">
+              <span className="absolute inset-0 animate-ping rounded-full border border-cyan-200/20" />
+              <Sparkles className="relative h-3.5 w-3.5" />
+            </span>
+            <AnimatePresence mode="wait">
+              <motion.p key={activityMessages[activityIndex]} initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -8 }} transition={{ duration: 0.24 }} className="truncate">
+                {activityMessages[activityIndex]}
+              </motion.p>
+            </AnimatePresence>
           </div>
         )}
 
@@ -379,10 +493,15 @@ export function MissionBriefComposer({
               whileHover={{ y: -2, scale: 1.015 }}
               whileTap={{ scale: 0.985 }}
               onClick={requestLaunch}
-              disabled={isRunning || isValidating}
+              disabled={isRunning || isValidating || launchStage !== null}
               className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-gradient-to-r from-cyan-300 via-sky-300 to-purple-400 px-6 text-sm font-bold text-[#06101f] shadow-[0_0_32px_rgba(34,211,238,0.32),0_0_54px_rgba(168,85,247,0.18)] transition disabled:cursor-not-allowed disabled:opacity-70 sm:min-w-44"
             >
-              {isRunning || isValidating ? (
+              {launchStage !== null ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  {LAUNCH_SEQUENCE[launchStage]}
+                </>
+              ) : isRunning || isValidating ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
                   {isValidating ? "Understanding Mission..." : "Mission Running..."}
@@ -617,4 +736,56 @@ function ConfigChip({ label, value }: { label: string; value: string }) {
       <span className="text-white/40">{label}:</span> {value}
     </span>
   );
+}
+
+function ConsoleSignal({ icon: Icon, label, value }: { icon: typeof BrainCircuit; label: string; value: string }) {
+  return (
+    <div className="min-w-0 rounded-xl border border-white/8 bg-black/15 px-2.5 py-2">
+      <p className="flex items-center gap-1.5 text-[0.6rem] font-semibold uppercase tracking-[0.13em] text-white/38"><Icon className="h-3 w-3 text-cyan-200/75" />{label}</p>
+      <p className="mt-1 truncate text-xs font-medium text-white/76" title={value}>{value}</p>
+    </div>
+  );
+}
+
+function LaunchSequence({ stage }: { stage: number }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.98 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 1.01 }}
+      className="absolute inset-0 z-10 grid place-items-center overflow-hidden rounded-2xl border border-cyan-200/20 bg-[radial-gradient(circle_at_50%_0%,rgba(34,211,238,0.18),transparent_42%),rgba(4,12,24,0.94)] p-6 backdrop-blur-xl"
+    >
+      <div className="w-full max-w-md">
+        <div className="mb-5 flex items-center justify-center">
+          <motion.span animate={{ scale: [1, 1.12, 1], rotate: [0, 8, 0] }} transition={{ duration: 1.1, repeat: Infinity, ease: "easeInOut" }} className="grid h-14 w-14 place-items-center rounded-2xl border border-cyan-200/30 bg-cyan-300/10 shadow-[0_0_34px_rgba(34,211,238,0.22)]">
+            <Rocket className="h-6 w-6 text-cyan-100" />
+          </motion.span>
+        </div>
+        <p className="text-center text-[0.66rem] font-semibold uppercase tracking-[0.22em] text-cyan-100/60">Council launch sequence</p>
+        <AnimatePresence mode="wait">
+          <motion.p key={LAUNCH_SEQUENCE[stage]} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="mt-2 text-center text-xl font-semibold text-white">
+            {LAUNCH_SEQUENCE[stage]}
+          </motion.p>
+        </AnimatePresence>
+        <div className="mt-6 flex gap-2">
+          {LAUNCH_SEQUENCE.map((label, index) => (
+            <span key={label} className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/10">
+              <motion.span animate={{ width: index <= stage ? "100%" : "0%" }} transition={{ duration: 0.32, ease: "easeOut" }} className="block h-full rounded-full bg-gradient-to-r from-cyan-300 to-purple-300" />
+            </span>
+          ))}
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+function compactObjective(brief: string) {
+  const normalized = brief.replace(/\s+/g, " ").trim();
+  return normalized.length > 132 ? `${normalized.slice(0, 129).trimEnd()}…` : normalized;
+}
+
+function complexityLabel(complexity: number) {
+  if (complexity >= 8) return "High";
+  if (complexity >= 5) return "Focused";
+  return "Light";
 }

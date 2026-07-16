@@ -453,10 +453,35 @@ export function MissionControl() {
                       exit={{ opacity: 0 }}
                     >
                       <div className="text-center">
-                        <div className="mx-auto inline-flex rounded-full border border-cyan-200/15 bg-white/[0.045] px-4 py-2 text-xs uppercase tracking-[0.26em] text-cyan-100/70 backdrop-blur-xl">
-                          Mission Control Dashboard
+                        <div
+                          className="relative mx-auto inline-flex overflow-hidden rounded-full p-px"
+                          style={{
+                            boxShadow:
+                              "0 0 0 1px rgb(var(--agent-settings-accent) / 0.1), 0 0 28px rgb(var(--agent-settings-accent) / 0.22)",
+                          }}
+                        >
+                          <motion.span
+                            aria-hidden="true"
+                            className="absolute -inset-[140%]"
+                            style={{
+                              background:
+                                "conic-gradient(from 0deg, transparent 0deg, transparent 255deg, rgb(var(--agent-settings-accent) / 0.96) 290deg, rgb(var(--agent-settings-accent) / 0.28) 323deg, transparent 350deg)",
+                            }}
+                            animate={{ rotate: 360 }}
+                            transition={{ duration: 4.5, ease: "linear", repeat: Infinity }}
+                          />
+                          <span
+                            className="relative rounded-full px-4 py-2 text-xs uppercase tracking-[0.26em] backdrop-blur-xl transition-[color,background-color] duration-500"
+                            style={{
+                              backgroundColor: "rgb(7 17 31 / 0.82)",
+                              color: "rgb(var(--agent-settings-accent) / 0.88)",
+                              boxShadow: "inset 0 1px 0 rgb(var(--agent-settings-accent) / 0.14)",
+                            }}
+                          >
+                            Mission Control Dashboard
+                          </span>
                         </div>
-                        <h1 className="mt-5 bg-gradient-to-r from-white via-cyan-100 to-purple-200 bg-clip-text text-4xl font-bold tracking-tight text-transparent md:text-6xl">
+                        <h1 className="mt-5 pb-2 bg-gradient-to-r from-white via-cyan-100 to-purple-200 bg-clip-text text-4xl font-bold tracking-tight text-transparent md:text-6xl">
                           Hello, Mission Operator
                         </h1>
                         <p className="mt-4 mb-4 text-lg text-white/62 md:text-xl">

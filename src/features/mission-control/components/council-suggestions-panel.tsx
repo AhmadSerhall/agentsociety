@@ -269,16 +269,16 @@ export function CouncilSuggestionsPanel({
               >
                 {chips.map((chip) => (
                   <ContextMenu key={chip.id}>
-                    <Tooltip>
-                      <ContextMenuTrigger asChild>
-                        <TooltipTrigger asChild>
+                    <Tooltip delayDuration={180}>
+                      <TooltipTrigger asChild>
+                        <ContextMenuTrigger asChild>
                           <motion.button
                             type="button"
-                            whileHover={{ y: -2, scale: 1.02 }}
-                            whileTap={{ scale: 0.98 }}
+                            whileTap={{ scale: 0.985 }}
+                            transition={{ type: "spring", stiffness: 420, damping: 28 }}
                             disabled={disabled || Boolean(typingChipId) || replacingChipId === chip.id}
                             onClick={() => handleChipClick(chip)}
-                            className="flex w-max max-w-[16rem] shrink-0 items-center gap-2 rounded-full border border-white/10 bg-white/[0.055] px-3.5 py-2 text-left text-xs font-medium text-white/75 transition hover:border-cyan-200/35 hover:bg-cyan-300/10 hover:text-cyan-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="flex w-max max-w-[16rem] shrink-0 items-center gap-2 rounded-full border border-white/10 bg-white/[0.055] px-3.5 py-2 text-left text-xs font-medium text-white/75 transition-colors duration-200 hover:border-cyan-200/35 hover:bg-cyan-300/10 hover:text-cyan-50 disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             <CouncilSuggestionIcon kind={chip.iconKind} />
                             <span className="truncate">{chip.label}</span>
@@ -286,11 +286,14 @@ export function CouncilSuggestionsPanel({
                               <Loader2 className="h-3 w-3 animate-spin text-cyan-200" />
                             )}
                           </motion.button>
-                        </TooltipTrigger>
-                      </ContextMenuTrigger>
+                        </ContextMenuTrigger>
+                      </TooltipTrigger>
                       <TooltipContent
                         side="bottom"
-                        className="max-w-xs border border-cyan-200/15 bg-[#07111f]/95 px-3 py-2 text-xs leading-relaxed text-white/80 shadow-[0_20px_60px_rgba(34,211,238,0.18)]"
+                        align="start"
+                        sideOffset={6}
+                        showArrow={false}
+                        className="max-w-xs border border-cyan-200/20 bg-[#07111f]/95 px-3 py-2.5 text-xs leading-relaxed text-white/80 shadow-[0_20px_60px_rgba(34,211,238,0.18)]"
                       >
                         <p className="font-semibold text-cyan-100">Why this suggestion?</p>
                         <p className="mt-1">{chip.why}</p>
