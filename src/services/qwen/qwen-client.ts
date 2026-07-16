@@ -257,7 +257,9 @@ export function createQwenClient(config?: Partial<QwenClientConfig>) {
         if (settings.preferences.verboseLogs) {
           console.info("[Agent Council] Qwen response status", { status: res.status, ok: res.ok });
         }
-        break;
+        const retryableResponse = res.status === 408 || res.status >= 500;
+        if (res.ok || !retryableResponse || attempt === attempts - 1) break;
+        res = null;
       } catch (error) {
         if (overrides?.signal?.aborted) throw error;
         lastError = timedOut ? new Error("Qwen request timed out.") : error;

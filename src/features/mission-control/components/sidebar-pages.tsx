@@ -63,6 +63,7 @@ import {
   clearConnectionTest,
   getSavedConnectionTest,
   getSavedSettingsOptions,
+  normalizeSettingsOptions,
   resetSettingsOptions,
   runtimeFingerprint,
   saveConnectionTest,
@@ -728,34 +729,11 @@ function SettingsPage() {
     const next = { preferences, appearance, missionTimeout, retryCount };
     saveSettingsOptions(next);
     applyAppearanceSettings(appearance, preferences);
-    setAllowMockFallback(preferences.retryFailedRequests);
+    setAllowMockFallback(false);
     setDeveloperDebugMode(preferences.developerMode || preferences.verboseLogs);
-    (window as unknown as {
-      __AGENT_SOCIETY_EXPERIMENTAL__?: boolean;
-      __AGENT_SOCIETY_KEYBOARD_SHORTCUTS__?: boolean;
-    }).__AGENT_SOCIETY_EXPERIMENTAL__ = preferences.experimentalFeatures;
-    (window as unknown as {
-      __AGENT_SOCIETY_EXPERIMENTAL__?: boolean;
-      __AGENT_SOCIETY_KEYBOARD_SHORTCUTS__?: boolean;
-    }).__AGENT_SOCIETY_KEYBOARD_SHORTCUTS__ = preferences.keyboardShortcuts;
+    const statsTimer = window.setTimeout(() => setStorageStats(getLocalStorageStats()), 0);
+    return () => window.clearTimeout(statsTimer);
   }, [appearance, missionTimeout, preferences, retryCount, setAllowMockFallback, setDeveloperDebugMode]);
-  useEffect(() => {
-    if (!preferences.keyboardShortcuts) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (!(event.altKey && event.shiftKey)) return;
-      const shortcutMap: Record<string, string> = {
-        S: "Settings shortcuts are active.",
-        R: "Reports shortcut detected.",
-        H: "History shortcut detected.",
-      };
-      const message = shortcutMap[event.key.toUpperCase()];
-      if (!message) return;
-      event.preventDefault();
-      toast({ title: "Keyboard shortcut", description: message });
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [preferences.keyboardShortcuts]);
   const clearReplayCache = () => {
     const entriesWithReplay = history.filter((entry) => entry.replayEvents?.length);
     if (!entriesWithReplay.length) {
@@ -776,22 +754,21 @@ function SettingsPage() {
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        const parsed = JSON.parse(String(reader.result ?? "{}")) as {
-          preferences?: Partial<typeof preferences>;
-          appearance?: Partial<typeof appearance>;
-          missionTimeout?: number;
-          retryCount?: number;
-        };
-        if (parsed.preferences) setPreferences((current) => ({ ...current, ...parsed.preferences }));
-        if (parsed.appearance) setAppearance((current) => ({ ...current, ...parsed.appearance }));
-        if (typeof parsed.missionTimeout === "number") setMissionTimeout(parsed.missionTimeout);
-        if (typeof parsed.retryCount === "number") setRetryCount(parsed.retryCount);
-        refreshStorageStats();
+        const parsed = JSON.parse(String(reader.result ?? "{}")) as unknown;
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("Invalid settings object");
+        const keys = Object.keys(parsed);
+        if (!["preferences", "appearance", "missionTimeout", "retryCount"].some((key) => keys.includes(key))) throw new Error("No supported settings found");
+        const next = normalizeSettingsOptions(parsed, { preferences, appearance, missionTimeout, retryCount });
+        setPreferences(next.preferences);
+        setAppearance(next.appearance);
+        setMissionTimeout(next.missionTimeout);
+        setRetryCount(next.retryCount);
         toast({ title: "Settings imported", description: "Preferences were loaded from the selected file." });
       } catch {
         toast({ title: "Could not import settings", description: "Choose a valid Agent Council settings JSON file." });
       }
     };
+    reader.onerror = () => toast({ title: "Could not import settings", description: "The selected file could not be read." });
     reader.readAsText(file);
   };
   const testConnection = async () => {
@@ -884,8 +861,9 @@ function SettingsPage() {
               />
               <IconButton title={apiKeyRevealed ? "Hide key" : "Reveal key"} disabled={!hasSavedKey || apiKeyEditing} onClick={() => setApiKeyRevealed((value) => !value)} icon={apiKeyRevealed ? EyeOff : Eye} />
               <IconButton title="Copy masked key" disabled={!hasActiveKey} onClick={() => {
-                void navigator.clipboard.writeText(resolved.maskedApiKey);
-                toast({ title: "Masked key copied", description: "The full key was not copied." });
+                void copyText(resolved.maskedApiKey)
+                  .then(() => toast({ title: "Masked key copied", description: "The full key was not copied." }))
+                  .catch(() => toast({ title: "Copy unavailable", description: "Clipboard access was blocked by the browser.", variant: "destructive" }));
               }} icon={Copy} />
             </div>
           </div>
@@ -893,11 +871,11 @@ function SettingsPage() {
           <LabeledInput label="Model" value={modelDraft} onChange={setModelDraft} placeholder="qwen-turbo" />
         </div>
         <div className="mt-5 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-          <div className="flex items-center gap-2 text-xs text-white/45"><ShieldCheck className="h-4 w-4 text-cyan-200/70" />Stored in localStorage on this device only. The key is never displayed in full.</div>
+          <div className="flex items-center gap-2 text-xs text-white/45"><ShieldCheck className="h-4 w-4 text-cyan-200/70" />Stored in localStorage on this device only. Masked by default and never copied in full.</div>
           <div className="flex flex-wrap gap-2">
             {!hasWorkingKey && <Button type="button" variant="outline" onClick={() => window.open(QWEN_API_KEY_URL, "_blank", "noopener,noreferrer")} className="gap-2 border-cyan-200/15 bg-cyan-300/[0.08] text-cyan-100 hover:bg-cyan-300/[0.14] hover:text-cyan-50"><ExternalLink className="h-4 w-4" />Get Qwen API Key</Button>}
             <Button type="button" variant="outline" onClick={() => { setApiKeyEditing(true); setApiKeyDraft(""); setApiKeyRevealed(false); }} className="gap-2 border-white/10 bg-white/[0.04] text-white/70 hover:bg-white/[0.08] hover:text-white"><RefreshCcw className="h-4 w-4" />Replace</Button>
-            <Button type="button" variant="outline" onClick={() => {
+            <Button type="button" variant="outline" disabled={!hasSavedKey} title={hasSavedKey ? "Delete the saved browser key" : "Environment keys cannot be deleted from the browser"} onClick={() => {
               clearQwenCredentials();
               setApiKeyDraft("");
               setApiKeyEditing(false);
@@ -909,11 +887,12 @@ function SettingsPage() {
               toast({ title: "Saved key cleared", description: hasEnvKey ? "Agent Council is now using your local env key." : "Mission launch is locked until a key is saved." });
             }} className="gap-2 border-red-200/15 bg-red-400/10 text-red-100 hover:bg-red-400/15 hover:text-red-50"><Trash2 className="h-4 w-4" />Delete</Button>
             <Button type="button" onClick={() => {
-              if (!apiKeyDraft.trim()) {
+              const apiKey = apiKeyDraft.trim() || qwenApiKey.trim();
+              if (!apiKey) {
                 toast({ title: "Qwen API key required", description: "Paste a valid Qwen API key before saving." });
                 return;
               }
-              setQwenCredentials({ apiKey: apiKeyDraft, baseUrl: baseUrlDraft, model: modelDraft });
+              setQwenCredentials({ apiKey, baseUrl: baseUrlDraft, model: modelDraft });
               setApiKeyDraft("");
               setApiKeyEditing(false);
               setSaveState("saved");
@@ -992,7 +971,7 @@ function SettingsPage() {
             <ToggleRow icon={RadioTower} label="Stream Responses" checked={preferences.streamResponses} onCheckedChange={(value) => updatePreference("streamResponses", value)} />
             <ToggleRow icon={History} label="Remember Previous Context" checked={preferences.rememberContext} onCheckedChange={(value) => updatePreference("rememberContext", value)} />
             <ToggleRow icon={RefreshCcw} label="Retry Failed Requests" checked={preferences.retryFailedRequests} onCheckedChange={(value) => updatePreference("retryFailedRequests", value)} />
-            <ToggleRow icon={Keyboard} label="Enable Keyboard Shortcuts" checked={preferences.keyboardShortcuts} onCheckedChange={(value) => updatePreference("keyboardShortcuts", value)} />
+            <ToggleRow icon={Keyboard} label="Enable Shortcuts (Alt+Shift+M/H/R/S)" checked={preferences.keyboardShortcuts} onCheckedChange={(value) => updatePreference("keyboardShortcuts", value)} />
             <NumberSetting label="Mission Timeout" value={missionTimeout} unit="sec" min={30} max={300} onChange={setMissionTimeout} />
             <NumberSetting label="Retry Count" value={retryCount} unit="tries" min={0} max={5} onChange={setRetryCount} />
           </div>
@@ -1012,14 +991,13 @@ function SettingsPage() {
 
       <PremiumCard>
         <button type="button" onClick={() => setDeveloperOpen((value) => !value)} className="flex w-full items-center justify-between gap-4 text-left">
-          <SectionTitle icon={Logs} title="Developer" subtitle="Advanced diagnostics and experimental switches." />
+          <SectionTitle icon={Logs} title="Developer" subtitle="Advanced diagnostics and logging controls." />
           <ChevronDown className={`h-5 w-5 text-white/50 transition-transform ${developerOpen ? "rotate-180" : ""}`} />
         </button>
         {developerOpen && (
           <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="mt-5 grid gap-3">
             <ToggleRow icon={Settings} label="Developer Mode" checked={preferences.developerMode} onCheckedChange={(value) => updatePreference("developerMode", value)} />
             <ToggleRow icon={Logs} label="Verbose Logs" checked={preferences.verboseLogs} onCheckedChange={(value) => updatePreference("verboseLogs", value)} />
-            <ToggleRow icon={Sparkles} label="Experimental Features" checked={preferences.experimentalFeatures} onCheckedChange={(value) => updatePreference("experimentalFeatures", value)} />
             <Button variant="outline" onClick={() => {
               resetSettingsOptions();
               setPreferences(DEFAULT_SETTINGS_OPTIONS.preferences);
@@ -1031,7 +1009,7 @@ function SettingsPage() {
               setConnectionTest(getSavedConnectionTest(""));
               refreshStorageStats();
               toast({ title: "Settings reset", description: "Mission preferences, appearance, developer options, and connection test state were restored." });
-            }} className="w-fit gap-2 border-red-200/15 bg-red-400/10 text-red-100 hover:bg-red-400/15 hover:text-red-50"><AlertTriangle className="h-4 w-4" />Reset All Settings</Button>
+            }} className="w-fit gap-2 border-red-200/15 bg-red-400/10 text-red-100 hover:bg-red-400/15 hover:text-red-50"><AlertTriangle className="h-4 w-4" />Reset Preferences & Appearance</Button>
           </motion.div>
         )}
       </PremiumCard>
@@ -1125,7 +1103,7 @@ function ToggleRow({ icon: Icon, label, checked, onCheckedChange }: { icon: type
         <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-cyan-200/15 bg-cyan-300/10 text-cyan-100"><Icon className="h-4 w-4" /></span>
         <span className="text-sm font-medium text-white/78">{label}</span>
       </div>
-      <Switch checked={checked} onCheckedChange={onCheckedChange} />
+      <Switch aria-label={label} checked={checked} onCheckedChange={onCheckedChange} />
     </div>
   );
 }
@@ -1134,7 +1112,7 @@ function NumberSetting({ label, value, unit, min, max, onChange }: { label: stri
   return (
     <div className="rounded-xl border border-white/10 bg-black/18 p-3">
       <div className="flex items-center justify-between text-sm"><span className="font-medium text-white/78">{label}</span><span className="text-cyan-100">{value} {unit}</span></div>
-      <input type="range" min={min} max={max} value={value} onChange={(event) => onChange(Number(event.target.value))} className="mt-3 h-1.5 w-full accent-cyan-300" />
+      <input aria-label={label} type="range" min={min} max={max} value={value} onChange={(event) => onChange(Number(event.target.value))} className="mt-3 h-1.5 w-full accent-cyan-300" />
     </div>
   );
 }
@@ -1143,9 +1121,9 @@ function OptionChips({ label, options, value, onChange }: { label: string; optio
   return (
     <div className="rounded-xl border border-white/10 bg-black/18 p-3">
       <p className="text-xs uppercase tracking-[0.16em] text-white/35">{label}</p>
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div role="group" aria-label={label} className="mt-3 flex flex-wrap gap-2">
         {options.map((option) => (
-          <button key={option} type="button" onClick={() => onChange(option)} className={`rounded-full border px-3 py-1 text-xs transition-all ${value === option ? "border-cyan-200/35 bg-cyan-300/15 text-cyan-50 shadow-[0_0_18px_rgba(34,211,238,0.14)]" : "border-white/10 bg-white/[0.035] text-white/52 hover:border-cyan-200/20 hover:text-white"}`}>{option}</button>
+          <button key={option} type="button" aria-pressed={value === option} onClick={() => onChange(option)} className={`rounded-full border px-3 py-1 text-xs transition-all ${value === option ? "border-cyan-200/35 bg-cyan-300/15 text-cyan-50 shadow-[0_0_18px_rgba(34,211,238,0.14)]" : "border-white/10 bg-white/[0.035] text-white/52 hover:border-cyan-200/20 hover:text-white"}`}>{option}</button>
         ))}
       </div>
     </div>

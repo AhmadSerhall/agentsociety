@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, MotionConfig } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -16,6 +16,12 @@ import { useHistoryStore, useRuntimeSettingsStore, useReplayStore } from "@/stor
 import { getQwenApiStatusLabel, isQwenApiStatusBlocking } from "@/store/runtime-settings-store";
 import { useFadeInUp, useStaggerContainer } from "@/hooks";
 import { hasUsableQwenKey, hideApiKeyOnboardingPermanently, isApiKeyOnboardingHidden } from "@/lib/qwenConfig";
+import {
+  SETTINGS_CHANGED_EVENT,
+  applyAppearanceSettings,
+  getSavedSettingsOptions,
+  type SettingsOptions,
+} from "@/lib/settingsPreferences";
 import { getQwenRuntimeInfo } from "@/services/qwen";
 import { MissionEngine } from "@/services/mission-engine";
 import { MISSION_TYPE_LABELS, DEPTH_LABELS, TIME_HORIZON_LABELS, BUDGET_RANGE_LABELS, RISK_TOLERANCE_LABELS, OUTPUT_FORMAT_LABELS, MissionState, AgentRole, type CouncilHiddenContext, type DrilldownSource, type MissionConfiguration, type MissionContext, type MissionType, type Depth, type TimeHorizon, type BudgetRange, type RiskTolerance, type OutputFormat } from "@/types";
@@ -87,6 +93,7 @@ export function MissionControl() {
   const [activeView, setActiveView] = useState<MissionView>("mission-control");
   const [scrollContainer, setScrollContainer] = useState<HTMLElement | null>(null);
   const [activeMissionTab, setActiveMissionTab] = useState("workflow");
+  const [appSettings, setAppSettings] = useState<SettingsOptions>(() => getSavedSettingsOptions());
   const tabsRef = useRef<HTMLDivElement | null>(null);
   const previousStatus = useRef<MissionState | undefined>(undefined);
   const { context, isRunning, launch, cancel } = useMissionEngine();
@@ -183,6 +190,34 @@ export function MissionControl() {
     loadHistory();
     loadRuntimeSettings();
   }, [loadHistory, loadRuntimeSettings]);
+
+  useEffect(() => {
+    const applySettings = (settings: SettingsOptions) => {
+      setAppSettings(settings);
+      applyAppearanceSettings(settings.appearance, settings.preferences);
+    };
+    applySettings(getSavedSettingsOptions());
+    const onSettingsChanged = (event: Event) => {
+      applySettings((event as CustomEvent<SettingsOptions>).detail ?? getSavedSettingsOptions());
+    };
+    window.addEventListener(SETTINGS_CHANGED_EVENT, onSettingsChanged);
+    return () => window.removeEventListener(SETTINGS_CHANGED_EVENT, onSettingsChanged);
+  }, []);
+
+  useEffect(() => {
+    if (!appSettings.preferences.keyboardShortcuts) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!event.altKey || !event.shiftKey) return;
+      const view = ({ S: "settings", R: "reports", H: "history", M: "mission-control" } as const)[event.key.toUpperCase() as "S" | "R" | "H" | "M"];
+      if (!view) return;
+      event.preventDefault();
+      setActiveView(view);
+      setShowMobileNav(false);
+      toast({ title: "Navigation shortcut", description: `Opened ${view === "mission-control" ? "Mission Control" : view}.` });
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [appSettings.preferences.keyboardShortcuts]);
 
   useEffect(() => {
     const handleDrilldown = (event: Event) => {
@@ -363,6 +398,7 @@ export function MissionControl() {
   };
 
   return (
+    <MotionConfig reducedMotion={appSettings.preferences.reduceMotion ? "always" : "user"}>
     <div className="relative h-screen overflow-hidden">
       <SpaceBackground />
 
@@ -735,6 +771,7 @@ export function MissionControl() {
         onAddBacklog={handleAddBacklog}
       />
     </div>
+    </MotionConfig>
   );
 }
 

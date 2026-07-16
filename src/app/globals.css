@@ -46,6 +46,12 @@
 
 :root {
   --radius: 0.625rem;
+  --agent-settings-accent: 34 211 238;
+  --agent-settings-blur: 28px;
+  --agent-background-start: #070b14;
+  --agent-background-middle: #0c1425;
+  --agent-background-end: #070b14;
+  --agent-animation-speed: 1;
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
@@ -85,5 +91,30 @@
   }
   body {
     @apply bg-background text-foreground;
+    caret-color: rgb(var(--agent-settings-accent));
+    scrollbar-color: rgb(var(--agent-settings-accent) / 0.65) transparent;
   }
+}
+
+::selection {
+  background: rgb(var(--agent-settings-accent) / 0.3);
+  color: white;
+}
+
+html[data-agent-glass-blur] [class*="backdrop-blur"] {
+  -webkit-backdrop-filter: blur(var(--agent-settings-blur)) !important;
+  backdrop-filter: blur(var(--agent-settings-blur)) !important;
+}
+
+html[data-agent-reduce-motion="true"] {
+  scroll-behavior: auto !important;
+}
+
+html[data-agent-reduce-motion="true"] *,
+html[data-agent-reduce-motion="true"] *::before,
+html[data-agent-reduce-motion="true"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  scroll-behavior: auto !important;
+  transition-duration: 0.01ms !important;
 }

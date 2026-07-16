@@ -523,7 +523,7 @@ API key priority is:
 2. Local developer env key from `VITE_QWEN_API_KEY`
 3. Missing key
 
-The full API key is never displayed. Long keys are masked in the Qwen API Key field using the first 14 characters, bullets, and the last 14 characters. Saved keys override local env keys, and clearing the saved browser key falls back to the local env key if one exists.
+The Qwen API key is masked by default. A browser-saved key can be revealed deliberately, while the copy action only copies its masked form. Saved keys override local env keys, and clearing the saved browser key falls back to the local env key if one exists. The delete action is disabled when no browser-local key exists, and model or endpoint changes can reuse the currently saved browser key without requiring it to be pasted again.
 
 Fresh installs without a saved or env key show a first-run onboarding modal explaining that users must bring their own Qwen/DashScope API key. Mission launch is blocked until a key is saved or available through local env configuration.
 
@@ -543,15 +543,19 @@ Settings options are now persisted through `src/lib/settingsPreferences.ts` and 
 
 Functional option behavior now includes:
 
-- Connection test state persists across page switches for the active Qwen runtime fingerprint.
+- Test Connection makes a real minimal Qwen request. A successful result records latency, model availability, verification time, and the active runtime fingerprint; rejected credentials or unavailable runtimes clear the success state and show the actual API health message.
 - Auto Save Reports controls whether completed/cancelled missions are written to Mission History.
 - Stream Responses switches the Qwen client into streaming mode and collects streamed chunks into final output.
 - Remember Previous Context controls whether history is used for recommended mission prompts.
-- Retry Failed Requests and Retry Count control Qwen request retry behavior.
+- Retry Failed Requests and Retry Count control retries for transport failures, timeouts, HTTP 408, and server errors. Authentication, quota, and other non-retryable client errors do not produce repeated requests or mock mission results.
 - Mission Timeout controls the per-Qwen-request timeout.
-- Developer Mode and Verbose Logs map into runtime debug behavior, and Verbose Logs prints lightweight Qwen request diagnostics.
-- Appearance options are saved and applied as document root data attributes/CSS variables.
-- Reset All Settings restores defaults and clears persisted connection-test state.
+- Enable Shortcuts activates global `Alt+Shift+M/H/R/S` navigation for Mission Control, Mission History, Reports, and Settings, even when the Settings page is not mounted.
+- Developer Mode and Verbose Logs map into runtime debug behavior. Verbose Logs prints lightweight Qwen request diagnostics, and either option reveals the existing Developer Debug mission panel.
+- Theme changes the application background palette; Accent Color changes global accent, selection, scrollbar, particle, and ambient colors; Animation Level adjusts ambient animation speed; Particle Density changes the rendered star/particle count; Glass Blur changes glass-surface blur; Reduce Motion disables ambient and Framer Motion animation throughout the app.
+- Settings are applied at application startup and update live across the current page. They are normalized on load/import, with invalid enum values replaced by the current safe value and timeout/retry numbers clamped to supported ranges.
+- Reset Preferences & Appearance restores mission preferences, appearance, developer options, timeout/retry values, and connection-test state without deleting API credentials or mission history.
+
+Settings controls were verified in the running application: preference switches persist and restore, appearance controls update the live visual system, Developer Mode toggles correctly, and the global Reports/Settings shortcuts navigate between pages.
 
 ## Command Layer Widget
 

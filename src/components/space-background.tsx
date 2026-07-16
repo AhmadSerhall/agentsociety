@@ -7,31 +7,58 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  SETTINGS_CHANGED_EVENT,
+  getSavedSettingsOptions,
+  type SettingsOptions,
+} from "@/lib/settingsPreferences";
 
-function Star({ x, y, size, delay }: { x: number; y: number; size: number; delay: number }) {
+function Star({ x, y, size, delay, duration, reduceMotion }: { x: number; y: number; size: number; delay: number; duration: number; reduceMotion: boolean }) {
   return (
     <motion.div
       className="absolute rounded-full bg-white"
       style={{ left: `${x}%`, top: `${y}%`, width: size, height: size }}
-      animate={{ opacity: [0.2, 0.8, 0.2] }}
-      transition={{ duration: 2 + Math.random() * 3, repeat: Infinity, delay, ease: "easeInOut" }}
+      animate={reduceMotion ? { opacity: 0.45 } : { opacity: [0.2, 0.8, 0.2] }}
+      transition={reduceMotion ? undefined : { duration, repeat: Infinity, delay, ease: "easeInOut" }}
     />
   );
 }
 
 export function SpaceBackground() {
-  const stars = useMemo(() => Array.from({ length: 80 }, () => ({
+  const [settings, setSettings] = useState<SettingsOptions>(() => getSavedSettingsOptions());
+  const stars = useMemo(() => Array.from({ length: 100 }, () => ({
     x: Math.random() * 100,
     y: Math.random() * 100,
     size: 1 + Math.random() * 2,
     delay: Math.random() * 4,
+    duration: 2 + Math.random() * 3,
   })), []);
+  const particleCount = settings.appearance.particles === "Low" ? 3 : settings.appearance.particles === "High" ? 10 : 6;
+  const starCount = settings.appearance.particles === "Low" ? 38 : settings.appearance.particles === "High" ? 100 : 72;
+  const speed = settings.appearance.animation === "Calm" ? 1.5 : settings.appearance.animation === "High" ? 0.7 : 1;
+  const reduceMotion = settings.preferences.reduceMotion;
+
+  useEffect(() => {
+    const onSettingsChanged = (event: Event) => {
+      const detail = (event as CustomEvent<SettingsOptions>).detail;
+      setSettings(detail ?? getSavedSettingsOptions());
+    };
+    window.addEventListener(SETTINGS_CHANGED_EVENT, onSettingsChanged);
+    return () => window.removeEventListener(SETTINGS_CHANGED_EVENT, onSettingsChanged);
+  }, []);
 
   return (
-    <div className="fixed inset-0 -z-10 overflow-hidden bg-[#070b14]">
+    <div
+      data-space-particles={particleCount}
+      data-space-stars={starCount}
+      data-space-animation={settings.appearance.animation.toLowerCase()}
+      className="fixed inset-0 -z-10 overflow-hidden"
+      style={{ background: "var(--agent-background-start, #070b14)" }}
+    >
       {/* Gradient overlay */}
-      <div className="absolute inset-0 bg-gradient-to-b from-[#070b14] via-[#0c1425] to-[#070b14]" />
+      <div className="absolute inset-0" style={{ background: "linear-gradient(to bottom, var(--agent-background-start, #070b14), var(--agent-background-middle, #0c1425), var(--agent-background-end, #070b14))" }} />
+      <div className="absolute inset-0" style={{ background: "radial-gradient(circle at 55% 10%, rgb(var(--agent-settings-accent, 34 211 238) / 0.1), transparent 38%)" }} />
 
       {/* Planet */}
       <motion.div
@@ -41,11 +68,11 @@ export function SpaceBackground() {
           height: 320,
           right: "-60px",
           bottom: "-60px",
-          background: "radial-gradient(circle at 35% 35%, #1e3a5f 0%, #0d1b2a 50%, #050d16 100%)",
-          boxShadow: "0 0 80px 20px rgba(30, 58, 95, 0.15), inset -20px -20px 40px rgba(0,0,0,0.5)",
+          background: "radial-gradient(circle at 35% 35%, rgb(var(--agent-settings-accent, 34 211 238) / 0.35) 0%, #0d1b2a 50%, #050d16 100%)",
+          boxShadow: "0 0 80px 20px rgb(var(--agent-settings-accent, 34 211 238) / 0.12), inset -20px -20px 40px rgba(0,0,0,0.5)",
         }}
-        animate={{ rotate: 360 }}
-        transition={{ duration: 120, repeat: Infinity, ease: "linear" }}
+        animate={reduceMotion ? undefined : { rotate: 360 }}
+        transition={reduceMotion ? undefined : { duration: 120 * speed, repeat: Infinity, ease: "linear" }}
       />
 
       {/* Planet ring */}
@@ -58,8 +85,8 @@ export function SpaceBackground() {
           bottom: "-140px",
           transform: "rotateX(70deg)",
         }}
-        animate={{ rotate: 360 }}
-        transition={{ duration: 90, repeat: Infinity, ease: "linear" }}
+        animate={reduceMotion ? undefined : { rotate: 360 }}
+        transition={reduceMotion ? undefined : { duration: 90 * speed, repeat: Infinity, ease: "linear" }}
       />
 
       {/* Small planet */}
@@ -70,26 +97,26 @@ export function SpaceBackground() {
           height: 60,
           left: "15%",
           top: "20%",
-          background: "radial-gradient(circle at 40% 40%, #2d1b4e 0%, #140e22 100%)",
-          boxShadow: "0 0 30px 5px rgba(45, 27, 78, 0.2)",
+          background: "radial-gradient(circle at 40% 40%, rgb(var(--agent-settings-accent, 34 211 238) / 0.45) 0%, #140e22 100%)",
+          boxShadow: "0 0 30px 5px rgb(var(--agent-settings-accent, 34 211 238) / 0.16)",
         }}
-        animate={{ y: [0, -10, 0] }}
-        transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
+        animate={reduceMotion ? undefined : { y: [0, -10, 0] }}
+        transition={reduceMotion ? undefined : { duration: 8 * speed, repeat: Infinity, ease: "easeInOut" }}
       />
 
       {/* Stars */}
-      {stars.map((star, i) => (
-        <Star key={i} {...star} />
+      {stars.slice(0, starCount).map((star, i) => (
+        <Star key={i} {...star} reduceMotion={reduceMotion} />
       ))}
 
       {/* Floating particles */}
-      {[...Array(6)].map((_, i) => (
+      {Array.from({ length: particleCount }).map((_, i) => (
         <motion.div
           key={`p-${i}`}
-          className="absolute h-1 w-1 rounded-full bg-white/30"
-          style={{ left: `${20 + i * 12}%`, bottom: "-5%" }}
-          animate={{ y: [0, -600], opacity: [0, 0.6, 0] }}
-          transition={{ duration: 8 + i * 2, repeat: Infinity, delay: i * 1.5, ease: "easeOut" }}
+          className="absolute h-1 w-1 rounded-full"
+          style={{ left: `${10 + (i * 80) / Math.max(1, particleCount - 1)}%`, bottom: "-5%" }}
+          animate={reduceMotion ? { opacity: 0 } : { y: [0, -600], opacity: [0, 0.6, 0], backgroundColor: "rgb(var(--agent-settings-accent, 34 211 238) / 0.7)" }}
+          transition={reduceMotion ? undefined : { duration: (8 + i * 2) * speed, repeat: Infinity, delay: i * 1.5, ease: "easeOut" }}
         />
       ))}
     </div>

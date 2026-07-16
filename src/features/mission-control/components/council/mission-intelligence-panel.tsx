@@ -3,6 +3,7 @@
 import { Activity, AlertTriangle, BrainCircuit, Gauge, GitBranch, Route, Settings2, ShieldCheck } from "lucide-react";
 import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
+import { useRuntimeSettingsStore } from "@/store/runtime-settings-store";
 import {
   BUDGET_RANGE_LABELS,
   DEPTH_LABELS,
@@ -16,6 +17,7 @@ import { sanitizeUserFacingText } from "@/utils";
 import { normalizeDialogueEntry } from "./agent-output-formatter";
 
 export function MissionIntelligencePanel({ context }: { context: MissionContext }) {
+  const developerDebugMode = useRuntimeSettingsStore((state) => state.developerDebugMode);
   const activeConflict = context.conflicts.find((conflict) => conflict.status !== "resolved" && !conflict.resolved) ?? context.conflicts.at(-1);
   const latest = context.dialogue.at(-1);
   const classification = context.missionClassification;
@@ -85,7 +87,7 @@ export function MissionIntelligencePanel({ context }: { context: MissionContext 
             <InfoLine label="Strategy" value={classification?.selectedStrategy.replace(/_/g, " ") ?? "pending"} />
           </dl>
         </InfoBlock>
-        {classification && (
+        {classification && developerDebugMode && (
           <div className="rounded-2xl border border-cyan-200/12 bg-cyan-300/[0.035] p-3 text-cyan-100">
             <div className="flex items-center gap-2">
               <Route className="h-4 w-4" />
