@@ -473,8 +473,7 @@ export function MissionBriefComposer({
 
         <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-white/42">
-            Describe the objective, constraints, timeline, and what a winning outcome looks like.
-          </p>
+          Brief the council on your objective, constraints, timeline, and ideal outcome.</p>
 
           <div className="flex items-center gap-2">
             {isRunning && (

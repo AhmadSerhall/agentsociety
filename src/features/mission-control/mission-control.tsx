@@ -485,7 +485,7 @@ export function MissionControl() {
                           Hello, Mission Operator
                         </h1>
                         <p className="mt-4 mb-4 text-lg text-white/62 md:text-xl">
-                          What complex objective are we solving today?
+                          What complex mission are we solving today?
                         </p>
                       </div>
 
