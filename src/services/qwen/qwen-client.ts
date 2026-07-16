@@ -23,6 +23,11 @@ import type {
 } from "@/types";
 import { DEFAULT_QWEN_BASE_URL, DEFAULT_QWEN_MODEL, getResolvedQwenSettings } from "@/lib/qwenConfig";
 import { getSavedSettingsOptions } from "@/lib/settingsPreferences";
+import {
+  isQwenApiStatusBlocking,
+  useRuntimeSettingsStore,
+  type QwenApiStatus,
+} from "@/store/runtime-settings-store";
 
 export interface QwenClientConfig {
   baseUrl: string;
@@ -46,13 +51,77 @@ export interface QwenRuntimeInfo {
 
 export class QwenApiError extends Error {
   code: string;
+  status?: number;
+  kind: Exclude<QwenApiStatus, "unchecked" | "connected">;
   details?: unknown;
-  constructor(e: ApiError) {
+  constructor(e: ApiError, options?: { status?: number; kind?: Exclude<QwenApiStatus, "unchecked" | "connected"> }) {
     super(e.message);
     this.name = "QwenApiError";
     this.code = e.code;
+    this.status = options?.status;
+    this.kind = options?.kind ?? "request-error";
     this.details = e.details;
   }
+}
+
+type QwenFailureStatus = Exclude<QwenApiStatus, "unchecked" | "connected">;
+
+const API_STATUS_MESSAGES: Record<QwenFailureStatus, string> = {
+  "key-exhausted": "The Qwen API key has no available quota or account balance. Add credits or replace the key before launching another mission.",
+  "invalid-key": "Qwen rejected this API key. Replace it in Settings and test the connection before launching another mission.",
+  "rate-limited": "Qwen is rate limiting this API key. Wait for the limit to reset, then test the connection before launching another mission.",
+  unavailable: "Qwen could not be reached. Check the network and API endpoint, then test the connection before launching another mission.",
+  "request-error": "Qwen rejected the request. Verify the selected model and endpoint in Settings, then test the connection before launching another mission.",
+};
+
+function classifyApiFailure(status: number | undefined, error: ApiError): QwenFailureStatus {
+  const signal = `${error.code ?? ""} ${error.message ?? ""}`.toLocaleLowerCase();
+  if (/quota|exhaust|insufficient(?:_|\s)*(?:balance|credit|fund)|account(?:_|\s)*balance|arrearage|billing|free(?:_|\s)*tier/.test(signal)) {
+    return "key-exhausted";
+  }
+  if (status === 401 || status === 403 || /invalid(?:_|\s)*(?:api(?:_|\s)*)?key|authentication|unauthorized|access(?:_|\s)*denied|invalid(?:_|\s)*token/.test(signal)) {
+    return "invalid-key";
+  }
+  if (status === 429 || /rate(?:_|\s)*limit|too(?:_|\s)*many(?:_|\s)*requests/.test(signal)) {
+    return "rate-limited";
+  }
+  if (status === undefined || status === 408 || (status >= 500 && status <= 599)) return "unavailable";
+  return "request-error";
+}
+
+function setApiFailure(status: QwenFailureStatus) {
+  const message = API_STATUS_MESSAGES[status];
+  useRuntimeSettingsStore.getState().setQwenApiStatus(status, message);
+  return message;
+}
+
+function apiErrorFromResponse(error: ApiError, status: number) {
+  const kind = classifyApiFailure(status, error);
+  return new QwenApiError(
+    { code: error.code || `HTTP_${status}`, message: setApiFailure(kind), details: error.details },
+    { status, kind },
+  );
+}
+
+function blockedApiError(status: QwenFailureStatus, message?: string) {
+  return new QwenApiError(
+    { code: status.toUpperCase().replace(/-/g, "_"), message: message || API_STATUS_MESSAGES[status] },
+    { kind: status },
+  );
+}
+
+async function readApiError(res: Response): Promise<ApiError> {
+  const payload = await res.json().catch(() => null) as
+    | ApiError
+    | { error?: ApiError & { type?: string } }
+    | null;
+  const nested = payload && "error" in payload ? payload.error : undefined;
+  const flat = payload && "code" in payload ? payload : undefined;
+  return {
+    code: nested?.code ?? flat?.code ?? `HTTP_${res.status}`,
+    message: nested?.message ?? flat?.message ?? (res.statusText || "Qwen rejected the request."),
+    details: nested?.details ?? flat?.details,
+  };
 }
 
 function getClientConfig(): QwenClientConfig {
@@ -134,11 +203,16 @@ export function createQwenClient(config?: Partial<QwenClientConfig>) {
 
   async function chat(
     messages: QwenMessage[],
-    overrides?: { model?: string; temperature?: number; maxTokens?: number; signal?: AbortSignal }
+    overrides?: { model?: string; temperature?: number; maxTokens?: number; signal?: AbortSignal; bypassApiHealthCheck?: boolean }
   ): Promise<string> {
     if (typeof window !== "undefined" && (window as unknown as { __AGENT_SOCIETY_REPLAY_ACTIVE__?: boolean }).__AGENT_SOCIETY_REPLAY_ACTIVE__) {
       console.warn("[Agent Council Replay] Blocked Qwen chat call during replay mode.");
       throw new QwenApiError({ code: "REPLAY_BLOCKED", message: "Replay mode never calls Qwen or any LLM." });
+    }
+
+    const apiHealth = useRuntimeSettingsStore.getState();
+    if (!overrides?.bypassApiHealthCheck && isQwenApiStatusBlocking(apiHealth.qwenApiStatus)) {
+      throw blockedApiError(apiHealth.qwenApiStatus, apiHealth.qwenApiStatusMessage);
     }
 
     const settings = getSavedSettingsOptions();
@@ -163,7 +237,11 @@ export function createQwenClient(config?: Partial<QwenClientConfig>) {
         });
       }
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), Math.max(1, settings.missionTimeout) * 1000);
+      let timedOut = false;
+      const timeout = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, Math.max(1, settings.missionTimeout) * 1000);
       const abortFromOuter = () => controller.abort();
       overrides?.signal?.addEventListener("abort", abortFromOuter, { once: true });
       try {
@@ -179,11 +257,11 @@ export function createQwenClient(config?: Partial<QwenClientConfig>) {
         if (settings.preferences.verboseLogs) {
           console.info("[Agent Council] Qwen response status", { status: res.status, ok: res.ok });
         }
-        if (res.ok || attempt === attempts - 1) break;
+        break;
       } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") throw error;
-        lastError = error;
-        if (attempt === attempts - 1) throw error;
+        if (overrides?.signal?.aborted) throw error;
+        lastError = timedOut ? new Error("Qwen request timed out.") : error;
+        if (attempt === attempts - 1) break;
       } finally {
         clearTimeout(timeout);
         overrides?.signal?.removeEventListener("abort", abortFromOuter);
@@ -191,27 +269,44 @@ export function createQwenClient(config?: Partial<QwenClientConfig>) {
       await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
     }
 
-    if (!res) throw lastError instanceof Error ? lastError : new QwenApiError({ code: "NETWORK", message: "Qwen request failed before receiving a response." });
+    if (!res) {
+      const kind: QwenFailureStatus = "unavailable";
+      throw new QwenApiError(
+        { code: "NETWORK", message: setApiFailure(kind), details: lastError instanceof Error ? lastError.name : undefined },
+        { kind },
+      );
+    }
 
     if (!res.ok) {
-      const err: ApiError = await res.json().catch(() => ({
-        code: "UNKNOWN",
-        message: res.statusText,
-      }));
-      throw new QwenApiError(err);
+      throw apiErrorFromResponse(await readApiError(res), res.status);
     }
 
-    if (body.stream) {
-      const streamed = await readStreamedCompletion(res);
-      if (streamed) return streamed;
-      throw new QwenApiError({ code: "EMPTY", message: "No streamed completion content returned." });
-    }
+    try {
+      if (body.stream) {
+        const streamed = await readStreamedCompletion(res);
+        if (streamed) {
+          useRuntimeSettingsStore.getState().setQwenApiStatus("connected");
+          return streamed;
+        }
+        const kind: QwenFailureStatus = "request-error";
+        throw new QwenApiError({ code: "EMPTY", message: setApiFailure(kind) }, { kind });
+      }
 
-    const data: QwenChatResponse = await res.json();
-    if (!data.choices?.length) {
-      throw new QwenApiError({ code: "EMPTY", message: "No completion choices returned." });
+      const data: QwenChatResponse = await res.json();
+      if (!data.choices?.length) {
+        const kind: QwenFailureStatus = "request-error";
+        throw new QwenApiError({ code: "EMPTY", message: setApiFailure(kind) }, { kind });
+      }
+      useRuntimeSettingsStore.getState().setQwenApiStatus("connected");
+      return data.choices[0].message.content;
+    } catch (error) {
+      if (error instanceof QwenApiError || overrides?.signal?.aborted) throw error;
+      const kind: QwenFailureStatus = "unavailable";
+      throw new QwenApiError(
+        { code: "RESPONSE_READ_FAILED", message: setApiFailure(kind), details: error instanceof Error ? error.name : undefined },
+        { kind },
+      );
     }
-    return data.choices[0].message.content;
   }
 
   return { chat };

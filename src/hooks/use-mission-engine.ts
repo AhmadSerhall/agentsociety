@@ -10,6 +10,11 @@
 import { useRef, useCallback, useEffect } from "react";
 import { useMissionStore } from "@/store/mission-store";
 import { useHistoryStore } from "@/store/history-store";
+import {
+  getQwenApiStatusLabel,
+  isQwenApiStatusBlocking,
+  useRuntimeSettingsStore,
+} from "@/store/runtime-settings-store";
 import { MissionEngine } from "@/services/mission-engine";
 import { hasUsableQwenKey } from "@/lib/qwenConfig";
 import { getSavedSettingsOptions } from "@/lib/settingsPreferences";
@@ -63,6 +68,15 @@ export function useMissionEngine() {
         toast({ title: "Qwen API key required", description: "Go to Settings and paste your Qwen API key to run missions.", variant: "destructive" });
         return;
       }
+      const apiHealth = useRuntimeSettingsStore.getState();
+      if (isQwenApiStatusBlocking(apiHealth.qwenApiStatus)) {
+        toast({
+          title: `Qwen API: ${getQwenApiStatusLabel(apiHealth.qwenApiStatus)}`,
+          description: apiHealth.qwenApiStatusMessage || "Open Settings and test the Qwen connection before launching another mission.",
+          variant: "destructive",
+        });
+        return;
+      }
 
       const currentStatus = useMissionStore.getState().context?.status;
       if (
@@ -110,7 +124,14 @@ export function useMissionEngine() {
       engine.on(MissionEventType.MissionFailed, (e) => {
         useMissionStore.setState({ isRunning: false });
         const payload = e.payload as { error?: string };
-        toast({ title: payload.error ?? "Mission failed", variant: "destructive" });
+        const health = useRuntimeSettingsStore.getState();
+        toast({
+          title: isQwenApiStatusBlocking(health.qwenApiStatus)
+            ? `Qwen API: ${getQwenApiStatusLabel(health.qwenApiStatus)}`
+            : "Mission failed",
+          description: payload.error ?? health.qwenApiStatusMessage,
+          variant: "destructive",
+        });
       });
 
       engine.on(MissionEventType.MissionCancelled, () => {

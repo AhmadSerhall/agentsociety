@@ -36,7 +36,7 @@ import {
 } from "@/types";
 import { AGENT_DEFINITIONS, getAgentByRole } from "@/agents";
 import { createQwenClient, isMockMode } from "@/services/qwen";
-import { useRuntimeSettingsStore } from "@/store/runtime-settings-store";
+import { isQwenApiStatusBlocking, useRuntimeSettingsStore } from "@/store/runtime-settings-store";
 import { dedupeAgentOutputSections, extractActionItemsFromText, generateId, sanitizeMissionList, sanitizeMissionText, sanitizeUserFacingText } from "@/utils";
 import { MockAgentRunner } from "./mock-agent-runner";
 import type { EventListener } from "./types";
@@ -781,6 +781,19 @@ export class MissionEngine {
       onUpdate({ ...ctx });
       return;
     }
+    const apiHealth = useRuntimeSettingsStore.getState();
+    if (isQwenApiStatusBlocking(apiHealth.qwenApiStatus)) {
+      ctx.status = MissionState.Failed;
+      ctx.currentAgent = null;
+      this.contextRef = ctx;
+      this.emit({
+        type: MissionEventType.MissionFailed,
+        timestamp: now(),
+        payload: { error: apiHealth.qwenApiStatusMessage || "Qwen is unavailable. Test the API connection in Settings before launching another mission." },
+      });
+      onUpdate({ ...ctx });
+      return;
+    }
     const mockMode = isMockMode();
     const qwenClient = mockMode ? null : createQwenClient();
     const classification = this.classifyMission(ctx.missionBrief, ctx.configuration);
@@ -909,7 +922,7 @@ export class MissionEngine {
       }
       ctx.status = MissionState.Failed;
       ctx.currentAgent = null;
-      this.emit({ type: MissionEventType.MissionFailed, timestamp: now(), payload: { error: String(error) } });
+      this.emit({ type: MissionEventType.MissionFailed, timestamp: now(), payload: { error: error instanceof Error ? error.message : String(error) } });
       onUpdate({ ...ctx });
     }
   }
@@ -972,10 +985,9 @@ export class MissionEngine {
         ], { maxTokens: phase === MissionState.Finalizing ? 6000 : 4096, signal });
       } catch (error) {
         if (signal.aborted) throw error;
-        if (!useRuntimeSettingsStore.getState().allowMockFallback) {
-          throw new Error(`Qwen request failed during ${agentDef.name}: ${error instanceof Error ? error.message : String(error)}`);
-        }
-        result = this.mockRunner.generate(phase, ctx, undefined, classification);
+        throw error instanceof Error
+          ? error
+          : new Error(`Qwen request failed during ${agentDef.name}.`);
       } finally {
         stopLiveReview();
       }
@@ -1168,10 +1180,9 @@ export class MissionEngine {
         ], { maxTokens: 4096, signal });
       } catch (error) {
         if (signal.aborted) throw error;
-        if (!useRuntimeSettingsStore.getState().allowMockFallback) {
-          throw new Error(`Qwen request failed during ${agentDef.name}: ${error instanceof Error ? error.message : String(error)}`);
-        }
-        result = this.mockRunner.generate(phase, ctx, task, classification);
+        throw error instanceof Error
+          ? error
+          : new Error(`Qwen request failed during ${agentDef.name}.`);
       } finally {
         stopLiveReview();
       }

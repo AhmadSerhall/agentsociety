@@ -149,7 +149,7 @@ export function CouncilSuggestionsPanel({
     setReviewing(true);
     setError("");
     seenCouncilByHistoryRef.current = {};
-    void generateTopicAwareSuggestions(entries.slice(0, 4), 1)
+    void generateTopicAwareSuggestions(entries.slice(0, 2), 1)
       .then((result) => {
         const nextChips = result
           .map((suggestion) => {
@@ -158,7 +158,7 @@ export function CouncilSuggestionsPanel({
             return toCouncilChip(entry, suggestion);
           })
           .filter((chip): chip is CouncilSuggestionChip => Boolean(chip))
-          .slice(0, 4);
+          .slice(0, 2);
 
         setChips(nextChips);
         for (const chip of nextChips) {

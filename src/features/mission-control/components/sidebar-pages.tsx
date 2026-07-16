@@ -71,9 +71,10 @@ import {
   type ConnectionTestState,
   type MissionPreferenceSettings,
 } from "@/lib/settingsPreferences";
-import { getQwenRuntimeInfo } from "@/services/qwen";
+import { createQwenClient, getQwenRuntimeInfo } from "@/services/qwen";
 import { buildMissionStateFromEvents, getReplayDuration } from "@/services/replay/replay-engine";
 import { useHistoryStore, useMissionStore, useRuntimeSettingsStore } from "@/store";
+import { getQwenApiStatusLabel, isQwenApiStatusBlocking } from "@/store/runtime-settings-store";
 import {
   AgentRole,
   MissionState,
@@ -682,6 +683,7 @@ function SettingsPage() {
   const qwenApiKey = useRuntimeSettingsStore((state) => state.qwenApiKey);
   const qwenBaseUrl = useRuntimeSettingsStore((state) => state.qwenBaseUrl);
   const qwenModel = useRuntimeSettingsStore((state) => state.qwenModel);
+  const qwenApiStatus = useRuntimeSettingsStore((state) => state.qwenApiStatus);
   const setQwenCredentials = useRuntimeSettingsStore((state) => state.setQwenCredentials);
   const clearQwenCredentials = useRuntimeSettingsStore((state) => state.clearQwenCredentials);
   const setAllowMockFallback = useRuntimeSettingsStore((state) => state.setAllowMockFallback);
@@ -713,6 +715,9 @@ function SettingsPage() {
   const hasEnvKey = Boolean(envSettings.qwenApiKey.trim());
   const hasActiveKey = resolved.source !== "none";
   const hasWorkingKey = runtime.hasUsableApiKey;
+  const apiBlocked = isQwenApiStatusBlocking(qwenApiStatus);
+  const runtimeReady = runtime.hasUsableApiKey && !apiBlocked;
+  const apiStatusLabel = runtime.hasUsableApiKey ? getQwenApiStatusLabel(qwenApiStatus) : "API key required";
   const activeKeyLabel = resolved.source === "saved" ? "Using saved browser key" : resolved.source === "env" ? "Using local env key" : "No API key configured";
   const keyInputPlaceholder = !hasSavedKey && hasEnvKey ? "Using local env key - paste a key to override" : "Paste your Qwen API key";
   const apiKeyInputValue = apiKeyEditing ? apiKeyDraft : apiKeyRevealed && hasSavedKey ? qwenApiKey : resolved.maskedApiKey;
@@ -789,10 +794,14 @@ function SettingsPage() {
     };
     reader.readAsText(file);
   };
-  const testConnection = () => {
+  const testConnection = async () => {
     setConnectionState("testing");
     const startedAt = performance.now();
-    window.setTimeout(() => {
+    try {
+      await createQwenClient().chat([
+        { role: "system", content: "Respond with the single word OK." },
+        { role: "user", content: "Verify that this Qwen model connection can return a response." },
+      ], { temperature: 0, maxTokens: 8, bypassApiHealthCheck: true });
       const latencyMs = Math.max(1, Math.round(performance.now() - startedAt));
       const next: ConnectionTestState = {
         status: "connected",
@@ -806,7 +815,25 @@ function SettingsPage() {
       saveConnectionTest(next);
       refreshStorageStats();
       toast({ title: "Connected", description: "Qwen runtime responded successfully." });
-    }, 650);
+    } catch {
+      const health = useRuntimeSettingsStore.getState();
+      const next: ConnectionTestState = {
+        status: "idle",
+        latencyMs: null,
+        modelAvailable: false,
+        verifiedAt: null,
+        fingerprint: activeRuntimeFingerprint,
+      };
+      setConnectionState("idle");
+      setConnectionTest(next);
+      clearConnectionTest();
+      refreshStorageStats();
+      toast({
+        title: `Qwen API: ${getQwenApiStatusLabel(health.qwenApiStatus)}`,
+        description: health.qwenApiStatusMessage || "Qwen did not accept the connection test. Verify the key, endpoint, and model.",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
@@ -817,7 +844,7 @@ function SettingsPage() {
         <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
           <SectionTitle icon={Settings} title="Settings" subtitle="Connect your own Qwen API key to run missions." hero />
           <div className="flex flex-wrap gap-2">
-            <StatusChip connected={runtime.hasUsableApiKey} label={runtime.hasUsableApiKey ? "Connected" : "API key required"} />
+            <StatusChip connected={runtimeReady} label={apiStatusLabel} />
             <Badge className="border-purple-300/20 bg-purple-400/10 text-purple-100 hover:bg-purple-400/10">Current Provider: {runtime.provider}</Badge>
             <Badge className="border-cyan-300/20 bg-cyan-300/10 text-cyan-100 hover:bg-cyan-300/10">Current Model: {runtime.model}</Badge>
           </div>
@@ -827,8 +854,8 @@ function SettingsPage() {
       <PremiumCard>
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <SectionTitle icon={KeyRound} title="Connect Qwen" subtitle="Paste your Qwen API key below. For open-source users, create a Qwen/DashScope account, generate an API key, and save it here." />
-          <Badge className={runtime.hasUsableApiKey ? "bg-emerald-300/15 text-emerald-100 hover:bg-emerald-300/15" : "bg-amber-300/15 text-amber-100 hover:bg-amber-300/15"}>
-            {runtime.hasUsableApiKey ? "Ready for missions" : "API key required"}
+          <Badge className={runtimeReady ? "bg-emerald-300/15 text-emerald-100 hover:bg-emerald-300/15" : "bg-amber-300/15 text-amber-100 hover:bg-amber-300/15"}>
+            {runtimeReady ? "Ready for missions" : apiStatusLabel}
           </Badge>
         </div>
         <div className="mt-5 grid gap-4 lg:grid-cols-[1.2fr_1fr_0.7fr]">
@@ -910,7 +937,7 @@ function SettingsPage() {
             <Button disabled={!runtime.hasUsableApiKey || connectionState === "testing"} onClick={testConnection} className="gap-2 bg-cyan-300 text-[#06101f] hover:bg-cyan-200 disabled:opacity-45">{connectionState === "testing" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RadioTower className="h-4 w-4" />}Test Connection</Button>
           </div>
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            <RuntimeMetric icon={CheckCircle2} label="Status" value={connectionState === "testing" ? "Testing..." : connectionTest.status === "connected" ? "Connected" : runtime.hasUsableApiKey ? "Ready to test" : "Key required"} tone={connectionTest.status === "connected" ? "green" : "cyan"} pulse={connectionState === "testing"} />
+            <RuntimeMetric icon={CheckCircle2} label="Status" value={connectionState === "testing" ? "Testing..." : apiBlocked ? apiStatusLabel : connectionTest.status === "connected" ? "Connected" : runtime.hasUsableApiKey ? "Ready to test" : "Key required"} tone={connectionTest.status === "connected" && !apiBlocked ? "green" : "cyan"} pulse={connectionState === "testing"} />
             <RuntimeMetric icon={Clock3} label="Latency" value={connectionTest.latencyMs ? `${connectionTest.latencyMs} ms` : "--"} tone="purple" />
             <RuntimeMetric icon={Server} label="Model available" value={connectionTest.modelAvailable === true ? "Yes" : connectionTest.modelAvailable === false ? "No" : runtime.hasUsableApiKey ? "Unknown" : "No"} tone="cyan" />
             <RuntimeMetric icon={Activity} label="Last verified" value={lastVerified} tone="green" />
@@ -919,7 +946,7 @@ function SettingsPage() {
         <PremiumCard>
           <SectionTitle icon={Gauge} title="Qwen Runtime" subtitle="Live operating profile for the current model endpoint." />
           <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            <RuntimeMetric icon={Activity} label="Runtime Status" value={runtime.hasUsableApiKey ? "Healthy" : "Waiting"} tone="green" />
+            <RuntimeMetric icon={Activity} label="Runtime Status" value={apiBlocked ? `Locked - ${apiStatusLabel}` : runtime.hasUsableApiKey ? "Healthy" : "Waiting"} tone={runtimeReady ? "green" : "cyan"} />
             <RuntimeMetric icon={Server} label="Provider" value={runtime.provider} tone="cyan" />
             <RuntimeMetric icon={Bot} label="Active Model" value={runtime.model} tone="purple" />
             <RuntimeMetric icon={Network} label="Base URL Host" value={runtime.baseHost} tone="cyan" />

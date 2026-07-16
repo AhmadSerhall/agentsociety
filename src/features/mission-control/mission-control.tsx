@@ -13,6 +13,7 @@ import { CheckCircle2, Clock3, Download, FileText, KeyRound, ListPlus, Menu, Rot
 import { useMissionEngine } from "@/hooks";
 import { useMissionStore } from "@/store";
 import { useHistoryStore, useRuntimeSettingsStore, useReplayStore } from "@/store";
+import { getQwenApiStatusLabel, isQwenApiStatusBlocking } from "@/store/runtime-settings-store";
 import { useFadeInUp, useStaggerContainer } from "@/hooks";
 import { hasUsableQwenKey, hideApiKeyOnboardingPermanently, isApiKeyOnboardingHidden } from "@/lib/qwenConfig";
 import { getQwenRuntimeInfo } from "@/services/qwen";
@@ -92,7 +93,8 @@ export function MissionControl() {
   const loadHistory = useHistoryStore((s) => s.load);
   const addHistory = useHistoryStore((s) => s.add);
   const loadRuntimeSettings = useRuntimeSettingsStore((s) => s.load);
-  const qwenApiKey = useRuntimeSettingsStore((s) => s.qwenApiKey);
+  const qwenApiStatus = useRuntimeSettingsStore((s) => s.qwenApiStatus);
+  const qwenApiStatusMessage = useRuntimeSettingsStore((s) => s.qwenApiStatusMessage);
   const progress = useMissionStore((s) => s.context?.progress ?? 0);
   const status = useMissionStore((s) => s.context?.status);
   const resetMission = useMissionStore((s) => s.reset);
@@ -168,6 +170,13 @@ export function MissionControl() {
   const runtimeInfo = getQwenRuntimeInfo();
   const mockMode = runtimeInfo.provider === "Mock";
   const hasResolvedQwenKey = hasUsableQwenKey();
+  const qwenApiBlocked = isQwenApiStatusBlocking(qwenApiStatus);
+  const apiAccessTitle = !hasResolvedQwenKey
+    ? "Qwen API key required"
+    : `Qwen API: ${getQwenApiStatusLabel(qwenApiStatus)}`;
+  const apiAccessDescription = !hasResolvedQwenKey
+    ? "Go to Settings and paste your Qwen API key to run missions."
+    : qwenApiStatusMessage || "Open Settings and test the Qwen connection before launching another mission.";
   const shouldShowApiKeyOnboarding = !hasResolvedQwenKey && !apiKeyOnboardingDismissed && !isApiKeyOnboardingHidden();
 
   useEffect(() => {
@@ -243,13 +252,17 @@ export function MissionControl() {
       setValidationOpen(true);
       return;
     }
-    if (replayMode !== "replay" && !hasResolvedQwenKey) {
+    if (replayMode !== "replay" && (!hasResolvedQwenKey || qwenApiBlocked)) {
       setApiKeyRequiredOpen(true);
       return;
     }
     setValidationInProgress(true);
     const validation = replayMode === "replay" ? localValidation : await MISSION_VALIDATOR.validateMissionBriefSemantically(brief);
     setValidationInProgress(false);
+    if (replayMode !== "replay" && isQwenApiStatusBlocking(useRuntimeSettingsStore.getState().qwenApiStatus)) {
+      setApiKeyRequiredOpen(true);
+      return;
+    }
     if (!validation.valid) {
       setValidationResult(validation);
       setValidationOpen(true);
@@ -303,6 +316,10 @@ export function MissionControl() {
   };
 
   const handleLaunchSubMission = (prompt: string, nextConfig: Partial<MissionConfiguration>, source: DrilldownSource) => {
+    if (!hasResolvedQwenKey || isQwenApiStatusBlocking(useRuntimeSettingsStore.getState().qwenApiStatus)) {
+      setApiKeyRequiredOpen(true);
+      return;
+    }
     setDrilldownOpen(false);
     setDrilldownSource(null);
     setActiveView("mission-control");
@@ -607,9 +624,9 @@ export function MissionControl() {
             <div className="mb-2 grid h-12 w-12 place-items-center rounded-2xl border border-cyan-200/25 bg-cyan-300/10">
               <KeyRound className="h-5 w-5 text-cyan-100" />
             </div>
-            <DialogTitle className="text-xl text-white">Qwen API key required</DialogTitle>
+            <DialogTitle className="text-xl text-white">{apiAccessTitle}</DialogTitle>
             <DialogDescription className="leading-relaxed text-white/60">
-              Go to Settings and paste your Qwen API key to run missions.
+              {apiAccessDescription}
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">

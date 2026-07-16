@@ -16,6 +16,12 @@ import {
 import { cn } from "@/lib/utils";
 import { getQwenRuntimeInfo } from "@/services/qwen";
 import { useHistoryStore, useMissionStore } from "@/store";
+import {
+  getQwenApiStatusLabel,
+  isQwenApiStatusBlocking,
+  useRuntimeSettingsStore,
+  type QwenApiStatus,
+} from "@/store/runtime-settings-store";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 export type MissionView = "mission-control" | "agents" | "history" | "reports" | "settings";
@@ -41,14 +47,16 @@ function SidebarContent({
 }) {
   const historyEntries = useHistoryStore((state) => state.entries);
   const context = useMissionStore((state) => state.context);
+  const qwenApiStatus = useRuntimeSettingsStore((state) => state.qwenApiStatus);
   const runtime = getQwenRuntimeInfo();
+  const runtimeBlocked = isQwenApiStatusBlocking(qwenApiStatus);
   const [activityIndex, setActivityIndex] = useState(0);
   const activityFeed = useMemo(() => [
     "Planner initialized",
-    runtime.hasUsableApiKey ? "Runtime connected" : "Runtime waiting for key",
+    runtimeBlocked ? `Qwen API ${getQwenApiStatusLabel(qwenApiStatus).toLocaleLowerCase()}` : runtime.hasUsableApiKey ? "Runtime connected" : "Runtime waiting for key",
     context?.status === "completed" ? "Mission completed" : "Mission engine ready",
     historyEntries.length ? "Reports generated" : "Replay ready",
-  ], [context?.status, historyEntries.length, runtime.hasUsableApiKey]);
+  ], [context?.status, historyEntries.length, qwenApiStatus, runtime.hasUsableApiKey, runtimeBlocked]);
 
   useEffect(() => {
     const interval = window.setInterval(() => setActivityIndex((index) => (index + 1) % activityFeed.length), 3200);
@@ -110,6 +118,7 @@ function SidebarContent({
         activeView={activeView}
         onViewChange={onViewChange}
         runtimeConnected={runtime.hasUsableApiKey}
+        qwenApiStatus={qwenApiStatus}
         activity={activityFeed[activityIndex] ?? "Runtime ready"}
         historyCount={historyEntries.length}
         completedCount={historyEntries.filter((entry) => entry.finalReport).length}
@@ -122,6 +131,7 @@ function CommandLayerWidget({
   activeView,
   onViewChange,
   runtimeConnected,
+  qwenApiStatus,
   activity,
   historyCount,
   completedCount,
@@ -129,13 +139,16 @@ function CommandLayerWidget({
   activeView: MissionView;
   onViewChange: (view: MissionView) => void;
   runtimeConnected: boolean;
+  qwenApiStatus: QwenApiStatus;
   activity: string;
   historyCount: number;
   completedCount: number;
 }) {
+  const runtimeBlocked = isQwenApiStatusBlocking(qwenApiStatus);
+  const apiLabel = runtimeConnected ? getQwenApiStatusLabel(qwenApiStatus) : "Needs key";
   const rows = [
-    ["API", runtimeConnected ? "Connected" : "Needs key", runtimeConnected],
-    ["Runtime", runtimeConnected ? "Healthy" : "Limited", runtimeConnected],
+    ["API", apiLabel, runtimeConnected && !runtimeBlocked],
+    ["Runtime", runtimeBlocked ? "Locked" : runtimeConnected ? "Healthy" : "Limited", runtimeConnected && !runtimeBlocked],
     // ["Mission Engine", "Ready", true],
     // ["Replay", "Ready", true],
     ["Agents", activeView === "mission-control" ? "Idle" : "Standby", true],

@@ -12,7 +12,7 @@ import {
 } from "./suggestion-label-utils";
 import { buildGuaranteedCouncilReplacement, REPLACEMENT_ANGLES } from "./suggestion-replacement-angles";
 
-const MAX_CHIPS = 4;
+const MAX_CHIPS = 2;
 
 function firstReportInsight(value?: string) {
   return value
