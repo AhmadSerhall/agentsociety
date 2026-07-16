@@ -52,17 +52,17 @@ const MISSION_VALIDATOR = new MissionEngine();
 const VALIDATION_EXAMPLES: Array<{ label: string; prompt: string; config: Partial<MissionConfiguration> }> = [
   {
     label: "Compare a decision",
-    prompt: "Compare three practical approaches to an important decision, test their assumptions, and recommend the best next step with measurable success criteria.",
+    prompt: "Compare renting an apartment with buying a home, and recommend the better option for someone who plans to stay in the same city for five years.",
     config: { missionType: "general-mission", outputFormat: "strategy-brief" },
   },
   {
     label: "Improve a process",
-    prompt: "Analyze an existing process, identify its largest source of friction, and create a prioritized improvement plan with constraints, risks, and success measures.",
+    prompt: "Review a small team's weekly meetings and create a simple plan to make them shorter, clearer, and more useful.",
     config: { missionType: "general-mission", outputFormat: "execution-roadmap" },
   },
   {
     label: "Validate an idea",
-    prompt: "Design a focused validation mission for a new idea, including the evidence needed, the assumptions to challenge, and a clear go or no-go decision.",
+    prompt: "Evaluate whether a mobile app that helps students plan their study time is worth building, and recommend whether to build it.",
     config: { missionType: "research-plan", outputFormat: "executive-report" },
   },
 ];
@@ -587,7 +587,7 @@ export function MissionControl() {
             >
               Use Example
             </Button> */}
-            <Button
+            {/* <Button
               onClick={() => {
                 if (validationResult?.suggestedMission) setBrief(validationResult.suggestedMission);
                 setValidationOpen(false);
@@ -596,7 +596,7 @@ export function MissionControl() {
               className="bg-gradient-to-r from-amber-300 to-cyan-300 text-[#07111f] shadow-[0_0_30px_rgba(251,191,36,0.18)] hover:from-amber-200 hover:to-cyan-200"
             >
               Suggest Mission
-            </Button>
+            </Button> */}
           </div>
         </DialogContent>
       </Dialog>
