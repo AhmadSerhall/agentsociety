@@ -101,7 +101,7 @@ import { composeReportSections } from "./council/presentation-renderer";
 import type { MissionView } from "./mission-sidebar";
 
 function cardClass() {
-  return "rounded-2xl border border-cyan-200/10 bg-black/20 p-4 shadow-[0_18px_60px_rgba(0,0,0,0.22)]";
+  return "rounded-2xl border border-[rgb(var(--agent-settings-accent)_/_0.14)] bg-black/20 p-4 shadow-[0_18px_60px_rgba(0,0,0,0.22)]";
 }
 
 function copyText(text: string) {
@@ -343,7 +343,11 @@ function AgentsPage() {
           return (
             <article
               key={agent.id}
-              className="group relative overflow-hidden rounded-2xl border border-cyan-200/10 bg-black/20 p-4 shadow-[0_18px_60px_rgba(0,0,0,0.22)] transition-all duration-300 hover:-translate-y-1 hover:border-cyan-200/35 hover:shadow-[0_24px_90px_rgba(34,211,238,0.18)]"
+              className="group relative overflow-hidden rounded-2xl border bg-black/20 p-4 shadow-[0_18px_60px_rgba(0,0,0,0.22)] transition-all duration-300 hover:-translate-y-1"
+              style={{
+                borderColor: "rgb(var(--agent-settings-accent) / 0.14)",
+                boxShadow: "0 18px 60px rgba(0,0,0,0.22)",
+              }}
             >
               <div className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
                 <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-300/80 to-transparent" />
@@ -830,9 +834,15 @@ function SettingsPage() {
 
   return (
     <section className="space-y-5 pb-8">
-      <div className="group relative overflow-hidden rounded-[1.75rem] border border-cyan-200/15 bg-white/[0.055] p-6 shadow-[0_30px_100px_rgba(6,182,212,0.12)] backdrop-blur-2xl transition-all duration-300 hover:border-cyan-200/25 hover:shadow-[0_34px_120px_rgba(6,182,212,0.18)]">
-        <div className="absolute -left-10 -top-16 h-44 w-44 rounded-full bg-cyan-300/12 blur-3xl" />
-        <div className="absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-cyan-200/70 to-transparent" />
+      <div
+        className="group relative overflow-hidden rounded-[1.75rem] border bg-white/[0.055] p-6 backdrop-blur-2xl transition-all duration-300"
+        style={{
+          borderColor: "rgb(var(--agent-settings-accent) / 0.2)",
+          boxShadow: "0 30px 100px rgb(var(--agent-settings-accent) / 0.12)",
+        }}
+      >
+        <div className="absolute -left-10 -top-16 h-44 w-44 rounded-full blur-3xl" style={{ backgroundColor: "rgb(var(--agent-settings-accent) / 0.12)" }} />
+        <div className="absolute inset-x-8 top-0 h-px" style={{ background: "linear-gradient(to right, transparent, rgb(var(--agent-settings-accent) / 0.7), transparent)" }} />
         <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
           <SectionTitle icon={Settings} title="Settings" subtitle="Connect your own Qwen API key to run missions." hero />
           <div className="flex flex-wrap gap-2">
@@ -1107,8 +1117,14 @@ function SettingsPage() {
 
 function PremiumCard({ children }: { children: ReactNode }) {
   return (
-    <div className="group relative overflow-hidden rounded-2xl border border-cyan-200/12 bg-white/[0.045] p-5 shadow-[0_24px_90px_rgba(0,0,0,0.24)] backdrop-blur-2xl transition-all duration-300 hover:border-cyan-200/24 hover:bg-white/[0.055] hover:shadow-[0_30px_110px_rgba(34,211,238,0.13)]">
-      <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-cyan-200/50 to-transparent opacity-70" />
+    <div
+      className="group relative overflow-hidden rounded-2xl border bg-white/[0.045] p-5 backdrop-blur-2xl transition-all duration-300 hover:bg-white/[0.055]"
+      style={{
+        borderColor: "rgb(var(--agent-settings-accent) / 0.14)",
+        boxShadow: "0 24px 90px rgba(0,0,0,0.24)",
+      }}
+    >
+      <div className="pointer-events-none absolute inset-x-8 top-0 h-px opacity-70" style={{ background: "linear-gradient(to right, transparent, rgb(var(--agent-settings-accent) / 0.5), transparent)" }} />
       <div className="relative">{children}</div>
     </div>
   );
@@ -1117,8 +1133,16 @@ function PremiumCard({ children }: { children: ReactNode }) {
 function SectionTitle({ icon: Icon, title, subtitle, hero = false }: { icon: typeof Bot; title: string; subtitle: string; hero?: boolean }) {
   return (
     <div className="flex gap-3">
-      <span className={`${hero ? "h-14 w-14" : "h-11 w-11"} relative grid shrink-0 place-items-center rounded-2xl border border-cyan-200/18 bg-cyan-300/10 text-cyan-100 shadow-[0_0_26px_rgba(34,211,238,0.12)]`}>
-        {hero && <span className="absolute inset-0 rounded-2xl bg-cyan-300/18 blur-xl animate-pulse" />}
+      <span
+        className={`${hero ? "h-14 w-14" : "h-11 w-11"} relative grid shrink-0 place-items-center rounded-2xl border shadow-[0_0_26px_rgba(34,211,238,0.12)]`}
+        style={{
+          borderColor: "rgb(var(--agent-settings-accent) / 0.24)",
+          backgroundColor: "rgb(var(--agent-settings-accent) / 0.1)",
+          color: "rgb(var(--agent-settings-accent))",
+          boxShadow: "0 0 26px rgb(var(--agent-settings-accent) / 0.12)",
+        }}
+      >
+        {hero && <span className="absolute inset-0 rounded-2xl blur-xl animate-pulse" style={{ backgroundColor: "rgb(var(--agent-settings-accent) / 0.18)" }} />}
         <Icon className={`${hero ? "h-6 w-6" : "h-5 w-5"} relative`} />
       </span>
       <div>
@@ -1263,13 +1287,36 @@ function relativeTime(value: string) {
 
 function PageHeader({ icon: Icon, title, meta, description }: { icon: typeof Bot; title: string; meta: string; description: string }) {
   return (
-    <div className="rounded-[1.75rem] border border-cyan-200/15 bg-white/[0.055] p-6 shadow-[0_30px_100px_rgba(6,182,212,0.12)] backdrop-blur-2xl">
+    <div
+      className="rounded-[1.75rem] border bg-white/[0.055] p-6 backdrop-blur-2xl"
+      style={{
+        borderColor: "rgb(var(--agent-settings-accent) / 0.2)",
+        boxShadow: "0 30px 100px rgb(var(--agent-settings-accent) / 0.12)",
+      }}
+    >
       <div className="flex items-start gap-4">
-        <div className="grid h-14 w-14 place-items-center rounded-2xl border border-cyan-200/20 bg-cyan-300/10">
-          <Icon className="h-6 w-6 text-cyan-200" />
+        <div
+          className="grid h-14 w-14 place-items-center rounded-2xl border"
+          style={{
+            borderColor: "rgb(var(--agent-settings-accent) / 0.26)",
+            backgroundColor: "rgb(var(--agent-settings-accent) / 0.1)",
+            color: "rgb(var(--agent-settings-accent))",
+            boxShadow: "0 0 26px rgb(var(--agent-settings-accent) / 0.12)",
+          }}
+        >
+          <Icon className="h-6 w-6" />
         </div>
         <div>
-          <Badge className="border-purple-300/20 bg-purple-400/10 text-purple-100 hover:bg-purple-400/10">{meta}</Badge>
+          <Badge
+            className="border"
+            style={{
+              borderColor: "rgb(var(--agent-settings-accent) / 0.26)",
+              backgroundColor: "rgb(var(--agent-settings-accent) / 0.1)",
+              color: "rgb(var(--agent-settings-accent) / 0.9)",
+            }}
+          >
+            {meta}
+          </Badge>
           <h2 className="mt-4 text-3xl font-bold text-white">{title}</h2>
           <p className="mt-2 max-w-3xl text-sm leading-relaxed text-white/58">{description}</p>
         </div>

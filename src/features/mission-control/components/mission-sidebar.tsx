@@ -85,6 +85,7 @@ function SidebarContent({
   const connectionPresence = resolveConnectionPresence(hasApiKey, qwenApiStatus);
   const runtimeBlocked = isQwenApiStatusBlocking(qwenApiStatus);
   const [activityIndex, setActivityIndex] = useState(0);
+  const [hoveredNavItem, setHoveredNavItem] = useState<MissionView | null>(null);
   const activityFeed = useMemo(() => [
     "Planner initialized",
     runtimeBlocked ? `Qwen API ${getQwenApiStatusLabel(qwenApiStatus).toLocaleLowerCase()}` : hasApiKey ? "Runtime connected" : "Runtime waiting for key",
@@ -134,24 +135,33 @@ function SidebarContent({
         {MISSION_NAV_ITEMS.map((item) => {
           const Icon = item.icon;
           const active = item.id === activeView;
+          const highlighted = active || hoveredNavItem === item.id;
           return (
             <button
               key={item.id}
               type="button"
               onClick={() => onViewChange(item.id)}
+              onMouseEnter={() => setHoveredNavItem(item.id)}
+              onMouseLeave={() => setHoveredNavItem(null)}
+              style={highlighted ? {
+                borderColor: "rgb(var(--agent-settings-accent) / 0.38)",
+                backgroundColor: `rgb(var(--agent-settings-accent) / ${active ? "0.13" : "0.075"})`,
+                boxShadow: `0 0 28px rgb(var(--agent-settings-accent) / ${active ? "0.18" : "0.1"})`,
+              } : undefined}
               className={cn(
                 "group relative flex w-full items-center gap-3 overflow-hidden rounded-xl border px-3 py-3 text-left text-sm transition-all",
                 active
-                  ? "border-cyan-300/35 bg-cyan-300/10 text-white shadow-[0_0_34px_rgba(34,211,238,0.16)]"
-                  : "border-transparent text-white/52 hover:border-cyan-200/15 hover:bg-white/[0.05] hover:text-white hover:shadow-[0_0_28px_rgba(34,211,238,0.08)]"
+                  ? "text-white"
+                  : "border-transparent text-white/52 hover:text-white"
               )}
             >
-              {active && <motion.span layoutId="sidebar-active" className="absolute left-0 top-2 h-8 w-1 rounded-r-full bg-cyan-300 shadow-[0_0_18px_rgba(34,211,238,0.85)]" />}
+              {active && <motion.span layoutId="sidebar-active" className="absolute left-0 top-2 h-8 w-1 rounded-r-full" style={{ backgroundColor: "rgb(var(--agent-settings-accent))", boxShadow: "0 0 18px rgb(var(--agent-settings-accent) / 0.85)" }} />}
               <Icon
                 className={cn(
                   "h-4 w-4 transition-colors",
-                  active ? "text-cyan-200" : "text-white/38 group-hover:text-purple-200"
+                  active ? "" : "text-white/38"
                 )}
+                style={highlighted ? { color: "rgb(var(--agent-settings-accent))" } : undefined}
               />
               <span>{item.label}</span>
             </button>
