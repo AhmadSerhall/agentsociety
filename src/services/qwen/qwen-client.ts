@@ -1,7 +1,7 @@
 /**
- * Agent Society — Alibaba Cloud / Qwen Cloud Integration
+ * Agent Council — Alibaba Cloud / Qwen Cloud Integration
  *
- * This browser-side client connects Agent Society to Alibaba Cloud's
+ * This browser-side client connects Agent Council to Alibaba Cloud's
  * Qwen/DashScope OpenAI-compatible Chat Completions API.
  *
  * Default endpoint:
@@ -137,7 +137,7 @@ export function createQwenClient(config?: Partial<QwenClientConfig>) {
     overrides?: { model?: string; temperature?: number; maxTokens?: number; signal?: AbortSignal }
   ): Promise<string> {
     if (typeof window !== "undefined" && (window as unknown as { __AGENT_SOCIETY_REPLAY_ACTIVE__?: boolean }).__AGENT_SOCIETY_REPLAY_ACTIVE__) {
-      console.warn("[Agent Society Replay] Blocked Qwen chat call during replay mode.");
+      console.warn("[Agent Council Replay] Blocked Qwen chat call during replay mode.");
       throw new QwenApiError({ code: "REPLAY_BLOCKED", message: "Replay mode never calls Qwen or any LLM." });
     }
 
@@ -156,7 +156,7 @@ export function createQwenClient(config?: Partial<QwenClientConfig>) {
 
     for (let attempt = 0; attempt < attempts; attempt += 1) {
       if (settings.preferences.verboseLogs) {
-        console.info(`[Agent Society] Qwen request attempt ${attempt + 1}/${attempts}`, {
+        console.info(`[Agent Council] Qwen request attempt ${attempt + 1}/${attempts}`, {
           model: body.model,
           stream: body.stream,
           timeoutSeconds: settings.missionTimeout,
@@ -177,7 +177,7 @@ export function createQwenClient(config?: Partial<QwenClientConfig>) {
           signal: controller.signal,
         });
         if (settings.preferences.verboseLogs) {
-          console.info("[Agent Society] Qwen response status", { status: res.status, ok: res.ok });
+          console.info("[Agent Council] Qwen response status", { status: res.status, ok: res.ok });
         }
         if (res.ok || attempt === attempts - 1) break;
       } catch (error) {
@@ -235,7 +235,7 @@ export function createMockClient() {
       Finance: `## Financial Plan\n\n### Startup Budget (First 90 Days)\n\n| Category | Monthly | 90-Day Total |\n|----------|---------|-------------|\n| Engineering (2 devs) | $16,000 | $48,000 |\n| AI API Costs | $800 | $2,400 |\n| Infrastructure (Vercel, DB) | $200 | $600 |\n| Marketing & GTM | $5,000 | $15,000 |\n| Legal & Compliance | $1,500 | $4,500 |\n| Tools & Licenses | $500 | $1,500 |\n| Contingency (10%) | $2,400 | $7,200 |\n| **TOTAL** | **$26,400** | **$79,200** |\n\n### Revenue Projections\n- Month 1: 10 paying customers × $149 = $1,490\n- Month 2: 30 paying customers × $149 = $4,470\n- Month 3: 60 paying customers × $149 = $8,940\n- **Quarter 1 Revenue**: $14,900\n\n### Runway\nWith $50K initial funding: ~2 months at full burn, extending to 4 months with MVP revenue.\nBreak-even target: 180 customers (~$26,820 MRR)`,
       Risk: `## Risk Assessment\n\n### Critical Risks\n\n**1. 30-day launch timeline is unrealistic**\n- Current plan allocates 8 sprints for a product that realistically needs 12+\n- Mitigation: Reduce MVP scope to core inventory + dashboard only\n\n**2. Single-agent AI dependency on Qwen API**\n- No fallback if Qwen API has downtime or rate limits\n- Mitigation: Implement response caching and graceful degradation\n\n**3. Underestimated customer acquisition cost**\n- $15,000 marketing budget assumes $50 CAC, but B2B SaaS averages $200-500\n- Mitigation: Focus on high-intent channels (restaurant associations, word-of-mouth)\n\n### Moderate Risks\n- **POS integration complexity** may delay launch by 2-4 weeks\n- **Data privacy compliance** requires legal review not yet budgeted\n- **Team size (2 devs)** is minimal for the proposed scope\n\n### Overall Assessment\nThe plan is ambitious and directionally sound, but the timeline and budget assumptions need recalibration. I recommend extending the launch to 60 days and increasing the initial budget to $100K.`,
       Mediator: `## Mediation Decision\n\n### Conflict 1: Timeline Disagreement\n- **Risk Critic position**: 30 days is unrealistic, recommends 60 days\n- **Planning team position**: 30 days is achievable with reduced MVP scope\n- **Decision**: Adopt a 45-day timeline. This preserves momentum while incorporating a 50% buffer for unexpected delays. Revised MVP scope includes inventory management and dashboard only — scheduling moves to Phase 2.\n\n### Conflict 2: Budget Concerns\n- **Risk Critic position**: Marketing budget assumptions are too optimistic\n- **Finance Agent position**: Budget is adequate with contingency\n- **Decision**: Increase marketing contingency from 10% to 20% and reallocate $2,000 from tools budget. This brings total to ~$82K with stronger safety margin.\n\n### Conflict 3: Team Capacity\n- **Risk Critic position**: 2 developers insufficient\n- **Technical Architect position**: Feasible with MVP scope reduction\n- **Decision**: Maintain 2 developers but plan for a 3rd hire at Month 2 using early revenue. Add a part-time contractor for POS integration.`,
-      Finalizer: `## Mission Report: AI SaaS Platform for Restaurants\n\n### Executive Summary\nAgent Society has produced a comprehensive execution plan for launching an AI-powered restaurant operations SaaS platform within 45 days. The plan was developed through 8 specialized agent perspectives, with 3 key disagreements identified and resolved through mediation.\n\n### Mission Objective\nLaunch an AI-powered SaaS platform that reduces restaurant administrative overhead by 60%, targeting 60 paying customers within 90 days.\n\n### Workstreams\n1. Market Research & Validation (Research Agent)\n2. Product Definition & MVP (Product Strategist)\n3. Technical Architecture (Technical Architect)\n4. Go-to-Market Strategy (Marketing Strategist)\n5. Financial Planning (Finance Agent)\n6. Risk Assessment & Mitigation (Risk Critic)\n\n### Key Mediator Decisions\n- Timeline: Extended from 30 to 45 days with reduced MVP scope\n- Budget: Increased to ~$82K with stronger contingency\n- Team: Plan for 3rd developer hire at Month 2\n\n### Efficiency Metrics\n- Multi-agent coverage: 9 specialized perspectives\n- Conflicts resolved: 3 (timeline, budget, team capacity)\n- Estimated single-agent quality: 55% → Multi-agent: 87%\n- Confidence score: 8.2/10\n\n### Final Recommendation\nProceed with the 45-day launch plan. The multi-agent analysis has identified and resolved critical gaps that a single-agent approach would likely miss. Priority actions: secure $82K funding, begin market validation immediately, and start technical sprint 1 within 3 days.`,
+      Finalizer: `## Mission Report: AI SaaS Platform for Restaurants\n\n### Executive Summary\nAgent Council has produced a comprehensive execution plan for launching an AI-powered restaurant operations SaaS platform within 45 days. The plan was developed through 8 specialized agent perspectives, with 3 key disagreements identified and resolved through mediation.\n\n### Mission Objective\nLaunch an AI-powered SaaS platform that reduces restaurant administrative overhead by 60%, targeting 60 paying customers within 90 days.\n\n### Workstreams\n1. Market Research & Validation (Research Agent)\n2. Product Definition & MVP (Product Strategist)\n3. Technical Architecture (Technical Architect)\n4. Go-to-Market Strategy (Marketing Strategist)\n5. Financial Planning (Finance Agent)\n6. Risk Assessment & Mitigation (Risk Critic)\n\n### Key Mediator Decisions\n- Timeline: Extended from 30 to 45 days with reduced MVP scope\n- Budget: Increased to ~$82K with stronger contingency\n- Team: Plan for 3rd developer hire at Month 2\n\n### Efficiency Metrics\n- Multi-agent coverage: 9 specialized perspectives\n- Conflicts resolved: 3 (timeline, budget, team capacity)\n- Estimated single-agent quality: 55% → Multi-agent: 87%\n- Confidence score: 8.2/10\n\n### Final Recommendation\nProceed with the 45-day launch plan. The multi-agent analysis has identified and resolved critical gaps that a single-agent approach would likely miss. Priority actions: secure $82K funding, begin market validation immediately, and start technical sprint 1 within 3 days.`,
     };
 
     // Find best matching mock response

@@ -75,7 +75,7 @@ export function EfficiencyPanel() {
 
       <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
         <div className="mb-3 flex items-center justify-between">
-          <p className="text-sm font-semibold text-white">Single Agent vs Agent Society</p>
+          <p className="text-sm font-semibold text-white">Single Agent vs Agent Council</p>
           <p className="text-xs text-white/45">{analytics.singleAgentQualityBaseline}% baseline to {metrics.qualityScore}% society score</p>
         </div>
         <ResponsiveContainer width="100%" height={190}>
@@ -85,7 +85,7 @@ export function EfficiencyPanel() {
             <YAxis tick={{ fontSize: 11, fill: "rgba(255,255,255,0.48)" }} domain={[0, 100]} />
             <Tooltip cursor={{ fill: "rgba(34,211,238,0.06)" }} content={<EfficiencyTooltip />} />
             <Bar dataKey="single" fill="#334155" radius={[6, 6, 0, 0]} name="Single Agent" />
-            <Bar dataKey="multi" radius={[6, 6, 0, 0]} name="Agent Society">
+            <Bar dataKey="multi" radius={[6, 6, 0, 0]} name="Agent Council">
               {data.map((item) => (
                 <Cell key={item.name} fill={item.multiColor} />
               ))}

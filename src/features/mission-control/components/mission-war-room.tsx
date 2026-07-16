@@ -87,7 +87,7 @@ export function MissionWarRoom({ onCancel }: { onCancel: () => void }) {
 
       <div className="grid gap-4 xl:grid-cols-[0.85fr_1.4fr_0.9fr]">
         <div className="space-y-4">
-          <WarCard title="Parallel Agent Society" icon={<RadioTower className="h-4 w-4" />}>
+          <WarCard title="Parallel Agent Council" icon={<RadioTower className="h-4 w-4" />}>
             <div className="space-y-2">
               {ORDER.map((role) => {
                 const def = getAgentByRole(role);

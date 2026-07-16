@@ -1,5 +1,5 @@
 /**
- * Agent Society — Mission History Types (LocalStorage)
+ * Agent Council — Mission History Types (LocalStorage)
  */
 
 import type { MissionConfiguration } from "./config.types";

@@ -13,7 +13,7 @@ export function CouncilSummaryPanel({ context }: { context: MissionContext }) {
   const confidence = context.efficiencyMetrics?.finalConfidenceScore ?? Math.round(context.executionTasks.reduce((sum, task) => sum + task.confidence, 0) / Math.max(1, context.executionTasks.length));
   const resolvedConflicts = context.conflicts.filter((conflict) => conflict.resolved || conflict.status === "resolved").length;
   const keyDecision = formatKeyDecision(context);
-  const summary = sanitizeUserFacingText(report?.executiveSummary || "The agent society completed the workstreams, resolved required coordination points, and synthesized the final execution plan.");
+  const summary = sanitizeUserFacingText(report?.executiveSummary || "The agent Council completed the workstreams, resolved required coordination points, and synthesized the final execution plan.");
 
   return (
     <section className="relative w-full overflow-hidden rounded-[1.6rem] border border-emerald-300/20 bg-[radial-gradient(circle_at_50%_0%,rgba(16,185,129,0.15),transparent_38%),linear-gradient(135deg,rgba(3,7,18,0.9),rgba(15,23,42,0.72))] p-6 shadow-[0_26px_100px_rgba(16,185,129,0.12)] backdrop-blur-xl">

@@ -17,7 +17,7 @@ import { useFadeInUp, useStaggerContainer } from "@/hooks";
 import { hasUsableQwenKey, hideApiKeyOnboardingPermanently, isApiKeyOnboardingHidden } from "@/lib/qwenConfig";
 import { getQwenRuntimeInfo } from "@/services/qwen";
 import { MissionEngine } from "@/services/mission-engine";
-import { MISSION_TYPE_LABELS, DEPTH_LABELS, TIME_HORIZON_LABELS, BUDGET_RANGE_LABELS, RISK_TOLERANCE_LABELS, OUTPUT_FORMAT_LABELS, MissionState, AgentRole, type DrilldownSource, type MissionConfiguration, type MissionType, type Depth, type TimeHorizon, type BudgetRange, type RiskTolerance, type OutputFormat } from "@/types";
+import { MISSION_TYPE_LABELS, DEPTH_LABELS, TIME_HORIZON_LABELS, BUDGET_RANGE_LABELS, RISK_TOLERANCE_LABELS, OUTPUT_FORMAT_LABELS, MissionState, AgentRole, type CouncilHiddenContext, type DrilldownSource, type MissionConfiguration, type MissionContext, type MissionType, type Depth, type TimeHorizon, type BudgetRange, type RiskTolerance, type OutputFormat } from "@/types";
 import {
   AgentWorkflowPanel, WorkstreamsPanel, DialoguePanel,
   ConflictPanel, ReportPanel, TimelinePanel, EfficiencyPanel,
@@ -69,6 +69,7 @@ const VALIDATION_EXAMPLES: Array<{ label: string; prompt: string; config: Partia
 
 export function MissionControl() {
   const [brief, setBrief] = useState("");
+  const [pendingCouncilRelation, setPendingCouncilRelation] = useState<Partial<Pick<MissionContext, "parentMissionId" | "councilHiddenContext">> | null>(null);
   const [config, setConfig] = useState<Partial<MissionConfiguration>>({});
   const [showConfig, setShowConfig] = useState(false);
   const [showMobileNav, setShowMobileNav] = useState(false);
@@ -254,7 +255,7 @@ export function MissionControl() {
       setValidationOpen(true);
       return;
     }
-    launch(brief.trim(), config);
+    launch(brief.trim(), config, pendingCouncilRelation ?? undefined);
   };
 
   const handleViewChange = (view: MissionView) => {
@@ -262,9 +263,10 @@ export function MissionControl() {
     setShowMobileNav(false);
   };
 
-  const handleExampleSelect = (prompt: string, nextConfig: Partial<MissionConfiguration>) => {
+  const handleExampleSelect = (prompt: string, nextConfig: Partial<MissionConfiguration>, hidden?: CouncilHiddenContext) => {
     setBrief(prompt);
     setConfig((current) => ({ ...current, ...nextConfig }));
+    setPendingCouncilRelation(hidden ? { parentMissionId: hidden.parentMissionId, councilHiddenContext: hidden } : null);
   };
 
   const isIdle = status === MissionState.Idle || !status;
@@ -278,6 +280,7 @@ export function MissionControl() {
     resetMission();
     setBrief("");
     setConfig({});
+    setPendingCouncilRelation(null);
     setActiveMissionTab("workflow");
   };
 
@@ -366,7 +369,7 @@ export function MissionControl() {
                 </SheetTrigger>
                 <SheetContent side="left" className="w-80 border-cyan-200/20 bg-[#050914]/88 p-4 text-white shadow-[0_0_90px_rgba(34,211,238,0.22)] backdrop-blur-2xl">
                   <SheetHeader className="sr-only">
-                    <SheetTitle>Agent Society Navigation</SheetTitle>
+                    <SheetTitle>Agent Council Navigation</SheetTitle>
                   </SheetHeader>
                   <div className="flex h-full flex-col">
                     <MissionSidebarContent activeView={activeView} onViewChange={handleViewChange} />
@@ -374,7 +377,7 @@ export function MissionControl() {
                 </SheetContent>
               </Sheet>
               <div className="text-right">
-                <p className="text-xs uppercase tracking-[0.28em] text-cyan-200/70">Agent Society</p>
+                <p className="text-xs uppercase tracking-[0.28em] text-cyan-200/70">Agent Council</p>
                 <p className="text-lg font-bold text-white">Mission Control</p>
               </div>
               <div className="h-2.5 w-2.5 rounded-full bg-emerald-300 shadow-[0_0_18px_rgba(110,231,183,0.8)]" />
@@ -572,7 +575,7 @@ export function MissionControl() {
           </div>
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <Button variant="outline" onClick={() => setValidationOpen(false)} className="border-white/10 bg-white/[0.04] text-white/70 hover:bg-white/[0.08] hover:text-white">Dismiss</Button>
-            <Button
+            {/* <Button
               variant="outline"
               onClick={() => {
                 const example = VALIDATION_EXAMPLES[0];
@@ -583,7 +586,7 @@ export function MissionControl() {
               className="border-cyan-200/20 bg-cyan-300/10 text-cyan-50 hover:bg-cyan-300/15"
             >
               Use Example
-            </Button>
+            </Button> */}
             <Button
               onClick={() => {
                 if (validationResult?.suggestedMission) setBrief(validationResult.suggestedMission);
@@ -637,7 +640,7 @@ export function MissionControl() {
             </div>
             <DialogTitle className="text-xl text-white">Connect your Qwen API key</DialogTitle>
             <DialogDescription className="leading-relaxed text-white/62">
-              Agent Society requires a Qwen API key to run missions. The key is stored locally in this browser only and missions will not run until a valid key is saved.
+              Agent Council requires a Qwen API key to run missions. The key is stored locally in this browser only and missions will not run until a valid key is saved.
             </DialogDescription>
           </DialogHeader>
           <ol className="space-y-2 rounded-2xl border border-cyan-200/10 bg-cyan-300/[0.045] p-4 text-sm leading-relaxed text-white/66">
@@ -810,7 +813,7 @@ function MissionOutcomeCard({
   const confidence = context.efficiencyMetrics?.finalConfidenceScore ?? Math.round((context.workstreams.reduce((sum, item) => sum + (item.confidence ?? 0), 0) / Math.max(1, context.workstreams.length)) || 0);
   const title = type === "completed" ? "Mission Report Ready" : type === "cancelled" ? "Mission Cancelled" : "Mission Failed";
   const body = type === "completed"
-    ? "Agent Society completed the mission and synthesized the final report."
+    ? "Agent Council completed the mission and synthesized the final report."
     : type === "cancelled"
       ? "Execution stopped. Partial outputs remain available for review or saving."
       : "Execution failed. Partial mission data remains visible for diagnosis.";

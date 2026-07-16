@@ -521,7 +521,7 @@ Recommendation: measure first, optimize second, validate third. Prioritize chang
 
     return `## Finalizer Synthesis
 
-The mission is ready to package as a professional ${OUTPUT_FORMAT_LABELS[ctx.configuration.outputFormat]}. The final report should explicitly include the selected mission configuration, completed workstreams, agent contributions, conflict resolution, timeline, efficiency metrics, and a single-agent versus Agent Society comparison.
+The mission is ready to package as a professional ${OUTPUT_FORMAT_LABELS[ctx.configuration.outputFormat]}. The final report should explicitly include the selected mission configuration, completed workstreams, agent contributions, conflict resolution, timeline, efficiency metrics, and a single-agent versus Agent Council comparison.
 
 Recommendation: proceed with the current frontend-only architecture, keep Qwen/mock separation, and treat disagreement as a visible quality signal in the Mission Control experience.`;
   }

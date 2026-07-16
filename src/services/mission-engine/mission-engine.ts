@@ -3367,7 +3367,7 @@ export class MissionEngine {
       successMetrics: this.generateSuccessMetrics(ctx, metrics),
       finalRecommendations: this.generateFinalRecommendations(ctx, classification),
       predictiveNextMissions,
-      singleAgentComparison: `Single-agent baseline: ${metrics.singleAgentBaseline}%. Agent Society quality score: ${metrics.qualityScore}%. Estimated efficiency gain: ${Math.max(0, metrics.qualityScore - metrics.singleAgentBaseline)} points.`,
+      singleAgentComparison: `Single-agent baseline: ${metrics.singleAgentBaseline}%. Agent Council quality score: ${metrics.qualityScore}%. Estimated efficiency gain: ${Math.max(0, metrics.qualityScore - metrics.singleAgentBaseline)} points.`,
     };
     return this.validateFinalReport(report, classification);
   }

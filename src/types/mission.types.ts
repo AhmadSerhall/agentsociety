@@ -1,5 +1,5 @@
 /**
- * Agent Society — Mission Type Definitions
+ * Agent Council — Mission Type Definitions
  */
 
 import type { AgentActivity, AgentDialogueEntry, AgentThinkingState } from "./agent.types";
@@ -348,4 +348,5 @@ export interface MissionContext {
   sourceAgentId?: string;
   sourceWorkstreamId?: string;
   missionBacklog?: DrilldownSource[];
+  councilHiddenContext?: import("./council.types").CouncilHiddenContext;
 }

@@ -1,5 +1,5 @@
 /**
- * Agent Society — Mission Configuration Types
+ * Agent Council — Mission Configuration Types
  */
 
 export type MissionType =

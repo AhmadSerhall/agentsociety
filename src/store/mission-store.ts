@@ -1,5 +1,5 @@
 /**
- * Agent Society — Mission Store
+ * Agent Council — Mission Store
  */
 
 import { create } from "zustand";
@@ -23,7 +23,7 @@ interface MissionStateSlice {
   context: MissionContext | null;
   isRunning: boolean;
 
-  initMission: (brief: string, config?: Partial<MissionConfiguration>, relation?: Partial<Pick<MissionContext, "parentMissionId" | "sourceCardId" | "sourceCardText" | "sourceAgentId" | "sourceWorkstreamId">>) => MissionContext;
+  initMission: (brief: string, config?: Partial<MissionConfiguration>, relation?: Partial<Pick<MissionContext, "parentMissionId" | "sourceCardId" | "sourceCardText" | "sourceAgentId" | "sourceWorkstreamId" | "councilHiddenContext">>) => MissionContext;
   setContext: (ctx: MissionContext) => void;
   appendDialogue: (entry: AgentDialogueEntry) => void;
   addBacklogItem: (source: DrilldownSource) => void;
@@ -33,7 +33,7 @@ interface MissionStateSlice {
 const createEmptyContext = (
   brief: string,
   config: MissionConfiguration,
-  relation?: Partial<Pick<MissionContext, "parentMissionId" | "sourceCardId" | "sourceCardText" | "sourceAgentId" | "sourceWorkstreamId">>
+  relation?: Partial<Pick<MissionContext, "parentMissionId" | "sourceCardId" | "sourceCardText" | "sourceAgentId" | "sourceWorkstreamId" | "councilHiddenContext">>
 ): MissionContext => ({
   missionId: generateId(),
   missionBrief: brief,

@@ -1,5 +1,5 @@
 /**
- * Agent Society — Qwen API Contract Types
+ * Agent Council — Qwen API Contract Types
  */
 
 export interface QwenChatRequest {

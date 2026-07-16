@@ -121,7 +121,7 @@ function fromPlannerObject(parsed: Record<string, unknown>, raw: string, type: D
   const title = "Mission Graph created";
   const bullets = [
     typeof parsed.summary === "string" ? parsed.summary : "",
-    workstreams.length ? `${workstreams.length} mission-specific workstreams assigned across the agent society.` : "",
+    workstreams.length ? `${workstreams.length} mission-specific workstreams assigned across the agent Council.` : "",
     Array.isArray(parsed.parallelGroups) ? `${parsed.parallelGroups.length} parallel collaboration waves prepared.` : "",
   ].filter(Boolean);
   return {

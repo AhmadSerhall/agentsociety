@@ -68,7 +68,7 @@ function SidebarContent({
             <p className="text-sm font-semibold uppercase tracking-[0.28em] text-cyan-200/80">
               Agent
             </p>
-            <h2 className="text-lg font-bold text-white">Society</h2>
+            <h2 className="text-lg font-bold text-white">Council</h2>
           </div>
         </div>
         {/* <div className="mt-4 flex items-center gap-2 text-xs text-white/48">

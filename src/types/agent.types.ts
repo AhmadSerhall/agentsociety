@@ -1,5 +1,5 @@
 /**
- * Agent Society — Core Type Definitions
+ * Agent Council — Core Type Definitions
  */
 
 export enum AgentRole {

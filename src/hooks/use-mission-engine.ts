@@ -58,7 +58,7 @@ export function useMissionEngine() {
   }, []);
 
   const launch = useCallback(
-    (brief: string, config?: Partial<MissionConfiguration>, relation?: Partial<Pick<MissionContext, "parentMissionId" | "sourceCardId" | "sourceCardText" | "sourceAgentId" | "sourceWorkstreamId">>) => {
+    (brief: string, config?: Partial<MissionConfiguration>, relation?: Partial<Pick<MissionContext, "parentMissionId" | "sourceCardId" | "sourceCardText" | "sourceAgentId" | "sourceWorkstreamId" | "councilHiddenContext">>) => {
       if (!hasUsableQwenKey()) {
         toast({ title: "Qwen API key required", description: "Go to Settings and paste your Qwen API key to run missions.", variant: "destructive" });
         return;

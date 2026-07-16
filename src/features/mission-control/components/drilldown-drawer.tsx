@@ -35,7 +35,7 @@ export function DrilldownDrawer({ source, parentContext, open, onOpenChange, onL
       const messages: QwenMessage[] = [
         {
           role: "system",
-          content: "You are an Agent Society drilldown specialist. Execute exactly the selected action with concrete, decision-ready guidance. Do not repeat the parent mission or summarize unrelated report sections.",
+          content: "You are an Agent Council drilldown specialist. Execute exactly the selected action with concrete, decision-ready guidance. Do not repeat the parent mission or summarize unrelated report sections.",
         },
         {
           role: "user",

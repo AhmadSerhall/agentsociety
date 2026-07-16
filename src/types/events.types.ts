@@ -1,5 +1,5 @@
 /**
- * Agent Society — Event System Types
+ * Agent Council — Event System Types
  */
 
 export enum MissionEventType {

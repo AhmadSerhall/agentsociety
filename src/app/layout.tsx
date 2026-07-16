@@ -8,7 +8,7 @@ const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Agent Society — AI Mission Control",
+  title: "Agent Council — AI Mission Council",
   description: "Specialized agents collaborate, debate, negotiate, and produce professional execution plans for complex objectives.",
   icons: { icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg" },
 };

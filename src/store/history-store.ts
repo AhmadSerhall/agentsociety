@@ -1,5 +1,5 @@
 /**
- * Agent Society — Mission History Store (LocalStorage)
+ * Agent Council — Mission History Store (LocalStorage)
  */
 
 import { create } from "zustand";

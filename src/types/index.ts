@@ -1,5 +1,5 @@
 /**
- * Agent Society — Type Barrel Exports
+ * Agent Council — Type Barrel Exports
  */
 
 export {
@@ -69,3 +69,9 @@ export type {
 } from "./api.types";
 
 export type { MissionHistoryEntry } from "./history.types";
+
+export type {
+  CouncilHiddenContext,
+  CouncilSuggestionChip,
+  CouncilSuggestionIconKind,
+} from "./council.types";

@@ -19,12 +19,12 @@ const REPORT_SECTIONS: Array<[string, keyof MissionReport]> = [
   ["Final Recommendations", "finalRecommendations"],
 ];
 
-export function reportToMarkdown(report: MissionReport, title = "Agent Society Mission Report") {
+export function reportToMarkdown(report: MissionReport, title = "Agent Council Mission Report") {
   if (report.deliverableMode === "direct_answer") {
     const answer = sanitizeMissionText(report.finalAnswer || report.executiveSummary);
     const reviewerNote = sanitizeMissionText(report.reviewNote);
     return [
-      `# ${title === "Agent Society Mission Report" ? "Answer" : title}`,
+      `# ${title === "Agent Council Mission Report" ? "Answer" : title}`,
       answer,
       reviewerNote ? `## Reviewer Note\n\n${reviewerNote}` : "",
     ].filter(Boolean).join("\n\n");
