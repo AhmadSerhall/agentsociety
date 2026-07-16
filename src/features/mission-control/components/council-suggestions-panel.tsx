@@ -67,10 +67,10 @@ function CouncilSuggestionIcon({ kind }: { kind: CouncilSuggestionIconKind }) {
 function InlineReviewingState() {
   return (
     <motion.div
-      initial={{ opacity: 0, x: -6 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: -4 }}
-      className="flex min-w-0 flex-1 items-center gap-2.5 rounded-full border border-cyan-200/15 bg-cyan-300/[0.045] px-3.5 py-2"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="flex min-w-0 max-w-full items-center gap-2.5 rounded-full border border-cyan-200/15 bg-cyan-300/[0.045] px-3.5 py-2"
     >
       <div className="relative grid h-7 w-7 shrink-0 place-items-center rounded-full border border-cyan-200/25 bg-cyan-300/10">
         <Sparkles className="h-3.5 w-3.5 text-cyan-100" />
@@ -241,7 +241,7 @@ export function CouncilSuggestionsPanel({
 
   return (
     <div className="mb-4 space-y-2">
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex w-full flex-nowrap items-center gap-2">
         <motion.button
           type="button"
           whileHover={!disabled ? { y: -2, scale: 1.02 } : undefined}
@@ -255,69 +255,73 @@ export function CouncilSuggestionsPanel({
           <ChevronRight className="h-3.5 w-3.5" />
         </motion.button>
 
-        <AnimatePresence mode="wait">
-          {reviewing && <InlineReviewingState key="reviewing" />}
-        </AnimatePresence>
-
-        {!reviewing && chips.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="flex min-w-0 flex-1 flex-wrap items-center gap-2"
-          >
-            {chips.map((chip) => (
-              <ContextMenu key={chip.id}>
-                <Tooltip>
-                  <ContextMenuTrigger asChild>
-                    <TooltipTrigger asChild>
-                      <motion.button
-                        type="button"
-                        whileHover={{ y: -2, scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                        disabled={disabled || Boolean(typingChipId) || replacingChipId === chip.id}
-                        onClick={() => handleChipClick(chip)}
-                        className="flex max-w-full items-center gap-2 rounded-full border border-white/10 bg-white/[0.055] px-3.5 py-2 text-left text-xs font-medium text-white/75 transition hover:border-cyan-200/35 hover:bg-cyan-300/10 hover:text-cyan-50 disabled:cursor-not-allowed disabled:opacity-50"
+        <div className="flex min-w-0 flex-1 items-center justify-start overflow-x-auto">
+          <AnimatePresence mode="wait" initial={false}>
+            {reviewing ? (
+              <InlineReviewingState key="reviewing" />
+            ) : chips.length > 0 ? (
+              <motion.div
+                key="chips"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="flex flex-nowrap items-center gap-2"
+              >
+                {chips.map((chip) => (
+                  <ContextMenu key={chip.id}>
+                    <Tooltip>
+                      <ContextMenuTrigger asChild>
+                        <TooltipTrigger asChild>
+                          <motion.button
+                            type="button"
+                            whileHover={{ y: -2, scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                            disabled={disabled || Boolean(typingChipId) || replacingChipId === chip.id}
+                            onClick={() => handleChipClick(chip)}
+                            className="flex w-max max-w-[16rem] shrink-0 items-center gap-2 rounded-full border border-white/10 bg-white/[0.055] px-3.5 py-2 text-left text-xs font-medium text-white/75 transition hover:border-cyan-200/35 hover:bg-cyan-300/10 hover:text-cyan-50 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <CouncilSuggestionIcon kind={chip.iconKind} />
+                            <span className="truncate">{chip.label}</span>
+                            {(typingChipId === chip.id || replacingChipId === chip.id) && (
+                              <Loader2 className="h-3 w-3 animate-spin text-cyan-200" />
+                            )}
+                          </motion.button>
+                        </TooltipTrigger>
+                      </ContextMenuTrigger>
+                      <TooltipContent
+                        side="bottom"
+                        className="max-w-xs border border-cyan-200/15 bg-[#07111f]/95 px-3 py-2 text-xs leading-relaxed text-white/80 shadow-[0_20px_60px_rgba(34,211,238,0.18)]"
                       >
-                        <CouncilSuggestionIcon kind={chip.iconKind} />
-                        <span className="truncate">{chip.label}</span>
-                        {(typingChipId === chip.id || replacingChipId === chip.id) && (
-                          <Loader2 className="h-3 w-3 animate-spin text-cyan-200" />
-                        )}
-                      </motion.button>
-                    </TooltipTrigger>
-                  </ContextMenuTrigger>
-                  <TooltipContent
-                    side="bottom"
-                    className="max-w-xs border border-cyan-200/15 bg-[#07111f]/95 px-3 py-2 text-xs leading-relaxed text-white/80 shadow-[0_20px_60px_rgba(34,211,238,0.18)]"
-                  >
-                    <p className="font-semibold text-cyan-100">Why this suggestion?</p>
-                    <p className="mt-1">{chip.why}</p>
-                  </TooltipContent>
-                </Tooltip>
-                <ContextMenuContent className="w-44 border border-cyan-200/15 bg-[#07111f]/95 text-white">
-                  <ContextMenuItem
-                    disabled={Boolean(replacingChipId)}
-                    onSelect={() => void handleReplaceChip(chip)}
-                    className="gap-2 focus:bg-cyan-300/10 focus:text-cyan-50"
-                  >
-                    <RefreshCw className="h-3.5 w-3.5" />
-                    Replace
-                  </ContextMenuItem>
-                  <ContextMenuItem
-                    onSelect={() => handleDeleteChip(chip.id)}
-                    className="gap-2 text-rose-200 focus:bg-rose-400/10 focus:text-rose-100"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                    Delete
-                  </ContextMenuItem>
-                </ContextMenuContent>
-              </ContextMenu>
-            ))}
-          </motion.div>
-        )}
+                        <p className="font-semibold text-cyan-100">Why this suggestion?</p>
+                        <p className="mt-1">{chip.why}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                    <ContextMenuContent className="w-44 border border-cyan-200/15 bg-[#07111f]/95 text-white">
+                      <ContextMenuItem
+                        disabled={Boolean(replacingChipId)}
+                        onSelect={() => void handleReplaceChip(chip)}
+                        className="gap-2 focus:bg-cyan-300/10 focus:text-cyan-50"
+                      >
+                        <RefreshCw className="h-3.5 w-3.5" />
+                        Replace
+                      </ContextMenuItem>
+                      <ContextMenuItem
+                        onSelect={() => handleDeleteChip(chip.id)}
+                        className="gap-2 text-rose-200 focus:bg-rose-400/10 focus:text-rose-100"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Delete
+                      </ContextMenuItem>
+                    </ContextMenuContent>
+                  </ContextMenu>
+                ))}
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
+        </div>
 
         {trailing && (
-          <div className="ml-auto flex shrink-0 items-center">
+          <div className="flex shrink-0 items-center">
             {trailing}
           </div>
         )}
