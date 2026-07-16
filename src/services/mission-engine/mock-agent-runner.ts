@@ -6,7 +6,7 @@ import {
   MissionState,
   OUTPUT_FORMAT_LABELS,
   RISK_TOLERANCE_LABELS,
-  TIME_HORIZON_LABELS,
+  getTimeHorizonLabel,
   type ExecutionTask,
   type MissionConfiguration,
   type MissionContext,
@@ -52,7 +52,7 @@ function configLine(config: MissionConfiguration) {
   return [
     `Mission Type: ${MISSION_TYPE_LABELS[config.missionType]}`,
     `Depth: ${DEPTH_LABELS[config.depth]}`,
-    `Time Horizon: ${TIME_HORIZON_LABELS[config.timeHorizon]}`,
+    `Time Horizon: ${getTimeHorizonLabel(config)}`,
     `Budget: ${BUDGET_RANGE_LABELS[config.budgetRange]}`,
     `Risk Tolerance: ${RISK_TOLERANCE_LABELS[config.riskTolerance]}`,
     `Output Format: ${OUTPUT_FORMAT_LABELS[config.outputFormat]}`,
@@ -288,7 +288,7 @@ export class MockAgentRunner {
         title: `${focus.primary} Resource & Risk Governance`,
         owner: configuration.riskTolerance === "conservative" ? "Risk Critic" : "Finance Agent",
         confidence: 79,
-        description: `Model budget, operating constraints, risk controls, and go/no-go checkpoints for ${TIME_HORIZON_LABELS[configuration.timeHorizon]}.`,
+        description: `Model budget, operating constraints, risk controls, and go/no-go checkpoints for ${getTimeHorizonLabel(configuration)}.`,
         deliverables: "Budget model; risk register; governance checkpoints",
         dependencies: "Workstream 1; Workstream 2",
       },
@@ -323,7 +323,7 @@ Task focus: ${task?.title ?? "Strategic research"}.
 The mission brief points to a ${missionNoun(ctx.configuration)} requiring clarity on users, constraints, and adoption friction.
 
 - The strongest opportunity is to narrow the first release around a painful operational workflow rather than a broad platform promise.
-- ${TIME_HORIZON_LABELS[ctx.configuration.timeHorizon]} requires explicit sequencing: validation first, build second, launch third.
+- ${getTimeHorizonLabel(ctx.configuration)} requires explicit sequencing: validation first, build second, launch third.
 - ${DEPTH_LABELS[ctx.configuration.depth]} means the plan should include assumptions, confidence levels, and decision gates.
 - For ${BUDGET_RANGE_LABELS[ctx.configuration.budgetRange]}, resource trade-offs should be visible in the roadmap.
 
@@ -339,7 +339,7 @@ The product direction should be framed as a focused ${MISSION_TYPE_LABELS[ctx.co
 
 Core strategy:
 - Define one primary operator persona and two secondary stakeholders.
-- Prioritize features that produce measurable outcomes inside ${TIME_HORIZON_LABELS[ctx.configuration.timeHorizon]}.
+- Prioritize features that produce measurable outcomes inside ${getTimeHorizonLabel(ctx.configuration)}.
 - Package the first release as a guided mission cockpit: brief, agent collaboration, conflict resolution, and final report.
 - Use ${OUTPUT_FORMAT_LABELS[ctx.configuration.outputFormat]} as the final deliverable shape.
 
@@ -363,7 +363,7 @@ Implementation priorities:
 - Treat mock output as a first-class runner for demos and offline use.
 - Keep panels reactive to MissionContext instead of duplicating state.
 
-Concern: the ${TIME_HORIZON_LABELS[ctx.configuration.timeHorizon]} timeline is aggressive if the scope grows beyond the current frontend-only cockpit. The MVP should avoid backend, auth, database, or persistence expansion until the core workflow feels excellent.`;
+Concern: the ${getTimeHorizonLabel(ctx.configuration)} timeline is aggressive if the scope grows beyond the current frontend-only cockpit. The MVP should avoid backend, auth, database, or persistence expansion until the core workflow feels excellent.`;
   }
 
   private marketing(ctx: MissionContext, task?: ExecutionTask) {
@@ -394,7 +394,7 @@ Resource plan:
 - Delay backend/database work until there is a validated need.
 - Allocate effort across UI polish, prompt quality, QA, and documentation.
 
-Financial concern: if the team tries to satisfy every requested feature inside ${TIME_HORIZON_LABELS[ctx.configuration.timeHorizon]}, scope creep will reduce quality. A smaller, credible Mission Control workflow is the better asset.`;
+Financial concern: if the team tries to satisfy every requested feature inside ${getTimeHorizonLabel(ctx.configuration)}, scope creep will reduce quality. A smaller, credible Mission Control workflow is the better asset.`;
   }
 
   private risk(ctx: MissionContext, task?: ExecutionTask, classification?: MockMissionClassification) {
@@ -507,7 +507,7 @@ The Technical Architect, Marketing Strategist, Finance Agent, and Risk Critic di
 Proceed with a polished frontend-only Mission Control MVP. Do not add backend or database scope. The launch can remain ambitious, but the workflow must feel real: sequential agents, visible progress, completed workstreams, a meaningful conflict, and a final report derived from the mission brief and configuration.
 
 ### Final Resolved Action
-Use ${DEPTH_LABELS[ctx.configuration.depth]} to determine report depth, ${TIME_HORIZON_LABELS[ctx.configuration.timeHorizon]} to shape roadmap urgency, and ${OUTPUT_FORMAT_LABELS[ctx.configuration.outputFormat]} to shape the final deliverable.`;
+Use ${DEPTH_LABELS[ctx.configuration.depth]} to determine report depth, ${getTimeHorizonLabel(ctx.configuration)} to shape roadmap urgency, and ${OUTPUT_FORMAT_LABELS[ctx.configuration.outputFormat]} to shape the final deliverable.`;
   }
 
   private finalizer(ctx: MissionContext, classification?: MockMissionClassification) {

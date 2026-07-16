@@ -14,7 +14,7 @@ import {
   OUTPUT_FORMAT_LABELS,
   RISK_TOLERANCE_LABELS,
   STATE_AGENT_MAP,
-  TIME_HORIZON_LABELS,
+  getTimeHorizonLabel,
   type AgentDialogueEntry,
   type AgentActivity,
   type AgentThinkingState,
@@ -42,6 +42,7 @@ import { MockAgentRunner } from "./mock-agent-runner";
 import type { EventListener } from "./types";
 
 const PROGRESS_PER_PHASE = 1 / 9;
+const missionValidationCache = new Map<string, { result: MissionValidationResult; expiresAt: number }>();
 
 type MissionIntent =
   | MissionKind
@@ -93,6 +94,17 @@ interface SemanticMissionAnalysis {
   naturalWorkstreams: SemanticWorkstreamBlueprint[];
 }
 
+export interface MissionValidationResult {
+  valid: boolean;
+  score: number;
+  level: "unclear" | "developing" | "clear" | "excellent";
+  summary: string;
+  explanation: string;
+  strengths: string[];
+  gaps: string[];
+  suggestedMission: string;
+}
+
 interface PlannerGraphJson {
   summary?: string;
   workstreams?: Array<{
@@ -129,6 +141,7 @@ interface AgentStructuredOutput {
   workstreamTitle: string;
   status: "planning" | "working" | "reviewing" | "complete" | "blocked";
   summary: string;
+  councilMessage?: string;
   finalAnswer?: string;
   reviewNote?: string;
   usefulOutput: {
@@ -140,6 +153,15 @@ interface AgentStructuredOutput {
     dependencies: string[];
   };
   handoffToNextAgent: string;
+  timelineMilestone?: {
+    title: string;
+    description: string;
+    significance?: string;
+  };
+  followUpMissions?: Array<{
+    mission: string;
+    rationale?: string;
+  }>;
   confidence: number;
   conflictSignals: Array<{
     withAgent: string;
@@ -184,11 +206,56 @@ function configSummary(config: MissionConfiguration) {
   return [
     `Mission Type: ${MISSION_TYPE_LABELS[config.missionType]}`,
     `Depth: ${DEPTH_LABELS[config.depth]}`,
-    `Time Horizon: ${TIME_HORIZON_LABELS[config.timeHorizon]}`,
+    `Time Horizon: ${getTimeHorizonLabel(config)}`,
     `Budget Range: ${BUDGET_RANGE_LABELS[config.budgetRange]}`,
     `Risk Tolerance: ${RISK_TOLERANCE_LABELS[config.riskTolerance]}`,
     `Output Format: ${OUTPUT_FORMAT_LABELS[config.outputFormat]}`,
   ].join("\n");
+}
+
+function inferExplicitTimeHorizon(brief: string): Pick<MissionConfiguration, "timeHorizon" | "customTimeHorizon"> {
+  const match = sanitizeUserFacingText(brief).match(/\b(\d{1,4})\s*(?:-|–|—)?\s*(day|days|week|weeks|month|months|year|years)\b/i);
+  if (!match) return { timeHorizon: "none" };
+  const amount = Number(match[1]);
+  const unit = match[2].toLowerCase().replace(/s$/, "");
+  return {
+    timeHorizon: "custom",
+    customTimeHorizon: `${amount} ${unit}${amount === 1 ? "" : "s"}`,
+  };
+}
+
+function configuredHorizonInDays(config: MissionConfiguration) {
+  const known: Partial<Record<MissionConfiguration["timeHorizon"], number>> = {
+    "7-days": 7,
+    "30-days": 30,
+    "90-days": 90,
+    "6-months": 180,
+    "1-year": 365,
+  };
+  if (config.timeHorizon !== "custom") return known[config.timeHorizon];
+  const match = config.customTimeHorizon?.match(/\b(\d{1,4})\s*(day|days|week|weeks|month|months|year|years)\b/i);
+  if (!match) return undefined;
+  const amount = Number(match[1]);
+  const unit = match[2].toLowerCase();
+  const multiplier = unit.startsWith("week") ? 7 : unit.startsWith("month") ? 30 : unit.startsWith("year") ? 365 : 1;
+  return amount * multiplier;
+}
+
+function scheduleFitsConfiguredHorizon(item: string, config: MissionConfiguration) {
+  const horizonDays = configuredHorizonInDays(config);
+  if (!horizonDays) return true;
+  const references: number[] = [];
+  for (const match of item.matchAll(/\b(\d{1,4})(?:\s*[-–—]\s*(\d{1,4}))?\s*(day|days|week|weeks|month|months|year|years)\b/gi)) {
+    const unit = match[3].toLowerCase();
+    const multiplier = unit.startsWith("week") ? 7 : unit.startsWith("month") ? 30 : unit.startsWith("year") ? 365 : 1;
+    references.push(Number(match[2] ?? match[1]) * multiplier);
+  }
+  for (const match of item.matchAll(/\b(day|days|week|weeks|month|months|year|years)\s+(\d{1,4})(?:\s*[-–—]\s*(\d{1,4}))?/gi)) {
+    const unit = match[1].toLowerCase();
+    const multiplier = unit.startsWith("week") ? 7 : unit.startsWith("month") ? 30 : unit.startsWith("year") ? 365 : 1;
+    references.push(Number(match[3] ?? match[2]) * multiplier);
+  }
+  return references.every((reference) => reference <= horizonDays);
 }
 
 function clampConfidence(value: number) {
@@ -223,6 +290,7 @@ Semantic Mission Analysis:
 - Relevant Concepts: ${domain?.semantic.relevantConcepts.join(", ") || "Infer from the objective"}
 - Required Expertise: ${domain?.semantic.requiredExpertise.map((item) => `${missionDisplayRole(domain, item.agent)} (${item.priority}: ${item.reason})`).join("; ") || "Infer before planning"}
 - Mission-Specific Risks: ${domain?.semantic.riskThemes.join("; ") || "Only include real risks if they exist"}
+- Mission Understanding Notes: ${domain?.strategy.validationNotes.join("; ") || "The objective is clear enough to proceed"}
 Your User-Facing Role: ${displayRole ?? "Mission Specialist"}
 
 Current Execution Task:
@@ -244,7 +312,7 @@ Risk: ${ctx.riskReview.slice(0, 500)}
 Mediator: ${ctx.mediatorDecisions.slice(0, 500)}
 
 Structured Dialogue Context:
-${ctx.dialogue.slice(-6).map((entry) => `- ${entry.agentName} (${entry.status ?? "complete"}): ${entry.content.slice(0, 220).replace(/\n/g, " ")}`).join("\n") || "No prior dialogue."}
+${ctx.dialogue.slice(-6).map((entry) => `- ${entry.agentName} (${entry.status ?? "complete"}): ${sanitizeUserFacingText(entry.conversationMessage ?? "")}`).filter((entry) => !entry.endsWith(": ")).join("\n") || "No prior dialogue."}
 
 Shared Mission State:
 - Agent States: ${Object.entries(ctx.agentStates).map(([role, state]) => `${role}=${state}`).join(", ")}
@@ -265,6 +333,13 @@ Rules:
 - Forbidden for direct missions: "mission complete", "translation completed", "the answer is ready", budget, timeline, stakeholders, roadmap, deliverables, next steps, implementation phases, unless the user explicitly asked for them.
 - Do not repeat the mission brief except when a single short reference is necessary.
 - Treat completed workstreams, dialogue, confidence changes, planner revisions, and active conflicts above as shared memory. When they materially affect your contribution, acknowledge the specific prior finding or decision you are building on. Never claim a finding that is not present in this context.
+- If prior dialogue exists, make the council relationship explicit in the summary or handoff: name the earlier role, identify the actual finding or assumption being accepted, challenged, revised, or reconciled, and explain how it changes this contribution. Do not add a ceremonial reference when the prior work is unrelated.
+- Write councilMessage as a natural one-to-three sentence reply to the most recent relevant agent. Use your distinct professional voice, respond to one specific finding or disagreement, and state only the new evidence, objection, implication, or revision you add. Do not reuse any sentence, bullet, schedule item, or recommendation already present in Structured Dialogue Context or Previous Agent Outputs. Never paste the full deliverable, repeat a schedule, or restate lists in councilMessage.
+- Write timelineMilestone from the actual contribution you just produced. Its title, description, and significance must be mission-specific and must not use generic phase-completion language.
+- Only when Finalizing, generate one to three followUpMissions from the completed mission and its strongest unresolved or actionable findings. Each mission must be a standalone prompt a person would naturally type, not a template, label, stitched sentence, or repetition of the original objective. For every other phase return an empty followUpMissions array.
+- Agreement must preserve the useful evidence it accepts. Disagreement must identify the concrete assumption being challenged. Revisions must state what changed. Consensus must state which trade-off was resolved.
+- Missing specificity is non-blocking once the objective is coherent. Proceed with explicit, reversible assumptions. If a missing detail materially changes the answer, include one concise clarification question in the handoff while continuing any work that does not depend on it.
+- The configured time horizon is authoritative. If it is specified, every schedule item and milestone must fit inside ${getTimeHorizonLabel(config)}; never produce a later day, week, month, or year. If it is not specified, use relative phases instead of inventing a deadline.
 - Do not write generic contribution titles. Produce direct useful content inside your assigned workstream.
 - Treat Mission Type as an execution style, not the domain. Use Semantic Mission Analysis to decide what the user is actually trying to accomplish.
 - Use the inferred domain, concepts, and your user-facing role. Stay inside the assigned workstream.
@@ -286,6 +361,7 @@ Response contract:
   "workstreamTitle": "string",
   "status": "planning | working | reviewing | complete | blocked",
   "summary": "one clean user-facing sentence",
+  "councilMessage": "a short natural reply to the relevant previous agent in this role's own voice",
   "finalAnswer": "required for direct_answer missions; the actual answer/artifact to show the user",
   "reviewNote": "optional short reviewer note for direct_answer missions",
   "usefulOutput": {
@@ -297,6 +373,17 @@ Response contract:
     "dependencies": ["string"]
   },
   "handoffToNextAgent": "string",
+  "timelineMilestone": {
+    "title": "mission-specific milestone title",
+    "description": "what changed in this mission",
+    "significance": "why this changed the next decision"
+  },
+  "followUpMissions": [
+    {
+      "mission": "a natural standalone follow-up mission prompt",
+      "rationale": "why this logically follows from the completed work"
+    }
+  ],
   "confidence": 0,
   "conflictSignals": [
     {
@@ -381,22 +468,161 @@ export class MissionEngine {
     return this.contextRef;
   }
 
+  validateMissionBrief(brief: string): MissionValidationResult {
+    const objective = sanitizeUserFacingText(brief).replace(/\s+/g, " ").trim();
+    const tokens = objective.match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu) ?? [];
+    const normalizedTokens = tokens.map((token) => token.toLocaleLowerCase());
+    const uniqueTokens = new Set(normalizedTokens);
+    const nonWhitespace = objective.replace(/\s/g, "");
+    const semanticCharacters = objective.match(/[\p{L}\p{N}]/gu)?.length ?? 0;
+    const symbolRatio = nonWhitespace.length ? 1 - (semanticCharacters / nonWhitespace.length) : 1;
+    const repeatedCharacterNoise = /(.)\1{3,}/u.test(objective);
+    const tokenCounts = normalizedTokens.reduce((counts, token) => counts.set(token, (counts.get(token) ?? 0) + 1), new Map<string, number>());
+    const mostFrequentToken = Math.max(0, ...tokenCounts.values());
+    const dominantTokenRatio = tokens.length ? mostFrequentToken / tokens.length : 1;
+    const lexicalDiversity = tokens.length ? uniqueTokens.size / tokens.length : 0;
+    const informativeTokens = tokens.filter((token) => token.length >= 4).length;
+    const sentenceSignals = objective.split(/[.!?;:\n]+/).filter((part) => part.trim().length >= 6).length;
+    const constraintSignals = objective.match(/\b\d+(?:[.,]\d+)?(?:%|\s*[\p{L}]+)?\b/gu)?.length ?? 0;
+    const latinTokens = normalizedTokens.filter((token) => /^[a-z]+$/.test(token));
+    const suspiciousWordShapes = latinTokens.filter((token) => {
+      if (token.length < 4) return false;
+      const vowelRatio = (token.match(/[aeiouy]/g)?.length ?? 0) / token.length;
+      return vowelRatio <= 0.23 || /[bcdfghjklmnpqrstvwxz]{4,}/.test(token);
+    }).length;
+    const unintelligibleWordShapes = tokens.length === 1
+      || (latinTokens.length >= 2 && suspiciousWordShapes / latinTokens.length >= 0.5);
+
+    let score = objective ? 100 : 0;
+    const strengths: string[] = [];
+    const gaps: string[] = [];
+
+    if (!objective) gaps.push("No objective was provided.");
+    if (objective && unintelligibleWordShapes) {
+      score -= 64;
+      gaps.push("The text does not form an understandable objective, so the council cannot identify a relevant outcome.");
+    }
+    if (tokens.length < 3) {
+      score -= unintelligibleWordShapes ? 10 : 58;
+      if (!unintelligibleWordShapes) gaps.push("The objective is too short to identify a reliable outcome.");
+    } else if (tokens.length < 5) {
+      score -= 24;
+      gaps.push("A little more context would make the intended result easier to distinguish.");
+    } else {
+      strengths.push("The objective contains enough language to establish a direction.");
+    }
+    if (objective.length > 0 && objective.length < 18) {
+      score -= 24;
+      gaps.push("The brief does not yet explain what a successful result should contain.");
+    }
+    if (uniqueTokens.size < 3 || lexicalDiversity < 0.42 || dominantTokenRatio > 0.48) {
+      score -= 28;
+      gaps.push("The text is too repetitive to reveal a distinct mission.");
+    } else if (uniqueTokens.size >= 6) {
+      strengths.push("The wording provides several distinct intent signals.");
+    }
+    if (symbolRatio > 0.28 || repeatedCharacterNoise) {
+      score -= 34;
+      gaps.push("Much of the input looks like symbols or repeated characters rather than an objective.");
+    }
+    if (informativeTokens < 2 && tokens.length > 0) {
+      score -= 22;
+      gaps.push("The brief needs a clearer subject, outcome, or deliverable.");
+    }
+    if (sentenceSignals > 1) strengths.push("The brief provides supporting context beyond the headline objective.");
+    if (constraintSignals > 0) strengths.push("Concrete constraints or measurable details improve the interpretation.");
+    if (objective.length >= 70) score += 4;
+    if (sentenceSignals > 1) score += 3;
+    if (constraintSignals > 0) score += 3;
+
+    score = Math.max(0, Math.min(98, Math.round(score)));
+    const valid = score >= 56 && tokens.length >= 3 && uniqueTokens.size >= 3 && symbolRatio <= 0.45 && !repeatedCharacterNoise && !unintelligibleWordShapes;
+    const level: MissionValidationResult["level"] = score >= 88 ? "excellent" : score >= 72 ? "clear" : score >= 56 ? "developing" : "unclear";
+    const readableSeed = valid || (tokens.length >= 3 && symbolRatio < 0.3)
+      ? objective.slice(0, 260)
+      : "an important objective that needs a concrete outcome";
+    const suggestedMission = `Turn this into a clear, executable mission: ${readableSeed}. Define the desired result, relevant constraints, acceptance criteria, and the first practical decision to make.`;
+    const summary = valid
+      ? score >= 88 ? "The objective is specific enough for the council to execute with high confidence." : "The council can understand this objective, with a few details left to infer."
+      : "The council cannot yet identify a dependable mission from this input.";
+    const explanation = gaps[0] ?? "The objective contains a meaningful outcome and enough context to begin classification.";
+
+    return {
+      valid,
+      score,
+      level,
+      summary,
+      explanation,
+      strengths: Array.from(new Set(strengths)).slice(0, 3),
+      gaps: Array.from(new Set(gaps)).slice(0, 3),
+      suggestedMission,
+    };
+  }
+
+  async validateMissionBriefSemantically(brief: string): Promise<MissionValidationResult> {
+    const baseline = this.validateMissionBrief(brief);
+    const cacheKey = `v3:${sanitizeUserFacingText(brief).replace(/\s+/g, " ").trim().toLocaleLowerCase()}`;
+    const cached = missionValidationCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) return cached.result;
+    if (!baseline.valid) {
+      missionValidationCache.set(cacheKey, { result: baseline, expiresAt: Date.now() + 5 * 60_000 });
+      return baseline;
+    }
+    if (isMockMode()) return baseline;
+
+    try {
+      const response = await createQwenClient().chat([
+        {
+          role: "system",
+          content: `You are a domain-agnostic mission intake validator. Decide whether the user text contains a coherent objective that an expert team can begin working on. Distinguish real natural-language intent from random letter sequences, invented non-words, and strings that merely resemble sentence tokens. Mark valid=false only when no meaningful intent can be recovered, such as blank, random, or nonsensical input. Ambiguous, broad, or incomplete objectives are valid: identify their gaps so agents can proceed with explicit assumptions and request clarification later if necessary. Do not classify the mission domain and do not require particular keywords. Score must be an integer from 0 to 100, where 100 means fully understood. Return only JSON: {"valid":boolean,"score":number,"summary":"human-friendly sentence","explanation":"most useful reason","gaps":["up to three concise non-blocking clarification gaps"],"suggestedMission":"a clearer rewrite that preserves the user's real intent, or an empty string if no intent is recoverable"}.`,
+        },
+        { role: "user", content: brief },
+      ], { temperature: 0.1, maxTokens: 420 });
+      const json = response.match(/\{[\s\S]*\}/)?.[0];
+      if (!json) return baseline;
+      const parsed = JSON.parse(json) as Partial<MissionValidationResult>;
+      const rawScore = Number(parsed.score ?? baseline.score);
+      const percentScore = Number.isFinite(rawScore) && rawScore > 0 && rawScore <= 1 ? rawScore * 100 : rawScore;
+      const normalizedScore = Math.max(0, Math.min(98, Math.round(Number.isFinite(percentScore) ? percentScore : baseline.score)));
+      const score = parsed.valid === true ? Math.max(baseline.score, normalizedScore) : normalizedScore;
+      const explicitNonsenseVeto = parsed.valid === false && score < 20;
+      const valid = baseline.valid && !explicitNonsenseVeto;
+      const level: MissionValidationResult["level"] = score >= 88 ? "excellent" : score >= 72 ? "clear" : score >= 56 ? "developing" : "unclear";
+      const result: MissionValidationResult = {
+        ...baseline,
+        valid,
+        score,
+        level,
+        summary: sanitizeUserFacingText(parsed.summary ?? baseline.summary) || baseline.summary,
+        explanation: sanitizeUserFacingText(parsed.explanation ?? baseline.explanation) || baseline.explanation,
+        gaps: sanitizeMissionList(parsed.gaps ?? baseline.gaps).slice(0, 3),
+        suggestedMission: sanitizeUserFacingText(parsed.suggestedMission ?? baseline.suggestedMission) || baseline.suggestedMission,
+      };
+      missionValidationCache.set(cacheKey, { result, expiresAt: Date.now() + 5 * 60_000 });
+      return result;
+    } catch {
+      return baseline;
+    }
+  }
+
   suggestMissionConfiguration(brief: string, currentConfig?: Partial<MissionConfiguration>) {
     const baseConfig: MissionConfiguration = {
       missionType: currentConfig?.missionType ?? "general-mission",
       depth: currentConfig?.depth ?? "balanced",
-      timeHorizon: currentConfig?.timeHorizon ?? "30-days",
+      timeHorizon: currentConfig?.timeHorizon ?? "none",
+      customTimeHorizon: currentConfig?.customTimeHorizon,
       budgetRange: currentConfig?.budgetRange ?? "none",
       riskTolerance: currentConfig?.riskTolerance ?? "balanced",
       outputFormat: currentConfig?.outputFormat ?? "direct-result",
     };
     const classification = this.classifyMission(brief, baseConfig);
     const lowered = sanitizeUserFacingText(brief).toLowerCase();
+    const horizon = inferExplicitTimeHorizon(brief);
     const config: MissionConfiguration = {
       missionType: this.suggestMissionType(classification.strategy.missionType),
       depth: classification.strategy.complexity >= 7 ? "deep-analysis" : classification.strategy.complexity <= 2 ? "fast" : "balanced",
       outputFormat: this.suggestOutputFormat(classification.strategy.deliverableMode, classification.strategy.missionType),
-      timeHorizon: /\b(today|now|quick|asap|urgent|1 day)\b/.test(lowered) ? "7-days" : /\b(90 days|quarter|3 months)\b/.test(lowered) ? "90-days" : /\b(year|12 months)\b/.test(lowered) ? "1-year" : /\b(6 months|half year)\b/.test(lowered) ? "6-months" : "30-days",
+      ...horizon,
       budgetRange: /\b(no budget|free|zero cost)\b/.test(lowered) ? "none" : /\b(low budget|cheap|lean|bootstrap)\b/.test(lowered) ? "low" : /\b(enterprise|large budget|corporate)\b/.test(lowered) ? "enterprise" : /\b(budget|cost|pricing|paid)\b/.test(lowered) ? "medium" : "none",
       riskTolerance: classification.strategy.requiresConflictResolution || classification.strategy.complexity >= 8 ? "conservative" : classification.strategy.complexity <= 2 ? "none" : "balanced",
     };
@@ -445,9 +671,21 @@ export class MissionEngine {
       replayEvents: [...(initialContext.replayEvents ?? [])],
     };
     const signal = this.abortController.signal;
+    const understanding = await this.validateMissionBriefSemantically(ctx.missionBrief);
+    if (!understanding.valid) {
+      this.contextRef = ctx;
+      this.emit({ type: MissionEventType.MissionFailed, timestamp: now(), payload: { error: understanding.explanation } });
+      onUpdate({ ...ctx });
+      return;
+    }
     const mockMode = isMockMode();
     const qwenClient = mockMode ? null : createQwenClient();
     const classification = this.classifyMission(ctx.missionBrief, ctx.configuration);
+    classification.strategy.validationNotes = [
+      `Mission understanding: ${understanding.score}% - ${understanding.summary}`,
+      ...understanding.gaps.map((gap) => `Non-blocking clarification: ${gap}`),
+      ...classification.strategy.validationNotes,
+    ];
     ctx.missionClassification = classification.strategy;
     this.contextRef = ctx;
     devLog("mission classification", classification);
@@ -459,7 +697,7 @@ export class MissionEngine {
       ctx.status = MissionState.Preparing;
       ctx.startedAt = now();
       this.recordReplayEvent(ctx, "MISSION_STARTED", { payload: { missionId: ctx.missionId } }, 100);
-      this.addTimeline(ctx, classification.selectedAgents[0] ?? AgentRole.Researcher, MissionState.Preparing, "Mission classified", `${classification.strategy.missionType.replace(/_/g, " ")} mission, complexity ${classification.strategy.complexity}/10, strategy ${classification.strategy.selectedStrategy}.`, "system");
+      this.addTimeline(ctx, classification.selectedAgents[0] ?? AgentRole.Researcher, MissionState.Preparing, "Mission understood and classified", `${understanding.score}% understanding confidence established before selecting a ${classification.strategy.selectedStrategy.replace(/_/g, " ")} execution path. This mattered because the council could align its work to a readable objective before assigning specialists.`, "system");
       this.emit({ type: MissionEventType.MissionStarted, timestamp: now(), payload: {} });
       onUpdate({ ...ctx });
       await this.delay(700, signal);
@@ -599,7 +837,7 @@ export class MissionEngine {
       payload: { phase, activity: thinkingActivity },
     });
     this.recordReplayEvent(ctx, "AGENT_THINKING", { agentId: agentDef.id, agentName: agentDef.name, agentRole, payload: { phase, activity: thinkingActivity } });
-    this.addTimeline(ctx, agentRole, phase, `${agentDef.name} activated`, this.timelineDescription(phase), "agent");
+    this.addTimeline(ctx, agentRole, phase, thinkingActivity.label, thinkingActivity.detail, "agent");
     this.emit({ type: MissionEventType.AgentStarted, timestamp: now(), payload: { agentRole, agentName: agentDef.name, phase } });
     this.emit({ type: MissionEventType.AgentThinking, timestamp: now(), payload: { agentRole, agentName: agentDef.name } });
     onUpdate({ ...ctx });
@@ -651,6 +889,7 @@ export class MissionEngine {
     }
 
     result = this.normalizeAgentResult(ctx, phase, agentRole, result, classification ?? this.classifyMission(ctx.missionBrief, ctx.configuration));
+    const structuredResult = this.tryParseAgentOutput(result);
     this.recordStreamEvents(ctx, phase === MissionState.Planning ? "PLANNER_STREAM" : phase === MissionState.Finalizing ? "FINALIZER_STREAM" : "AGENT_STREAM", result, agentDef.id, agentDef.name, agentRole, phaseStart);
     this.storePhaseResult(ctx, phase, result, classification ?? this.classifyMission(ctx.missionBrief, ctx.configuration));
     const completeActivity = this.setAgentActivity(ctx, agentRole, "complete", "Contribution shared with the council", "This phase output is available to the next decision point.", this.averageConfidence(ctx));
@@ -660,7 +899,17 @@ export class MissionEngine {
       confidence: this.averageConfidence(ctx),
       displayRole: missionDisplayRole(classification ?? this.classifyMission(ctx.missionBrief, ctx.configuration), agentRole),
     });
-    this.addTimeline(ctx, agentDef.role, phase, `${agentDef.name} completed`, this.completionDescription(phase), this.timelineKind(phase), Date.now() - phaseStart);
+    const phaseMilestone = structuredResult?.timelineMilestone;
+    this.addTimeline(
+      ctx,
+      agentDef.role,
+      phase,
+      phaseMilestone?.title || ctx.workstreams.find((workstream) => workstream.assignedAgent === agentRole)?.title || this.dialogueMessageFromOutput(result),
+      phaseMilestone?.description || structuredResult?.councilMessage || structuredResult?.summary || this.dialogueMessageFromOutput(result),
+      this.timelineKind(phase),
+      Date.now() - phaseStart,
+      phaseMilestone?.significance,
+    );
     this.recordReplayEvent(ctx, phase === MissionState.Planning ? "PLANNER_FINISHED" : phase === MissionState.Finalizing ? "FINALIZER_FINISHED" : phase === MissionState.ConflictResolution ? "MEDIATOR_FINISHED" : "AGENT_FINISHED", {
       agentId: agentDef.id,
       agentName: agentDef.name,
@@ -834,6 +1083,7 @@ export class MissionEngine {
     }
 
     result = this.normalizeAgentResult(ctx, phase, task.agent, result, classification, task);
+    const structuredResult = this.tryParseAgentOutput(result);
     const currentConfidence = ctx.executionTasks.find((candidate) => candidate.id === task.id)?.confidence ?? task.confidence;
     const nextConfidence = this.evolveConfidence(currentConfidence, result, ctx);
     this.recordStreamEvents(ctx, "AGENT_STREAM", result, agentDef.id, agentDef.name, task.agent, phaseStart, task);
@@ -850,7 +1100,17 @@ export class MissionEngine {
         displayRole: missionDisplayRole(classification, task.agent),
       });
     }
-    this.addTimeline(ctx, task.agent, phase, `${agentDef.name} completed ${task.title}`, `Confidence moved from ${task.confidence}% to ${nextConfidence}% after reviewing shared context and dependencies.`, this.timelineKind(phase), Date.now() - phaseStart);
+    const taskMilestone = structuredResult?.timelineMilestone;
+    this.addTimeline(
+      ctx,
+      task.agent,
+      phase,
+      taskMilestone?.title || task.title,
+      taskMilestone?.description || structuredResult?.councilMessage || structuredResult?.summary || task.output || task.title,
+      this.timelineKind(phase),
+      Date.now() - phaseStart,
+      taskMilestone?.significance,
+    );
     this.recordReplayEvent(ctx, "AGENT_FINISHED", {
       agentId: agentDef.id,
       agentName: agentDef.name,
@@ -878,6 +1138,7 @@ export class MissionEngine {
       workstreamTitle: sanitizeUserFacingText(base.workstreamTitle || workstreamTitle),
       status: base.status ?? "complete",
       summary: sanitizeUserFacingText(base.summary),
+      councilMessage: sanitizeUserFacingText(base.councilMessage ?? ""),
       finalAnswer: sanitizeUserFacingText(base.finalAnswer ?? (classification.strategy.deliverableMode === "direct_answer" ? base.summary : "")),
       reviewNote: sanitizeUserFacingText(base.reviewNote ?? ""),
       usefulOutput: {
@@ -889,6 +1150,18 @@ export class MissionEngine {
         dependencies: sanitizeMissionList(base.usefulOutput?.dependencies ?? []),
       },
       handoffToNextAgent: sanitizeUserFacingText(base.handoffToNextAgent),
+      timelineMilestone: base.timelineMilestone ? {
+        title: sanitizeUserFacingText(base.timelineMilestone.title),
+        description: sanitizeUserFacingText(base.timelineMilestone.description),
+        significance: sanitizeUserFacingText(base.timelineMilestone.significance ?? ""),
+      } : undefined,
+      followUpMissions: (base.followUpMissions ?? [])
+        .map((item) => ({
+          mission: sanitizeUserFacingText(item.mission),
+          rationale: sanitizeUserFacingText(item.rationale ?? ""),
+        }))
+        .filter((item) => item.mission.length >= 12)
+        .slice(0, 3),
       confidence: clampConfidence(Number(base.confidence || task?.confidence || this.averageConfidence(ctx))),
       conflictSignals: (base.conflictSignals ?? []).map((signal) => ({
         withAgent: sanitizeUserFacingText(signal.withAgent),
@@ -898,7 +1171,7 @@ export class MissionEngine {
       })).filter((signal) => signal.withAgent && signal.topic && signal.disagreement),
     };
 
-    if (!this.isUsefulAgentOutput(sanitized, classification, ctx.missionBrief)) {
+    if (!this.isUsefulAgentOutput(sanitized, classification, ctx.missionBrief, phase, agentRole)) {
       const repaired = this.buildStructuredFallback(ctx, phase, agentRole, classification, workstreamTitle, rawResult);
       console.warn("[MissionEngine] Agent output failed usefulness validation; using domain fallback.", {
         phase,
@@ -923,6 +1196,7 @@ export class MissionEngine {
             workstreamTitle: String(parsed.workstreamTitle ?? ""),
             status: parsed.status ?? "complete",
             summary: parsed.summary,
+            councilMessage: typeof parsed.councilMessage === "string" ? parsed.councilMessage : undefined,
             finalAnswer: typeof parsed.finalAnswer === "string" ? parsed.finalAnswer : undefined,
             reviewNote: typeof parsed.reviewNote === "string" ? parsed.reviewNote : undefined,
             usefulOutput: {
@@ -934,6 +1208,8 @@ export class MissionEngine {
               dependencies: parsed.usefulOutput?.dependencies ?? [],
             },
             handoffToNextAgent: String(parsed.handoffToNextAgent ?? ""),
+            timelineMilestone: parsed.timelineMilestone,
+            followUpMissions: parsed.followUpMissions ?? [],
             confidence: Number(parsed.confidence ?? 78),
             conflictSignals: parsed.conflictSignals ?? [],
           };
@@ -945,16 +1221,25 @@ export class MissionEngine {
     return null;
   }
 
-  private isUsefulAgentOutput(output: AgentStructuredOutput, classification: MissionClassification, missionBrief: string) {
+  private isUsefulAgentOutput(output: AgentStructuredOutput, classification: MissionClassification, missionBrief: string, phase: MissionState, agentRole: AgentRole) {
+    const isFinalSynthesis = phase === MissionState.Finalizing || agentRole === AgentRole.Finalizer;
     const concreteItems = [
-      ...(classification.strategy.deliverableMode === "direct_answer" ? [output.finalAnswer ?? output.summary] : []),
+      ...(classification.strategy.deliverableMode === "direct_answer" || isFinalSynthesis ? [output.finalAnswer || output.summary] : []),
       ...(classification.strategy.requiresPlanning ? [] : [output.summary]),
       ...output.usefulOutput.recommendations,
       ...output.usefulOutput.actionItems,
       ...output.usefulOutput.scheduleItems,
       ...output.usefulOutput.keyFindings,
-    ].filter((item) => item.length > 18);
-    const allText = sanitizeUserFacingText(`${output.summary}\n${concreteItems.join("\n")}`).toLowerCase();
+    ]
+      .map((item) => sanitizeUserFacingText(item))
+      .filter((item) => item.length > 18)
+      .filter((item, index, items) => items.findIndex((candidate) => candidate.toLowerCase() === item.toLowerCase()) === index);
+    const allText = [output.summary, output.finalAnswer ?? "", ...concreteItems]
+      .map((item) => sanitizeUserFacingText(item))
+      .filter(Boolean)
+      .filter((item, index, items) => items.findIndex((candidate) => candidate.toLowerCase() === item.toLowerCase()) === index)
+      .join("\n")
+      .toLowerCase();
     const brief = sanitizeUserFacingText(missionBrief).toLowerCase();
     const forbidden = /(^|\n)\s*#{1,6}\s|```|\*\*|^-{3,}\s*$/m.test(JSON.stringify(output));
     const repeatsBrief = brief.length > 20 && allText.split(brief).length > 2;
@@ -962,7 +1247,7 @@ export class MissionEngine {
       ? /(study|practice|exam|test|toefl|reading|listening|speaking|writing|mock|vocabulary|score|drill)/.test(allText)
       : true;
     const metaOnly = !classification.strategy.requiresPlanning && this.isMetaOnlyDirectOutput(allText);
-    const minimumUsefulItems = classification.strategy.complexity <= 2 ? 1 : 3;
+    const minimumUsefulItems = isFinalSynthesis || classification.strategy.complexity <= 2 ? 1 : 3;
     return concreteItems.length >= minimumUsefulItems && !forbidden && !repeatsBrief && domainRelevant && !metaOnly;
   }
 
@@ -1360,6 +1645,26 @@ export class MissionEngine {
       });
     });
 
+    const planner = getAgentByRole(AgentRole.Planner);
+    if (planner) {
+      const revisedTitles = tasks.map((task) => sanitizeMissionText(task.title)).filter(Boolean).join("; ");
+      this.addDialogue(
+        ctx,
+        planner.id,
+        planner.name,
+        AgentRole.Planner,
+        `Based on the council review, I’m revising the execution graph for ${revisedTitles || "the affected workstreams"}. Ownership and dependencies now reflect the validated feedback before execution resumes.`,
+        false,
+        {
+          phase: MissionState.Planning,
+          status: "reviewing",
+          interactionType: "planner_revision",
+          interactionLabel: "Planner Revision",
+          interactionTargetRole: ctx.conflicts.length ? AgentRole.Mediator : AgentRole.RiskCritic,
+          referencedWorkstreamIds: tasks.map((task) => task.workstreamId),
+        },
+      );
+    }
     this.addTimeline(ctx, AgentRole.Planner, MissionState.Planning, "Planner revised the Mission Graph", "Planner released blocked workstreams with updated ownership and dependencies after mediation.", "workstream");
     this.updateMissionGraph(ctx);
   }
@@ -1404,6 +1709,61 @@ export class MissionEngine {
     this.addTimeline(ctx, AgentRole.RiskCritic, MissionState.Cancelled, "Mission cancelled", "Sequence stopped by the operator. Partial work remains visible for review.", "cancelled");
   }
 
+  private dialogueMessageFromOutput(content: string) {
+    const parsed = this.tryParseAgentOutput(content);
+    if (parsed?.councilMessage) return sanitizeUserFacingText(parsed.councilMessage);
+    if (parsed?.summary) return sanitizeUserFacingText(parsed.summary);
+    try {
+      const planner = JSON.parse(this.extractJsonObject(content)) as PlannerGraphJson;
+      if (planner.summary) return sanitizeUserFacingText(planner.summary);
+    } catch {
+      // Non-JSON output falls through to its first useful line.
+    }
+    return sanitizeUserFacingText(content).split("\n").find((line) => line.trim().length > 0)?.trim() ?? "";
+  }
+
+  private distinctCouncilMessage(ctx: MissionContext, content: string) {
+    const candidatesFrom = (value: string) => {
+      const parsed = this.tryParseAgentOutput(value);
+      return sanitizeMissionList([
+        parsed?.councilMessage,
+        parsed?.handoffToNextAgent,
+        ...(parsed?.usefulOutput.keyFindings ?? []),
+        ...(parsed?.usefulOutput.recommendations ?? []),
+        ...(parsed?.usefulOutput.actionItems ?? []),
+        ...(parsed?.usefulOutput.risks ?? []),
+        ...(parsed?.usefulOutput.dependencies ?? []),
+        parsed?.summary,
+      ]);
+    };
+    const unitsFrom = (values: string[]) => values
+      .flatMap((value) => value.split(/\r?\n+|(?<=[.!?])\s+/u))
+      .map((value) => sanitizeUserFacingText(value).replace(/^\s*(?:[-*•]+|\d+[.)])\s*/, "").trim())
+      .filter((value) => value.length > 12)
+      .map((value) => value.length > 280 ? `${value.slice(0, 277).replace(/\s+\S*$/, "")}...` : value);
+    const similarity = (left: string, right: string) => {
+      const normalizedLeft = left.toLocaleLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
+      const normalizedRight = right.toLocaleLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
+      if (!normalizedLeft || !normalizedRight) return 0;
+      if (normalizedLeft === normalizedRight) return 1;
+      if (Math.min(normalizedLeft.length, normalizedRight.length) > 32 && (normalizedLeft.includes(normalizedRight) || normalizedRight.includes(normalizedLeft))) return 1;
+      const leftWords = new Set(normalizedLeft.match(/[\p{L}\p{N}]{3,}/gu) ?? []);
+      const rightWords = new Set(normalizedRight.match(/[\p{L}\p{N}]{3,}/gu) ?? []);
+      if (!leftWords.size || !rightWords.size) return 0;
+      const overlap = [...leftWords].filter((word) => rightWords.has(word)).length;
+      return overlap / Math.min(leftWords.size, rightWords.size);
+    };
+    const previousUnits = ctx.dialogue.flatMap((entry) => unitsFrom([
+      entry.conversationMessage ?? "",
+      ...candidatesFrom(entry.content),
+    ]));
+    const novelUnits = unitsFrom(candidatesFrom(content))
+      .filter((candidate, index, units) => units.findIndex((item) => similarity(candidate, item) >= 0.78) === index)
+      .filter((candidate) => previousUnits.every((previous) => similarity(candidate, previous) < 0.72))
+      .slice(0, 2);
+    return novelUnits.join(" ");
+  }
+
   private addDialogue(
     ctx: MissionContext,
     agentId: string,
@@ -1413,14 +1773,39 @@ export class MissionEngine {
     isConflict = false,
     metadata: Partial<AgentDialogueEntry> = {}
   ) {
+    const previousEntry = [...ctx.dialogue].reverse().find((entry) => entry.agentRole !== agentRole);
+    const parsedOutput = this.tryParseAgentOutput(content);
+    const challengesAssumption = isConflict || agentRole === AgentRole.RiskCritic || Boolean(parsedOutput?.conflictSignals?.length);
+    const interactionType = metadata.interactionType
+      ?? (agentRole === AgentRole.Planner && previousEntry ? "planner_revision"
+        : agentRole === AgentRole.Mediator ? "consensus_reached"
+          : challengesAssumption ? "challenged_assumption"
+            : previousEntry ? "accepted_finding"
+              : undefined);
+    const interactionTargetRole = metadata.interactionTargetRole ?? metadata.targetAgentRole ?? previousEntry?.agentRole;
+    const interactionLabel = metadata.interactionLabel ?? (interactionType === "planner_revision"
+      ? "Planner Revision"
+      : interactionType === "consensus_reached"
+        ? "Consensus Reached"
+        : interactionType === "challenged_assumption"
+          ? "Challenged Assumption"
+          : interactionType === "accepted_finding"
+            ? "Accepted Finding"
+            : undefined);
+    const interactionReason = metadata.interactionReason;
     const entry: AgentDialogueEntry = {
       agentId,
       agentName,
       displayRole: metadata.displayRole ?? agentName,
       agentRole,
       content,
+      conversationMessage: metadata.conversationMessage ?? this.distinctCouncilMessage(ctx, content),
       timestamp: now(),
       isConflict,
+      interactionType,
+      interactionLabel,
+      interactionTargetRole,
+      interactionReason,
       ...metadata,
     };
     ctx.dialogue = [...ctx.dialogue, entry];
@@ -1502,9 +1887,10 @@ export class MissionEngine {
     label: string,
     description: string,
     kind: TimelineEntry["kind"] = "agent",
-    duration?: number
+    duration?: number,
+    significance?: string,
   ) {
-    ctx.timeline = [...ctx.timeline, { agent, state, label, description, kind, duration, timestamp: now() }];
+    ctx.timeline = [...ctx.timeline, { agent, state, label, description, significance, kind, duration, timestamp: now() }];
   }
 
   private storePhaseResult(ctx: MissionContext, phase: MissionState, result: string, classification: MissionClassification) {
@@ -2809,6 +3195,7 @@ export class MissionEngine {
       return `- ${entry.displayRole ?? entry.agentName}: ${sanitizeUserFacingText(useful ?? entry.content).split("\n").find(Boolean)?.replace(/^#+\s*/, "") ?? "Contribution captured."}`;
     }).join("\n");
     const finalDeliverable = this.composeObjectiveAnswer(ctx, classification);
+    const predictiveNextMissions = this.predictiveNextMissionsFromContext(ctx);
     if (classification.strategy.deliverableMode === "direct_answer") {
       const directReport: MissionReport = {
         deliverableMode: "direct_answer",
@@ -2828,6 +3215,7 @@ export class MissionEngine {
         riskAssessment: "",
         successMetrics: "",
         finalRecommendations: "",
+        predictiveNextMissions,
         singleAgentComparison: "",
       };
       return this.validateFinalReport(directReport, classification);
@@ -2870,9 +3258,23 @@ export class MissionEngine {
       riskAssessment: this.generateRiskAssessment(ctx, classification),
       successMetrics: this.generateSuccessMetrics(ctx, metrics),
       finalRecommendations: this.generateFinalRecommendations(ctx, classification),
+      predictiveNextMissions,
       singleAgentComparison: `Single-agent baseline: ${metrics.singleAgentBaseline}%. Agent Society quality score: ${metrics.qualityScore}%. Estimated efficiency gain: ${Math.max(0, metrics.qualityScore - metrics.singleAgentBaseline)} points.`,
     };
     return this.validateFinalReport(report, classification);
+  }
+
+  private predictiveNextMissionsFromContext(ctx: MissionContext) {
+    return [...ctx.dialogue]
+      .reverse()
+      .map((entry) => this.tryParseAgentOutput(entry.content)?.followUpMissions ?? [])
+      .find((missions) => missions.length > 0)
+      ?.map((item) => ({
+        mission: sanitizeUserFacingText(item.mission),
+        rationale: sanitizeUserFacingText(item.rationale ?? ""),
+      }))
+      .filter((item) => item.mission.length >= 12)
+      .slice(0, 3) ?? [];
   }
 
   private generateRiskAssessment(ctx: MissionContext, classification: MissionClassification) {
@@ -2881,7 +3283,7 @@ export class MissionEngine {
 
     const risks: string[] = [];
     const constraints = [
-      ctx.configuration.timeHorizon !== "none" ? `delivery horizon of ${TIME_HORIZON_LABELS[ctx.configuration.timeHorizon]}` : "",
+      ctx.configuration.timeHorizon !== "none" ? `delivery horizon of ${getTimeHorizonLabel(ctx.configuration)}` : "",
       ctx.configuration.budgetRange !== "none" ? `budget range of ${BUDGET_RANGE_LABELS[ctx.configuration.budgetRange]}` : "",
     ].filter(Boolean);
     if (constraints.length) {
@@ -2925,7 +3327,11 @@ export class MissionEngine {
     const recommendations = parsedOutputs.flatMap((output) => output.usefulOutput?.recommendations ?? []);
     const actionItems = parsedOutputs.flatMap((output) => output.usefulOutput?.actionItems ?? []);
     const findings = parsedOutputs.flatMap((output) => output.usefulOutput?.keyFindings ?? []);
-    const scheduleItems = parsedOutputs.flatMap((output) => output.usefulOutput?.scheduleItems ?? []);
+    const scheduleItems = ctx.configuration.timeHorizon === "none"
+      ? []
+      : parsedOutputs
+          .flatMap((output) => output.usefulOutput?.scheduleItems ?? [])
+          .filter((item) => scheduleFitsConfiguredHorizon(item, ctx.configuration));
     const risks = parsedOutputs.flatMap((output) => output.usefulOutput?.risks ?? []);
     if (classification.strategy.deliverableMode === "direct_answer" || (ctx.configuration.outputFormat === "direct-result" && !classification.strategy.requiresPlanning)) {
       const artifact = this.directArtifactFromContext(ctx, classification);
@@ -3140,36 +3546,6 @@ export class MissionEngine {
     }
     const topWorkstreams = ctx.workstreams.slice(0, 4).map((workstream) => sanitizeMissionText(workstream.title)).join(", ");
     return `Use ${topWorkstreams} as the backbone for solving "${classification.semantic.objective}". Complete the domain-specific validation checks before spending money, changing systems, or treating the answer as final.`;
-  }
-
-  private timelineDescription(phase: MissionState) {
-    const descriptions: Partial<Record<MissionState, string>> = {
-      [MissionState.Planning]: "Planner decomposes the brief into owned workstreams.",
-      [MissionState.Researching]: "Research Agent validates assumptions and gathers strategic context.",
-      [MissionState.ProductStrategy]: "Product Strategist turns research into scope and success metrics.",
-      [MissionState.TechnicalArchitecture]: "Technical Architect maps implementation constraints and delivery sequence.",
-      [MissionState.MarketingStrategy]: "Marketing Strategist shapes launch positioning and activation channels.",
-      [MissionState.FinancialAnalysis]: "Finance Agent checks budget, runway, and resource constraints.",
-      [MissionState.RiskReview]: "Risk Critic challenges assumptions and flags disagreement.",
-      [MissionState.ConflictResolution]: "Mediator arbitrates the disagreement and sets a final action.",
-      [MissionState.Finalizing]: "Finalizer synthesizes the complete report.",
-    };
-    return descriptions[phase] ?? "Agent phase started.";
-  }
-
-  private completionDescription(phase: MissionState) {
-    const descriptions: Partial<Record<MissionState, string>> = {
-      [MissionState.Planning]: "Mission decomposed into workstreams and owners.",
-      [MissionState.Researching]: "Research context added to the mission state.",
-      [MissionState.ProductStrategy]: "Product strategy and success metrics captured.",
-      [MissionState.TechnicalArchitecture]: "Technical plan and constraints documented.",
-      [MissionState.MarketingStrategy]: "Go-to-market direction captured.",
-      [MissionState.FinancialAnalysis]: "Budget and resource posture captured.",
-      [MissionState.RiskReview]: "Risk review completed and conflict flagged.",
-      [MissionState.ConflictResolution]: "Mediator resolved the core disagreement.",
-      [MissionState.Finalizing]: "Final synthesis prepared for report generation.",
-    };
-    return descriptions[phase] ?? "Agent phase completed.";
   }
 
   private timelineKind(phase: MissionState): TimelineEntry["kind"] {

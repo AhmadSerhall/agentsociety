@@ -15,6 +15,7 @@ export type Depth = "fast" | "balanced" | "deep-analysis";
 
 export type TimeHorizon =
   | "none"
+  | "custom"
   | "7-days"
   | "30-days"
   | "90-days"
@@ -40,6 +41,7 @@ export interface MissionConfiguration {
   missionType: MissionType;
   depth: Depth;
   timeHorizon: TimeHorizon;
+  customTimeHorizon?: string;
   budgetRange: BudgetRange;
   riskTolerance: RiskTolerance;
   outputFormat: OutputFormat;
@@ -63,12 +65,20 @@ export const DEPTH_LABELS: Record<Depth, string> = {
 
 export const TIME_HORIZON_LABELS: Record<TimeHorizon, string> = {
   none: "None specified",
+  custom: "Custom",
   "7-days": "7 Days",
   "30-days": "30 Days",
   "90-days": "90 Days",
   "6-months": "6 Months",
   "1-year": "1 Year",
 };
+
+export function getTimeHorizonLabel(configuration: Pick<MissionConfiguration, "timeHorizon" | "customTimeHorizon">) {
+  if (configuration.timeHorizon === "custom") {
+    return configuration.customTimeHorizon?.trim() || TIME_HORIZON_LABELS.custom;
+  }
+  return TIME_HORIZON_LABELS[configuration.timeHorizon];
+}
 
 export const BUDGET_RANGE_LABELS: Record<BudgetRange, string> = {
   none: "None specified",
@@ -95,7 +105,7 @@ export const OUTPUT_FORMAT_LABELS: Record<OutputFormat, string> = {
 export const DEFAULT_CONFIGURATION: MissionConfiguration = {
   missionType: "general-mission",
   depth: "balanced",
-  timeHorizon: "30-days",
+  timeHorizon: "none",
   budgetRange: "none",
   riskTolerance: "balanced",
   outputFormat: "direct-result",

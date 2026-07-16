@@ -16,6 +16,7 @@ import { useHistoryStore, useRuntimeSettingsStore, useReplayStore } from "@/stor
 import { useFadeInUp, useStaggerContainer } from "@/hooks";
 import { hasUsableQwenKey, hideApiKeyOnboardingPermanently, isApiKeyOnboardingHidden } from "@/lib/qwenConfig";
 import { getQwenRuntimeInfo } from "@/services/qwen";
+import { MissionEngine } from "@/services/mission-engine";
 import { MISSION_TYPE_LABELS, DEPTH_LABELS, TIME_HORIZON_LABELS, BUDGET_RANGE_LABELS, RISK_TOLERANCE_LABELS, OUTPUT_FORMAT_LABELS, MissionState, AgentRole, type DrilldownSource, type MissionConfiguration, type MissionType, type Depth, type TimeHorizon, type BudgetRange, type RiskTolerance, type OutputFormat } from "@/types";
 import {
   AgentWorkflowPanel, WorkstreamsPanel, DialoguePanel,
@@ -47,12 +48,33 @@ const AGENT_ORDER: AgentRole[] = [
   AgentRole.Finalizer,
 ];
 
+const MISSION_VALIDATOR = new MissionEngine();
+const VALIDATION_EXAMPLES: Array<{ label: string; prompt: string; config: Partial<MissionConfiguration> }> = [
+  {
+    label: "Compare a decision",
+    prompt: "Compare three practical approaches to an important decision, test their assumptions, and recommend the best next step with measurable success criteria.",
+    config: { missionType: "general-mission", outputFormat: "strategy-brief" },
+  },
+  {
+    label: "Improve a process",
+    prompt: "Analyze an existing process, identify its largest source of friction, and create a prioritized improvement plan with constraints, risks, and success measures.",
+    config: { missionType: "general-mission", outputFormat: "execution-roadmap" },
+  },
+  {
+    label: "Validate an idea",
+    prompt: "Design a focused validation mission for a new idea, including the evidence needed, the assumptions to challenge, and a clear go or no-go decision.",
+    config: { missionType: "research-plan", outputFormat: "executive-report" },
+  },
+];
+
 export function MissionControl() {
   const [brief, setBrief] = useState("");
   const [config, setConfig] = useState<Partial<MissionConfiguration>>({});
   const [showConfig, setShowConfig] = useState(false);
   const [showMobileNav, setShowMobileNav] = useState(false);
   const [validationOpen, setValidationOpen] = useState(false);
+  const [validationResult, setValidationResult] = useState<ReturnType<MissionEngine["validateMissionBrief"]> | null>(null);
+  const [validationInProgress, setValidationInProgress] = useState(false);
   const [apiKeyRequiredOpen, setApiKeyRequiredOpen] = useState(false);
   const [apiKeyOnboardingDismissed, setApiKeyOnboardingDismissed] = useState(false);
   const [replayComingOpen, setReplayComingOpen] = useState(false);
@@ -106,12 +128,16 @@ export function MissionControl() {
       });
     }
 
-    if (currentContext && currentContext.status !== MissionState.Idle) roles.add(AgentRole.Planner);
-    currentContext?.workstreams.forEach((workstream) => {
-      if (workstream.assignedAgent) roles.add(workstream.assignedAgent);
-    });
+    if (currentContext?.status === MissionState.Completed && currentContext.missionClassification?.recommendedAgents.length) {
+      return [...currentContext.missionClassification.recommendedAgents].sort((left, right) => {
+        const leftIndex = AGENT_ORDER.indexOf(left);
+        const rightIndex = AGENT_ORDER.indexOf(right);
+        return (leftIndex === -1 ? 99 : leftIndex) - (rightIndex === -1 ? 99 : rightIndex);
+      });
+    }
+
     currentContext?.executionTasks.forEach((task) => {
-      roles.add(task.agent);
+      if (task.status !== "pending" && task.status !== "ready") roles.add(task.agent);
     });
     currentContext?.replayEvents.forEach((event) => {
       if (
@@ -209,13 +235,23 @@ export function MissionControl() {
     return undefined;
   }, [autoFollow, replayEvents, replayMode, replayTime]);
 
-  const handleLaunch = () => {
-    if (brief.trim().length < 10) {
+  const handleLaunch = async () => {
+    const localValidation = MISSION_VALIDATOR.validateMissionBrief(brief);
+    if (!localValidation.valid) {
+      setValidationResult(localValidation);
       setValidationOpen(true);
       return;
     }
     if (replayMode !== "replay" && !hasResolvedQwenKey) {
       setApiKeyRequiredOpen(true);
+      return;
+    }
+    setValidationInProgress(true);
+    const validation = replayMode === "replay" ? localValidation : await MISSION_VALIDATOR.validateMissionBriefSemantically(brief);
+    setValidationInProgress(false);
+    if (!validation.valid) {
+      setValidationResult(validation);
+      setValidationOpen(true);
       return;
     }
     launch(brief.trim(), config);
@@ -370,6 +406,7 @@ export function MissionControl() {
                         brief={brief}
                         config={config}
                         isRunning={isRunning}
+                        isValidating={validationInProgress}
                         isComplete={isComplete || status === MissionState.Cancelled}
                         mockMode={mockMode}
                         showConfig={showConfig}
@@ -402,7 +439,7 @@ export function MissionControl() {
                     >
                       {context?.parentMissionId && <ParentMissionBadge context={context} />}
                       <CompactMissionHeader involvedAgents={involvedAgents} onCancel={cancel} onStartNew={handleStartNewMission} />
-                      <AgentCouncilRoom onViewReport={handleViewFullReport} onReplayMission={handleReplayMission} onStartNew={handleStartNewMission} />
+                      <AgentCouncilRoom involvedAgents={involvedAgents} onViewReport={handleViewFullReport} onReplayMission={handleReplayMission} onStartNew={handleStartNewMission} />
                       {context?.missionBacklog?.length ? <MissionBacklogPanel items={context.missionBacklog} onSelect={(source) => { setDrilldownSource(source); setDrilldownOpen(true); }} /> : null}
                     </motion.div>
                   )}
@@ -417,7 +454,7 @@ export function MissionControl() {
                       initial="hidden"
                       animate="visible"
                       exit={{ opacity: 0 }}
-                      className={highlightReportTab ? "rounded-3xl ring-2 ring-cyan-300/70 ring-offset-4 ring-offset-[#050914] transition-shadow duration-500" : "transition-shadow duration-500"}
+                      className={highlightReportTab ? "rounded-3xl ring-2 ring-cyan-300/70 ring-offset-4 ring-offset-[#050914] transition-shadow duration-300" : "transition-shadow duration-500"}
                     >
                       <MissionTabs value={activeMissionTab} onValueChange={setActiveMissionTab} />
                     </motion.div>
@@ -477,16 +514,87 @@ export function MissionControl() {
       </AnimatePresence>
 
       {/* Validation Dialog */}
-      <Dialog open={validationOpen} onOpenChange={setValidationOpen}>
-        <DialogContent>
+      <Dialog open={validationOpen} onOpenChange={(open) => {
+        setValidationOpen(open);
+        if (!open) setValidationResult(null);
+      }}>
+        <DialogContent className="overflow-hidden border-amber-200/20 bg-[radial-gradient(circle_at_80%_0%,rgba(251,191,36,0.13),transparent_42%),linear-gradient(145deg,rgba(7,17,31,0.98),rgba(15,23,42,0.96))] text-white shadow-[0_30px_120px_rgba(245,158,11,0.18)] backdrop-blur-2xl sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Mission Brief Required</DialogTitle>
-            <DialogDescription>
-              Please describe the complex objective you want the agent society to tackle.
-              A good brief is at least a sentence or two — the more context you provide,
-              the better the agents can collaborate.
+            <div className="mb-2 flex items-center gap-3">
+              <div className="grid h-12 w-12 place-items-center rounded-2xl border border-amber-200/25 bg-amber-300/10">
+                <ShieldAlert className="h-5 w-5 text-amber-100" />
+              </div>
+              <div>
+                <p className="text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-amber-100/60">Mission preflight</p>
+                <DialogTitle className="mt-1 text-xl text-white">The objective needs a clearer signal</DialogTitle>
+              </div>
+            </div>
+            <DialogDescription className="leading-relaxed text-white/60">
+              {validationResult?.summary ?? "The council could not identify a dependable objective."} {validationResult?.explanation}
             </DialogDescription>
           </DialogHeader>
+          <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-4">
+            <div className="flex items-center gap-3">
+              <div className="grid h-14 w-14 shrink-0 place-items-center rounded-full border border-amber-200/25 bg-amber-300/10 text-base font-bold text-amber-100 tabular-nums">
+                {validationResult?.score ?? 0}%
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between text-xs uppercase tracking-[0.16em] text-white/42">
+                  <span>Mission understanding</span>
+                  <span className="text-amber-100/70">{validationResult?.level ?? "unclear"}</span>
+                </div>
+                <div className="mt-2 h-2 overflow-hidden rounded-full bg-black/30">
+                  <div className="h-full rounded-full bg-gradient-to-r from-amber-300 to-orange-300" style={{ width: `${validationResult?.score ?? 0}%` }} />
+                </div>
+                {validationResult?.gaps?.length ? <p className="mt-2 text-xs leading-relaxed text-white/50">{validationResult.gaps.join(" ")}</p> : null}
+              </div>
+            </div>
+          </div>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-100/55">Suggested example missions</p>
+            <div className="mt-2 grid gap-2 sm:grid-cols-3">
+              {VALIDATION_EXAMPLES.map((example) => (
+                <button
+                  key={example.label}
+                  type="button"
+                  onClick={() => {
+                    handleExampleSelect(example.prompt, example.config);
+                    setValidationOpen(false);
+                    setValidationResult(null);
+                  }}
+                  className="rounded-xl border border-cyan-200/10 bg-cyan-300/[0.045] p-3 text-left transition hover:border-cyan-200/30 hover:bg-cyan-300/[0.08]"
+                >
+                  <span className="text-sm font-semibold text-cyan-50">{example.label}</span>
+                  <span className="mt-1 line-clamp-2 block text-xs leading-relaxed text-white/42">{example.prompt}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button variant="outline" onClick={() => setValidationOpen(false)} className="border-white/10 bg-white/[0.04] text-white/70 hover:bg-white/[0.08] hover:text-white">Dismiss</Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                const example = VALIDATION_EXAMPLES[0];
+                handleExampleSelect(example.prompt, example.config);
+                setValidationOpen(false);
+                setValidationResult(null);
+              }}
+              className="border-cyan-200/20 bg-cyan-300/10 text-cyan-50 hover:bg-cyan-300/15"
+            >
+              Use Example
+            </Button>
+            <Button
+              onClick={() => {
+                if (validationResult?.suggestedMission) setBrief(validationResult.suggestedMission);
+                setValidationOpen(false);
+                setValidationResult(null);
+              }}
+              className="bg-gradient-to-r from-amber-300 to-cyan-300 text-[#07111f] shadow-[0_0_30px_rgba(251,191,36,0.18)] hover:from-amber-200 hover:to-cyan-200"
+            >
+              Suggest Mission
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -790,7 +898,29 @@ function ConfigForm({ config, onChange, onApply, onReset }: { config: Partial<Mi
       <div className="rounded-2xl border border-purple-200/10 bg-purple-400/[0.045] p-4 shadow-inner shadow-purple-950/20">
         <p className="text-xs uppercase tracking-[0.22em] text-purple-100/50">Operational constraints</p>
         <div className="mt-4 space-y-4">
-          <ConfigSelect icon={<Clock3 className="h-4 w-4" />} label="Time Horizon" value={config.timeHorizon ?? "30-days"} options={TIME_HORIZON_LABELS} onChange={(v) => onChange({ ...config, timeHorizon: v as TimeHorizon })} />
+          <ConfigSelect
+            icon={<Clock3 className="h-4 w-4" />}
+            label="Time Horizon"
+            value={config.timeHorizon ?? "none"}
+            options={TIME_HORIZON_LABELS}
+            onChange={(v) => onChange({
+              ...config,
+              timeHorizon: v as TimeHorizon,
+              customTimeHorizon: v === "custom" ? config.customTimeHorizon : undefined,
+            })}
+          />
+          {config.timeHorizon === "custom" && (
+            <div className="grid gap-3 sm:grid-cols-[170px_1fr] sm:items-center">
+              <Label className="text-white/70">Custom horizon</Label>
+              <input
+                type="text"
+                value={config.customTimeHorizon ?? ""}
+                onChange={(event) => onChange({ ...config, timeHorizon: "custom", customTimeHorizon: event.target.value })}
+                placeholder="e.g. 7 days or 12 weeks"
+                className="h-11 rounded-md border border-cyan-200/15 bg-black/25 px-3 text-sm text-white shadow-inner shadow-black/20 outline-none placeholder:text-white/28 focus:border-cyan-200/35 focus:ring-2 focus:ring-cyan-300/20"
+              />
+            </div>
+          )}
           <ConfigSelect icon={<WalletCards className="h-4 w-4" />} label="Budget Range" value={config.budgetRange ?? "none"} options={BUDGET_RANGE_LABELS} onChange={(v) => onChange({ ...config, budgetRange: v as BudgetRange })} />
           <ConfigSelect icon={<ShieldAlert className="h-4 w-4" />} label="Risk Tolerance" value={config.riskTolerance ?? "balanced"} options={RISK_TOLERANCE_LABELS} onChange={(v) => onChange({ ...config, riskTolerance: v as RiskTolerance })} />
         </div>

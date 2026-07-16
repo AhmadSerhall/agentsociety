@@ -134,7 +134,7 @@ function ContributionMessage({ message }: { message: AgentDialogueEntry }) {
       {output.bullets.length > 0 && (
         <>
           <SectionLabel>Key Findings and Actions</SectionLabel>
-          <ul className="mt-1 space-y-1 text-sm text-white/54">{output.bullets.map((bullet) => <li key={bullet}>- {bullet}</li>)}</ul>
+          <ul className="mt-1 space-y-1 text-sm text-white/54">{output.bullets.map((bullet, bulletIndex) => <li key={`${bulletIndex}-${bullet}`}>- {bullet}</li>)}</ul>
         </>
       )}
     </article>

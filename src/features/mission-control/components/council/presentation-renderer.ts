@@ -183,21 +183,14 @@ export function renderConflict(conflict: ConflictInfo) {
 
 export function renderTimelineEntry(entry: TimelineEntry, index: number) {
   const agent = getAgentByRole(entry.agent);
-  const label = clean(entry.label) || `${agent?.name ?? "Agent"} update`;
+  const label = clean(entry.label);
   const description = clean(entry.description);
   const kind = entry.kind ?? "agent";
-  const next = kind === "conflict"
-    ? "The mission paused to examine the tradeoff before continuing."
-    : kind === "workstream"
-      ? "The next ready workstream used this context."
-      : kind === "report"
-        ? "The final deliverable was assembled from validated outputs."
-        : "The mission state advanced.";
   return {
     step: index + 1,
-    title: label,
-    body: description ? `${description} ${next}` : next,
-    agentName: agent?.name ?? "Mission system",
+    title: label || description,
+    body: description === label ? "" : description,
+    agentName: agent?.name ?? humanize(String(entry.agent)),
     kind,
   };
 }

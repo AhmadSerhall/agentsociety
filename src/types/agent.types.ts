@@ -51,6 +51,7 @@ export interface AgentDialogueEntry {
   displayRole?: string;
   agentRole: AgentRole;
   content: string;
+  conversationMessage?: string;
   timestamp: string;
   isConflict?: boolean;
   phase?: string;
@@ -58,4 +59,8 @@ export interface AgentDialogueEntry {
   targetAgentRole?: AgentRole;
   referencedWorkstreamIds?: string[];
   confidence?: number;
+  interactionType?: "accepted_finding" | "challenged_assumption" | "consensus_reached" | "planner_revision";
+  interactionLabel?: string;
+  interactionTargetRole?: AgentRole;
+  interactionReason?: string;
 }

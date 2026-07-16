@@ -9,9 +9,20 @@ import { useShallow } from "zustand/react/shallow";
 export function ConflictPanel() {
   const conflicts = useMissionStore(useShallow((s) => s.context?.conflicts ?? []));
   const decisions = useMissionStore((s) => s.context?.mediatorDecisions);
+  const status = useMissionStore((s) => s.context?.status);
 
   if (conflicts.length === 0 && !decisions) {
-    return <p className="text-sm italic text-white/45">Conflicts will appear after the Risk Critic reviews the mission.</p>;
+    const completed = status === "completed";
+    return (
+      <div className="rounded-2xl border border-emerald-200/10 bg-emerald-300/[0.035] p-5">
+        <p className="text-sm font-semibold text-white">{completed ? "Consensus formed without mediation" : "No decision conflict has surfaced yet"}</p>
+        <p className="mt-2 text-sm leading-relaxed text-white/48">
+          {completed
+            ? "The specialists reached compatible recommendations naturally, so the Mediator had no genuine disagreement to resolve."
+            : "This panel activates only when agents produce materially incompatible assumptions or recommendations—not for routine differences in wording."}
+        </p>
+      </div>
+    );
   }
 
   return (

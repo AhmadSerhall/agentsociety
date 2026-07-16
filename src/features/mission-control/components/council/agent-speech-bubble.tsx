@@ -33,7 +33,7 @@ export function AgentSpeechBubble({ entry, onExpand }: { entry: AgentDialogueEnt
           <p className="mt-2 text-sm leading-relaxed text-white/70">{output.summary}</p>
           {output.bullets.length > 0 && (
             <ul className="mt-2 space-y-1 text-sm text-white/58">
-              {output.bullets.slice(0, 4).map((bullet) => <li key={bullet}>- {bullet}</li>)}
+              {output.bullets.slice(0, 4).map((bullet, bulletIndex) => <li key={`${bulletIndex}-${bullet}`}>- {bullet}</li>)}
             </ul>
           )}
           {entry.referencedWorkstreamIds?.length ? (

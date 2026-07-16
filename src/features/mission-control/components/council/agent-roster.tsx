@@ -6,8 +6,10 @@ import { Badge } from "@/components/ui/badge";
 import type { AgentActivity, AgentRole, AgentThinkingState } from "@/types";
 import { AgentIconGlyph } from "../agent-icons";
 
-export function AgentRoster({ currentAgent, states, activities = {} }: { currentAgent: AgentRole | null; states: Record<AgentRole, AgentThinkingState>; activities?: Partial<Record<AgentRole, AgentActivity>> }) {
-  const participatingAgents = AGENT_DEFINITIONS.filter((agent) => states[agent.role] !== "waiting" || currentAgent === agent.role);
+export function AgentRoster({ currentAgent, states, activities = {}, participatingRoles }: { currentAgent: AgentRole | null; states: Record<AgentRole, AgentThinkingState>; activities?: Partial<Record<AgentRole, AgentActivity>>; participatingRoles?: AgentRole[] }) {
+  const participatingAgents = AGENT_DEFINITIONS.filter((agent) => participatingRoles
+    ? participatingRoles.includes(agent.role)
+    : states[agent.role] !== "waiting" || currentAgent === agent.role);
 
   return (
     <aside className="rounded-[1.35rem] border border-cyan-200/10 bg-black/24 p-3 shadow-[0_20px_70px_rgba(0,0,0,0.24)] backdrop-blur-xl">

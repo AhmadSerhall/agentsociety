@@ -17,7 +17,7 @@ import {
   MISSION_TYPE_LABELS,
   OUTPUT_FORMAT_LABELS,
   RISK_TOLERANCE_LABELS,
-  TIME_HORIZON_LABELS,
+  getTimeHorizonLabel,
   type MissionConfiguration,
 } from "@/types";
 import { MissionEngine } from "@/services/mission-engine";
@@ -28,12 +28,11 @@ type PromptSuggestion = {
   config: Partial<MissionConfiguration>;
 };
 
-type MatchedPromptSuggestion = PromptSuggestion & { match: RegExp };
-
 const EMPTY_HISTORY: ReturnType<typeof useHistoryStore.getState>["entries"] = [];
 type ConfigSuggestion = ReturnType<MissionEngine["suggestMissionConfiguration"]>;
+const MISSION_VALIDATOR = new MissionEngine();
 
-const EXAMPLE_PROMPTS: PromptSuggestion[] = [
+const INSPIRATION_PROMPTS: PromptSuggestion[] = [
   {
     label: "Startup Launch",
     prompt: "Launch an AI SaaS startup for restaurants with an MVP, pricing, launch plan, and risk review.",
@@ -67,12 +66,23 @@ const EXAMPLE_PROMPTS: PromptSuggestion[] = [
       outputFormat: "executive-report",
     },
   },
+  {
+    label: "Decision Review",
+    prompt: "Compare three viable approaches to an important decision, test the assumptions behind each option, and recommend a measurable next step.",
+    config: { missionType: "general-mission", outputFormat: "strategy-brief" },
+  },
+  {
+    label: "Process Improvement",
+    prompt: "Analyze an existing process, identify its largest source of friction, and create a prioritized improvement plan with success measures.",
+    config: { missionType: "general-mission", outputFormat: "execution-roadmap" },
+  },
 ];
 
 export function MissionBriefComposer({
   brief,
   config,
   isRunning,
+  isValidating,
   isComplete,
   mockMode,
   showConfig,
@@ -86,6 +96,7 @@ export function MissionBriefComposer({
   brief: string;
   config: Partial<MissionConfiguration>;
   isRunning: boolean;
+  isValidating: boolean;
   isComplete: boolean;
   mockMode: boolean;
   showConfig: boolean;
@@ -98,19 +109,52 @@ export function MissionBriefComposer({
 }) {
   const historyEntries = useHistoryStore((state) => state.entries);
   const rememberPreviousContext = getSavedSettingsOptions().preferences.rememberContext;
-  const sourceHistory = rememberPreviousContext ? historyEntries : [];
-  const recommendedPrompts = useMemo(() => buildRecommendedPrompts(sourceHistory), [sourceHistory]);
+  const sourceHistory = rememberPreviousContext ? historyEntries : EMPTY_HISTORY;
+  const [inspirationOffset, setInspirationOffset] = useState(0);
+  const recommendedPrompts = useMemo(
+    () => sourceHistory.length ? buildRecommendedPrompts(sourceHistory) : rotateInspirations(inspirationOffset),
+    [inspirationOffset, sourceHistory],
+  );
   const hasHistoryRecommendations = sourceHistory.length > 0 && recommendedPrompts.length > 0;
-  const configNeedsAttention = brief.trim().length > 0 && !showConfig && !isRunning;
+  const configNeedsAttention = brief.trim().length > 0 && !showConfig && !isRunning && !isValidating;
   const [suggestion, setSuggestion] = useState<ConfigSuggestion | null>(null);
   const [dismissedText, setDismissedText] = useState("");
   const [appliedSuggestion, setAppliedSuggestion] = useState<ConfigSuggestion | null>(null);
   const trimmedBrief = brief.trim();
-  const suggestionVisible = Boolean(suggestion && !showConfig && !isRunning && trimmedBrief.length >= 18 && trimmedBrief !== dismissedText);
+  const [understandingSnapshot, setUnderstandingSnapshot] = useState<{
+    brief: string;
+    result: ReturnType<MissionEngine["validateMissionBrief"]>;
+  } | null>(null);
+  const understanding = trimmedBrief.length > 0 && understandingSnapshot?.brief === trimmedBrief ? understandingSnapshot.result : null;
+  const suggestionVisible = Boolean(suggestion && !showConfig && !isRunning && !isValidating && trimmedBrief.length >= 18 && trimmedBrief !== dismissedText);
+
+  useEffect(() => {
+    if (sourceHistory.length > 0) return;
+    const interval = window.setInterval(() => setInspirationOffset((current) => current + 1), 9000);
+    return () => window.clearInterval(interval);
+  }, [sourceHistory.length]);
 
   useEffect(() => {
     const text = trimmedBrief;
-    if (isRunning || text.length < 18 || text === dismissedText) {
+    let cancelled = false;
+    const timeout = window.setTimeout(() => {
+      void (async () => {
+        const localResult = MISSION_VALIDATOR.validateMissionBrief(text);
+        const result = localResult.valid
+          ? await MISSION_VALIDATOR.validateMissionBriefSemantically(text)
+          : localResult;
+        if (!cancelled) setUnderstandingSnapshot({ brief: text, result });
+      })();
+    }, 2000);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeout);
+    };
+  }, [trimmedBrief]);
+
+  useEffect(() => {
+    const text = trimmedBrief;
+    if (isRunning || isValidating || !understanding?.valid || text === dismissedText) {
       return;
     }
     const timeout = window.setTimeout(() => {
@@ -118,7 +162,7 @@ export function MissionBriefComposer({
       setSuggestion(engine.suggestMissionConfiguration(text, config));
     }, 400);
     return () => window.clearTimeout(timeout);
-  }, [trimmedBrief, config, dismissedText, isRunning]);
+  }, [trimmedBrief, config, dismissedText, isRunning, isValidating, understanding?.valid]);
 
   const applySuggestion = () => {
     if (!suggestion) return;
@@ -144,7 +188,7 @@ export function MissionBriefComposer({
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
             <span className="flex items-center gap-2 rounded-full border border-cyan-300/15 bg-cyan-300/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-100/75">
               <Sparkles className="h-3.5 w-3.5" />
-              {hasHistoryRecommendations ? "Recommended" : "Presets"}
+              {hasHistoryRecommendations ? "Recommended for you" : inspirationOffset % 2 === 0 ? "Random Inspiration" : "Explore Templates"}
             </span>
             {recommendedPrompts.map((example) => (
               <motion.button
@@ -153,7 +197,7 @@ export function MissionBriefComposer({
                 whileHover={{ y: -2, scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={() => onExampleSelect(example.prompt, example.config)}
-                disabled={isRunning}
+                disabled={isRunning || isValidating}
                 className="rounded-full border border-white/10 bg-white/[0.055] px-3.5 py-2 text-xs font-medium text-white/68 transition hover:border-cyan-200/35 hover:bg-cyan-300/10 hover:text-cyan-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {example.label}
@@ -208,9 +252,9 @@ export function MissionBriefComposer({
             if (event.key !== "Enter") return;
             if (event.shiftKey) return;
             event.preventDefault();
-            if (!isRunning && brief.trim()) onLaunch();
+            if (!isRunning && !isValidating && brief.trim()) onLaunch();
           }}
-          disabled={isRunning}
+          disabled={isRunning || isValidating}
           rows={8}
           className="min-h-[220px] resize-none rounded-2xl border-cyan-200/15 bg-[#08111f]/78 p-5 text-base leading-7 text-white shadow-inner shadow-black/30 placeholder:text-white/30 focus-visible:border-cyan-200/40 focus-visible:ring-cyan-300/25 md:text-lg"
         />
@@ -237,9 +281,36 @@ export function MissionBriefComposer({
         <div className="mt-4 flex flex-wrap gap-2">
           <ConfigChip label="Type" value={MISSION_TYPE_LABELS[config.missionType ?? "general-mission"]} />
           <ConfigChip label="Depth" value={DEPTH_LABELS[config.depth ?? "balanced"]} />
-          <ConfigChip label="Horizon" value={TIME_HORIZON_LABELS[config.timeHorizon ?? "30-days"]} />
+          <ConfigChip label="Horizon" value={getTimeHorizonLabel({ timeHorizon: config.timeHorizon ?? "none", customTimeHorizon: config.customTimeHorizon })} />
           <ConfigChip label="Format" value={OUTPUT_FORMAT_LABELS[config.outputFormat ?? "direct-result"]} />
         </div>
+
+        {understanding && (
+          <div className={`mt-4 overflow-hidden rounded-2xl border p-3.5 ${understanding.valid ? "border-cyan-200/15 bg-cyan-300/[0.055]" : "border-amber-200/20 bg-amber-300/[0.055]"}`}>
+            <div className="flex flex-wrap items-center gap-3">
+              <div className={`grid h-11 w-11 shrink-0 place-items-center rounded-full border text-sm font-bold tabular-nums ${understanding.valid ? "border-cyan-200/30 bg-cyan-300/10 text-cyan-100" : "border-amber-200/30 bg-amber-300/10 text-amber-100"}`}>
+                {understanding.score}%
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/58">Mission Understanding</p>
+                  <span className={`text-xs capitalize ${understanding.valid ? "text-cyan-100/75" : "text-amber-100/75"}`}>{understanding.level}</span>
+                </div>
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/8">
+                  <motion.div
+                    className={`h-full rounded-full ${understanding.valid ? "bg-gradient-to-r from-cyan-300 to-emerald-300" : "bg-gradient-to-r from-amber-300 to-orange-300"}`}
+                    animate={{ width: `${understanding.score}%` }}
+                    transition={{ duration: 0.35, ease: "easeOut" }}
+                  />
+                </div>
+                <p className="mt-2 text-xs leading-relaxed text-white/52">{understanding.summary}</p>
+              </div>
+            </div>
+            {understanding.gaps.length > 0 && (
+              <p className="mt-2 text-xs leading-relaxed text-white/44">Improve it: {understanding.gaps[0]}</p>
+            )}
+          </div>
+        )}
 
         <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-white/42">
@@ -263,13 +334,13 @@ export function MissionBriefComposer({
               whileHover={{ y: -2, scale: 1.015 }}
               whileTap={{ scale: 0.985 }}
               onClick={onLaunch}
-              disabled={isRunning}
+              disabled={isRunning || isValidating}
               className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-gradient-to-r from-cyan-300 via-sky-300 to-purple-400 px-6 text-sm font-bold text-[#06101f] shadow-[0_0_32px_rgba(34,211,238,0.32),0_0_54px_rgba(168,85,247,0.18)] transition disabled:cursor-not-allowed disabled:opacity-70 sm:min-w-44"
             >
-              {isRunning ? (
+              {isRunning || isValidating ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Mission Running...
+                  {isValidating ? "Understanding Mission..." : "Mission Running..."}
                 </>
               ) : (
                 <>
@@ -290,7 +361,7 @@ function MissionConfigAppliedDialog({ suggestion, onOpenChange }: { suggestion: 
   const chips = config ? [
     ["Type", MISSION_TYPE_LABELS[config.missionType]],
     ["Depth", DEPTH_LABELS[config.depth]],
-    ["Horizon", TIME_HORIZON_LABELS[config.timeHorizon]],
+    ["Horizon", getTimeHorizonLabel(config)],
     ["Budget", BUDGET_RANGE_LABELS[config.budgetRange]],
     ["Risk", RISK_TOLERANCE_LABELS[config.riskTolerance]],
     ["Format", OUTPUT_FORMAT_LABELS[config.outputFormat]],
@@ -337,7 +408,7 @@ function MissionConfigSuggestionOverlay({
   const chips = [
     ["Type", MISSION_TYPE_LABELS[config.missionType]],
     ["Depth", DEPTH_LABELS[config.depth]],
-    ["Horizon", TIME_HORIZON_LABELS[config.timeHorizon]],
+    ["Horizon", getTimeHorizonLabel(config)],
     ["Budget", BUDGET_RANGE_LABELS[config.budgetRange]],
     ["Risk", RISK_TOLERANCE_LABELS[config.riskTolerance]],
     ["Format", OUTPUT_FORMAT_LABELS[config.outputFormat]],
@@ -379,58 +450,53 @@ function MissionConfigSuggestionOverlay({
 }
 
 function buildRecommendedPrompts(entries: ReturnType<typeof useHistoryStore.getState>["entries"]) {
-  if (entries.length === 0) return EXAMPLE_PROMPTS;
+  const recent = entries.slice(0, 3);
+  const latest = recent[0];
+  if (!latest) return rotateInspirations(0);
 
-  const templates: MatchedPromptSuggestion[] = [
+  const recommendation = firstReportInsight(latest.finalReport?.finalRecommendations);
+  const nextStep = firstReportInsight(latest.finalReport?.executionRoadmap);
+  const risk = firstReportInsight(latest.finalReport?.riskAssessment);
+  const candidates: Array<PromptSuggestion | null> = [
     {
-      label: "TOEFL Study Plan",
-      match: /toefl|exam|study|learn|course|practice/i,
-      prompt: "Create a focused 30-day study plan with diagnostic assessment, daily practice, mock tests, and risk review.",
-      config: { missionType: "research-plan", outputFormat: "execution-roadmap", timeHorizon: "30-days" },
+      label: "Continue Last Mission",
+      prompt: compactPrompt(`Continue the completed mission "${latest.missionBrief}" as its next executable phase.${recommendation ? ` Start from this recommendation: ${recommendation}` : " Identify the strongest unfinished outcome, then define concrete deliverables and acceptance criteria."}`),
+      config: latest.configuration,
     },
-    {
-      label: "React Optimization",
-      match: /react|slow|performance|debug|frontend|latency|bundle/i,
-      prompt: "Analyze why my React app is slow and propose a prioritized optimization plan with measurements and risks.",
-      config: { missionType: "software-architecture", outputFormat: "technical-plan", riskTolerance: "balanced" },
-    },
-    {
-      label: "Startup Launch",
-      match: /startup|launch|saas|school|restaurant|business|customer|sales/i,
-      prompt: "Create a launch strategy for a focused AI SaaS startup with positioning, roadmap, budget, and risk review.",
-      config: { missionType: "startup-launch", outputFormat: "execution-roadmap", timeHorizon: "90-days" },
-    },
-    {
-      label: "Software Architecture",
-      match: /architecture|software|system|platform|api|database|scalable/i,
-      prompt: "Design a scalable software architecture with tradeoffs, dependencies, implementation phases, and risk controls.",
-      config: { missionType: "software-architecture", outputFormat: "technical-plan" },
-    },
-    {
-      label: "Research Analysis",
-      match: /research|analyze|compare|market|validation|report/i,
-      prompt: "Build a research analysis plan with key questions, evidence standards, synthesis, risks, and final recommendations.",
-      config: { missionType: "research-plan", outputFormat: "executive-report" },
-    },
-    {
-      label: "Business Plan",
-      match: /pricing|budget|finance|revenue|business plan|cost/i,
-      prompt: "Create a practical business plan with pricing, resource assumptions, execution roadmap, and risk controls.",
-      config: { missionType: "business-plan", outputFormat: "strategy-brief" },
-    },
+    nextStep ? {
+      label: "Implement Next Step",
+      prompt: compactPrompt(`Turn this next step from "${latest.missionBrief}" into an implementation mission with owners, dependencies, acceptance criteria, and a verification plan: ${nextStep}`),
+      config: { ...latest.configuration, outputFormat: "execution-roadmap" },
+    } : null,
+    risk ? {
+      label: "Reduce Key Risk",
+      prompt: compactPrompt(`Investigate and reduce the leading risk identified by "${latest.missionBrief}". Validate the underlying assumption, compare practical mitigations, and recommend the safest next decision: ${risk}`),
+      config: { ...latest.configuration, riskTolerance: "conservative" as const },
+    } : null,
+    recent[1] ? {
+      label: "Improve Recent Work",
+      prompt: compactPrompt(`Review the completed result of "${recent[1].missionBrief}" against its intended outcome. Identify what evidence, implementation detail, or decision is still missing, then produce an improved version.`),
+      config: recent[1].configuration,
+    } : null,
   ];
+  const prompts = candidates.filter((item): item is PromptSuggestion => item !== null);
 
-  const historyText = entries.map((entry) => `${entry.missionBrief} ${entry.configuration.missionType}`).join("\n");
-  const matched = templates.filter((template) => template.match.test(historyText));
-  const recentMission = entries[0];
-  const recentPrompt = recentMission ? [{
-    label: "Build on Last Mission",
-    prompt: `Create the next-step plan for: ${recentMission.missionBrief}`,
-    config: recentMission.configuration,
-  }] : [];
+  return prompts.slice(0, 4);
+}
 
-  const unique = [...recentPrompt, ...matched, ...EXAMPLE_PROMPTS].filter((item, index, list) => list.findIndex((candidate) => candidate.label === item.label) === index);
-  return unique.slice(0, 4);
+function rotateInspirations(offset: number) {
+  return Array.from({ length: Math.min(4, INSPIRATION_PROMPTS.length) }, (_, index) => INSPIRATION_PROMPTS[(offset + index) % INSPIRATION_PROMPTS.length]);
+}
+
+function firstReportInsight(value?: string) {
+  return value
+    ?.split(/\n+/)
+    .map((line) => line.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, "").trim())
+    .find((line) => line.length >= 18 && !/^(none|no\s)/i.test(line));
+}
+
+function compactPrompt(value: string) {
+  return value.replace(/\s+/g, " ").trim().slice(0, 520);
 }
 
 function ConfigChip({ label, value }: { label: string; value: string }) {

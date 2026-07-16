@@ -1,4 +1,3 @@
-import { AGENT_DEFINITIONS, getAgentByRole } from "@/agents";
 import {
   AgentRole,
   DEFAULT_CONFIGURATION,
@@ -113,15 +112,15 @@ function applyReplayEvent(ctx: MissionContext, event: MissionReplayEvent) {
     case "MISSION_STARTED":
       ctx.status = MissionState.Preparing;
       ctx.startedAt = event.timestamp;
-      addTimeline(ctx, event, "Mission started", "Replay reconstructed the mission start.");
+      addTimeline(ctx, event);
       break;
     case "MISSION_CLASSIFIED":
-      addTimeline(ctx, event, "Mission classified", String(event.payload?.intent ?? "Mission intent classified."));
+      addTimeline(ctx, event);
       break;
     case "MISSION_GRAPH_CREATED":
     case "MISSION_GRAPH_UPDATED":
       ctx.missionGraph = (event.payload?.missionGraph ?? ctx.missionGraph) as MissionContext["missionGraph"];
-      addTimeline(ctx, event, event.type === "MISSION_GRAPH_CREATED" ? "Mission Graph created" : "Mission Graph updated", "Replay reconstructed graph topology, assignments, dependencies, and readiness.");
+      if (event.type === "MISSION_GRAPH_CREATED") addTimeline(ctx, event);
       break;
     case "TASK_READY":
       patchTask(ctx, String(event.payload?.task ? (event.payload.task as ExecutionTask).id : event.workstreamId), { status: "ready" });
@@ -134,19 +133,19 @@ function applyReplayEvent(ctx: MissionContext, event: MissionReplayEvent) {
     case "TASK_BLOCKED":
       patchTask(ctx, String(event.payload?.task ? (event.payload.task as ExecutionTask).id : event.workstreamId), { status: "blocked" });
       patchWorkstream(ctx, String(event.workstreamId), { status: "blocked" });
-      addTimeline(ctx, event, "Task blocked", "A weak assumption paused affected nodes while unrelated work continued.");
+      addTimeline(ctx, event);
       break;
     case "TASK_REASSIGNED":
     case "PLANNER_REVISED_PLAN":
       patchTask(ctx, String(event.payload?.taskId ?? event.workstreamId), { status: "revised", revisionNote: String(event.payload?.revisionNote ?? "Planner revised this node.") });
       patchWorkstream(ctx, String(event.workstreamId), { status: "revised", nextStep: String(event.payload?.revisionNote ?? "Planner revised this workstream.") });
-      addTimeline(ctx, event, event.type === "TASK_REASSIGNED" ? "Task reassigned" : "Planner revised plan", "Planner updated the Mission Graph after mediation.");
+      addTimeline(ctx, event);
       break;
     case "PLANNER_STARTED":
       ctx.status = MissionState.Planning;
       ctx.currentAgent = AgentRole.Planner;
       ctx.agentStates[AgentRole.Planner] = "thinking";
-      addTimeline(ctx, event, "Planner started", "Planner began decomposing the mission.");
+      addTimeline(ctx, event);
       break;
     case "PLANNER_STREAM":
     case "AGENT_STREAM":
@@ -156,11 +155,11 @@ function applyReplayEvent(ctx: MissionContext, event: MissionReplayEvent) {
     case "PLANNER_FINISHED":
       ctx.agentStates[AgentRole.Planner] = "complete";
       ctx.currentAgent = null;
-      addTimeline(ctx, event, "Planner complete", "Planner finished mission decomposition.");
+      addTimeline(ctx, event);
       break;
     case "WORKSTREAM_CREATED":
       upsertWorkstream(ctx, (event.payload?.workstream ?? {}) as Workstream);
-      addTimeline(ctx, event, `Workstream created: ${event.workstreamTitle ?? "Untitled"}`, "Planner created a workstream.");
+      addTimeline(ctx, event);
       break;
     case "WORKSTREAM_ASSIGNED":
       patchWorkstream(ctx, String(event.workstreamId), {
@@ -194,25 +193,25 @@ function applyReplayEvent(ctx: MissionContext, event: MissionReplayEvent) {
     case "CONFLICT_CREATED":
     case "CONFLICT_UPDATED":
       upsertConflict(ctx, event.payload?.conflict as ConflictInfo);
-      addTimeline(ctx, event, event.type === "CONFLICT_UPDATED" ? "Conflict updated" : "Conflict detected", String(event.payload?.conflictTitle ?? "Mission conflict updated."));
+      addTimeline(ctx, event);
       break;
     case "MEDIATION_STARTED":
       ctx.status = MissionState.ConflictResolution;
       ctx.currentAgent = AgentRole.Mediator;
       ctx.agentStates[AgentRole.Mediator] = "thinking";
-      addTimeline(ctx, event, "Mediation started", "Mediator began resolving an active graph conflict.");
+      addTimeline(ctx, event);
       break;
     case "SYNCHRONIZATION_POINT_REACHED":
-      addTimeline(ctx, event, "Synchronization point reached", "Finalizer readiness was evaluated before synthesis.");
+      addTimeline(ctx, event);
       break;
     case "CONFLICT_RESOLVED":
       upsertConflict(ctx, { ...(event.payload?.conflict as ConflictInfo), resolved: true });
-      addTimeline(ctx, event, "Conflict resolved", "Mediator resolved the conflict.");
+      addTimeline(ctx, event);
       break;
     case "REPORT_GENERATED":
       ctx.finalReport = event.payload?.report as MissionReport;
       ctx.efficiencyMetrics = (event.payload?.metrics ?? ctx.efficiencyMetrics) as EfficiencyMetrics | null;
-      addTimeline(ctx, event, "Report generated", "Final report became available.");
+      addTimeline(ctx, event);
       break;
     case "MISSION_COMPLETED":
       ctx.status = MissionState.Completed;
@@ -221,7 +220,7 @@ function applyReplayEvent(ctx: MissionContext, event: MissionReplayEvent) {
       ctx.workstreams = ctx.workstreams.map((workstream) => ({ ...workstream, status: "completed" }));
       ctx.executionTasks = ctx.executionTasks.map((task) => ({ ...task, status: "completed" }));
       ctx.progress = 1;
-      addTimeline(ctx, event, "Mission completed", "Replay reached the completed mission state.");
+      addTimeline(ctx, event);
       break;
   }
 }
@@ -289,7 +288,7 @@ function applyAgentState(ctx: MissionContext, event: MissionReplayEvent) {
   ctx.currentAgent = role;
   if (event.workstreamId) patchWorkstream(ctx, event.workstreamId, { status: state === "waiting" ? "pending" : "in_progress", confidence: event.confidence });
   if (event.type === "AGENT_STARTED" || event.type === "MEDIATOR_STARTED" || event.type === "FINALIZER_STARTED") {
-    addTimeline(ctx, event, `${event.agentName ?? getAgentByRole(role)?.name ?? role} started`, event.workstreamTitle ?? "Agent work started.");
+    addTimeline(ctx, event);
   }
 }
 
@@ -313,7 +312,7 @@ function finishAgent(ctx: MissionContext, event: MissionReplayEvent) {
     patchWorkstream(ctx, event.workstreamId, { status: "completed", output: String(event.payload?.output ?? ""), confidence: event.confidence, completedAt: event.timestamp });
     patchTask(ctx, event.workstreamId, { status: "completed", output: String(event.payload?.output ?? ""), confidence: event.confidence ?? 80, completedAt: event.timestamp });
   }
-  addTimeline(ctx, event, `${event.agentName ?? getAgentByRole(role)?.name ?? role} finished`, event.workstreamTitle ?? "Agent work finished.");
+  addTimeline(ctx, event);
 }
 
 function applyConfidenceTransition(ctx: MissionContext, event: MissionReplayEvent) {
@@ -338,7 +337,7 @@ function applyConfidenceTransition(ctx: MissionContext, event: MissionReplayEven
       confidenceReason: reason,
     },
   };
-  addTimeline(ctx, event, `${event.agentName ?? getAgentByRole(role)?.name ?? role} confidence updated`, previous ? `${previous}% → ${event.confidence ?? previous}% — ${reason}` : reason);
+  addTimeline(ctx, event);
 }
 
 function upsertWorkstream(ctx: MissionContext, workstream: Workstream) {
@@ -379,16 +378,92 @@ function upsertConflict(ctx: MissionContext, conflict?: ConflictInfo) {
     : [...ctx.conflicts, conflict];
 }
 
-function addTimeline(ctx: MissionContext, event: MissionReplayEvent, label: string, description: string) {
+function addTimeline(ctx: MissionContext, event: MissionReplayEvent) {
+  const payload = event.payload ?? {};
+  const activity = payload.activity as AgentActivity | undefined;
+  const task = payload.task as ExecutionTask | undefined;
+  const workstream = payload.workstream as Workstream | undefined;
+  const conflict = payload.conflict as ConflictInfo | undefined;
+  const report = (payload.report ?? payload.finalReport) as MissionReport | undefined;
+  const classification = payload.classification as { semantic?: { objective?: string }; strategy?: { planningReason?: string } } | undefined;
+  const output = structuredReplayOutput(payload.output);
+  const graph = payload.missionGraph as MissionContext["missionGraph"] | undefined;
+  const graphSummary = graph?.taskNodes?.map((node) => node.title).filter(Boolean).join("; ") ?? "";
+  const label = firstReplayText([
+    output.timelineTitle,
+    activity?.label,
+    task?.title,
+    workstream?.title,
+    conflict?.title,
+    event.workstreamTitle,
+    humanizeReplayType(event.type),
+  ]);
+  const description = firstReplayText([
+    output.timelineDescription,
+    output.councilMessage,
+    output.summary,
+    activity?.detail,
+    task?.revisionNote,
+    workstream?.description,
+    conflict?.mediatorDecision,
+    conflict?.resolution,
+    conflict?.disagreementSummary,
+    conflict?.summary,
+    conflict?.description,
+    report?.executiveSummary,
+    classification?.semantic?.objective,
+    classification?.strategy?.planningReason,
+    String(payload.reason ?? ""),
+    String(payload.revisionNote ?? ""),
+    graphSummary,
+    event.type.startsWith("MISSION_") ? ctx.missionBrief : "",
+    event.workstreamTitle,
+  ]);
   const entry: TimelineEntry = {
     agent: event.agentRole ?? AgentRole.Planner,
     state: ctx.status,
     label,
     description,
+    significance: output.timelineSignificance,
     timestamp: event.timestamp,
-    kind: event.type.includes("CONFLICT") ? "conflict" : event.type.includes("REPORT") ? "report" : "agent",
+    kind: event.type.includes("CONFLICT")
+      ? "conflict"
+      : event.type.includes("REPORT") || event.type === "MISSION_COMPLETED"
+        ? "report"
+        : event.type.includes("WORKSTREAM") || event.type.includes("TASK") || event.type.includes("GRAPH") || event.type.includes("PLANNER")
+          ? "workstream"
+          : "agent",
   };
   ctx.timeline = ctx.timeline.some((item) => item.timestamp === entry.timestamp && item.label === entry.label) ? ctx.timeline : [...ctx.timeline, entry];
+}
+
+function structuredReplayOutput(value: unknown) {
+  if (typeof value !== "string" || !value.trim()) return {} as { summary?: string; councilMessage?: string; timelineTitle?: string; timelineDescription?: string; timelineSignificance?: string };
+  try {
+    const parsed = JSON.parse(value) as {
+      summary?: string;
+      finalAnswer?: string;
+      councilMessage?: string;
+      timelineMilestone?: { title?: string; description?: string; significance?: string };
+    };
+    return {
+      summary: parsed.finalAnswer || parsed.summary,
+      councilMessage: parsed.councilMessage,
+      timelineTitle: parsed.timelineMilestone?.title,
+      timelineDescription: parsed.timelineMilestone?.description,
+      timelineSignificance: parsed.timelineMilestone?.significance,
+    };
+  } catch {
+    return { summary: value };
+  }
+}
+
+function firstReplayText(values: Array<string | undefined>) {
+  return values.find((value) => typeof value === "string" && value.trim().length > 0)?.trim() ?? "";
+}
+
+function humanizeReplayType(type: string) {
+  return type.toLocaleLowerCase().replace(/[_-]+/g, " ").replace(/\b\w/g, (letter) => letter.toLocaleUpperCase());
 }
 
 export function getReplayDuration(events: MissionReplayEvent[]) {

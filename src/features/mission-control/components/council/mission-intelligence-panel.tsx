@@ -9,7 +9,7 @@ import {
   MISSION_TYPE_LABELS,
   OUTPUT_FORMAT_LABELS,
   RISK_TOLERANCE_LABELS,
-  TIME_HORIZON_LABELS,
+  getTimeHorizonLabel,
   type MissionContext,
 } from "@/types";
 import { sanitizeUserFacingText } from "@/utils";
@@ -70,7 +70,7 @@ export function MissionIntelligencePanel({ context }: { context: MissionContext 
             <InfoLine label="Type" value={MISSION_TYPE_LABELS[context.configuration.missionType]} />
             <InfoLine label="Depth" value={DEPTH_LABELS[context.configuration.depth]} />
             <InfoLine label="Format" value={OUTPUT_FORMAT_LABELS[context.configuration.outputFormat]} />
-            <InfoLine label="Horizon" value={TIME_HORIZON_LABELS[context.configuration.timeHorizon]} />
+            <InfoLine label="Horizon" value={getTimeHorizonLabel(context.configuration)} />
             <InfoLine label="Budget" value={BUDGET_RANGE_LABELS[context.configuration.budgetRange]} />
             <InfoLine label="Risk" value={RISK_TOLERANCE_LABELS[context.configuration.riskTolerance]} />
           </dl>

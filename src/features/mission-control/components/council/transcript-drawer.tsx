@@ -66,7 +66,7 @@ export function TranscriptDrawer({ dialogue, open, onOpenChange, focusEntry }: {
                 <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-white/66">{output.summary}</p>
                 {output.bullets.length > 0 && (
                   <ul className="mt-3 space-y-1 text-sm text-white/56">
-                    {output.bullets.map((bullet) => <li key={bullet}>- {bullet}</li>)}
+                    {output.bullets.map((bullet, bulletIndex) => <li key={`${bulletIndex}-${bullet}`}>- {bullet}</li>)}
                   </ul>
                 )}
                 {output.workstreams.length > 0 && (

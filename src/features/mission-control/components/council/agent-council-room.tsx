@@ -20,10 +20,12 @@ import { WorkstreamInspector } from "./workstream-inspector";
 import { WorkstreamStrip } from "./workstream-strip";
 
 export function AgentCouncilRoom({
+  involvedAgents,
   onViewReport,
   onReplayMission,
   onStartNew,
 }: {
+  involvedAgents: AgentRole[];
   onViewReport: () => void;
   onReplayMission: () => void;
   onStartNew: () => void;
@@ -104,7 +106,7 @@ export function AgentCouncilRoom({
         </div>
       ) : (
         <div className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)]">
-          <AgentRoster currentAgent={context.currentAgent} states={context.agentStates} activities={context.agentActivities} />
+          <AgentRoster currentAgent={context.currentAgent} states={context.agentStates} activities={context.agentActivities} participatingRoles={involvedAgents} />
           <MissionOperationsBoard
             context={context}
             currentAgent={context.currentAgent}
@@ -127,7 +129,7 @@ export function AgentCouncilRoom({
       <WorkstreamInspector task={selectedTask} conflicts={selectedConflicts} open={inspectorOpen} onOpenChange={setInspectorOpen} />
       <AnimatePresence>
         {intelligenceOpen && <MissionIntelligenceOverlay context={context} onClose={() => setIntelligenceOpen(false)} />}
-        {completed && rosterOpen && <AgentRosterOverlay currentAgent={context.currentAgent} states={context.agentStates} activities={context.agentActivities} onClose={() => setRosterOpen(false)} />}
+        {completed && rosterOpen && <AgentRosterOverlay currentAgent={context.currentAgent} states={context.agentStates} activities={context.agentActivities} participatingRoles={involvedAgents} onClose={() => setRosterOpen(false)} />}
       </AnimatePresence>
     </motion.section>
   );
@@ -272,11 +274,13 @@ function AgentRosterOverlay({
   currentAgent,
   states,
   activities,
+  participatingRoles,
   onClose,
 }: {
   currentAgent: AgentRole | null;
   states: Record<AgentRole, AgentThinkingState>;
   activities: Partial<Record<AgentRole, AgentActivity>>;
+  participatingRoles: AgentRole[];
   onClose: () => void;
 }) {
   return (
@@ -305,7 +309,7 @@ function AgentRosterOverlay({
             <span className="sr-only">Close agent roster</span>
           </Button>
         </div>
-        <AgentRoster currentAgent={currentAgent} states={states} activities={activities} />
+        <AgentRoster currentAgent={currentAgent} states={states} activities={activities} participatingRoles={participatingRoles} />
       </motion.aside>
     </motion.div>
   );
@@ -389,8 +393,8 @@ function LatestDispatchCard({ entry, onExpand }: { entry: AgentDialogueEntry; on
       <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.035] p-3">
         <p className="text-[0.68rem] uppercase tracking-[0.18em] text-cyan-100/45">Findings Summary</p>
         <ul className="mt-2 space-y-1.5">
-          {bullets.map((bullet) => (
-            <li key={bullet} className="flex min-w-0 items-center gap-2 text-xs text-white/62">
+          {bullets.map((bullet, bulletIndex) => (
+            <li key={`${bulletIndex}-${bullet}`} className="flex min-w-0 items-center gap-2 text-xs text-white/62">
               <CheckCircle2 className="h-3.5 w-3.5 shrink-0" style={{ color }} />
               <span className="line-clamp-1">{bullet}</span>
             </li>

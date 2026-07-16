@@ -164,6 +164,7 @@ export interface MissionReport {
   riskAssessment: string;
   successMetrics: string;
   finalRecommendations: string;
+  predictiveNextMissions?: Array<{ mission: string; rationale?: string }>;
   singleAgentComparison?: string;
 }
 
@@ -249,6 +250,7 @@ export interface TimelineEntry {
   timestamp: string;
   duration?: number;
   description?: string;
+  significance?: string;
   kind?: "system" | "agent" | "workstream" | "conflict" | "report" | "cancelled";
 }
 
