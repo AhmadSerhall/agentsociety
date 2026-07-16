@@ -262,29 +262,68 @@ function extractMoneyAmounts(text: string): number[] {
   return amounts;
 }
 
-function inferExplicitBudgetRange(brief: string): MissionConfiguration["budgetRange"] {
+function detectBudgetContext(text: string, missionType?: MissionKind): "gaming_personal" | "consumer_personal" | "small_business" | "enterprise_business" | "general" {
+  const lowered = sanitizeUserFacingText(text).toLowerCase();
+  if (/\b(game|gaming|gamer|esports|e-sports|rank|ranked|leaderboard|marvel rivals|fortnite|valorant|league of legends|overwatch|apex legends|call of duty|competitive|one above all|grandmaster|challenger|elo|mmr|ladder|tier|rank up|climb ranks|coaching session|video game)\b/.test(lowered)) {
+    return "gaming_personal";
+  }
+  if (/\b(fitness|workout|weight loss|marathon|personal goal|hobby|for myself|learn guitar|learn piano|self improvement|daily routine)\b/.test(lowered)) {
+    return "consumer_personal";
+  }
+  if (/\b(enterprise|corporate|fortune|multinational|global rollout|company-wide|department budget|annual budget)\b/.test(lowered)
+    || missionType === "erp_design") {
+    return "enterprise_business";
+  }
+  if (/\b(startup|launch|business|company|restaurant|saas|store|shop|office|operations|employees|revenue|open a|mvp|go-to-market)\b/.test(lowered)
+    || missionType === "startup_launch"
+    || missionType === "business_planning") {
+    return "small_business";
+  }
+  return "general";
+}
+
+function amountToBudgetRange(amount: number, context: ReturnType<typeof detectBudgetContext>): MissionConfiguration["budgetRange"] {
+  const tiers: Record<ReturnType<typeof detectBudgetContext>, { low: number; medium: number }> = {
+    gaming_personal: { low: 25, medium: 100 },
+    consumer_personal: { low: 75, medium: 300 },
+    small_business: { low: 5000, medium: 50000 },
+    enterprise_business: { low: 25000, medium: 250000 },
+    general: { low: 2000, medium: 50000 },
+  };
+  const tier = tiers[context];
+  if (amount <= tier.low) return "low";
+  if (amount <= tier.medium) return "medium";
+  return "enterprise";
+}
+
+function inferExplicitBudgetRange(brief: string, missionType?: MissionKind): MissionConfiguration["budgetRange"] {
   const lowered = sanitizeUserFacingText(brief).toLowerCase();
   const amounts = extractMoneyAmounts(lowered);
   const maxAmount = amounts.length ? Math.max(...amounts) : undefined;
+  const context = detectBudgetContext(lowered, missionType);
 
   if (/\b(no budget|zero budget|free|zero cost|no cost)\b/.test(lowered)) return "none";
   if (/\b(enterprise|large budget|corporate|unlimited budget|big budget|seven[\s-]?figure|six[\s-]?figure)\b/.test(lowered)) {
+    if (context === "gaming_personal" || context === "consumer_personal") {
+      return maxAmount !== undefined ? amountToBudgetRange(maxAmount, context) : "medium";
+    }
     return maxAmount !== undefined && maxAmount <= 25000 ? "medium" : "enterprise";
   }
 
   if (maxAmount !== undefined) {
-    if (maxAmount <= 2000) return "low";
-    if (maxAmount <= 50000) return "medium";
-    return "enterprise";
+    return amountToBudgetRange(maxAmount, context);
   }
 
   if (/\b(low budget|cheap|lean|bootstrap|small budget|tight budget|limited budget|minimal budget|shoestring)\b/.test(lowered)) {
     return "low";
   }
   if (/\b(medium budget|moderate budget|mid[\s-]?range budget)\b/.test(lowered)) return "medium";
+  if (/\b(high budget|big spend|splurge|premium budget|large spend)\b/.test(lowered)) {
+    return context === "gaming_personal" || context === "consumer_personal" ? "enterprise" : "medium";
+  }
 
   const mentionsSpending = /\b(spend|spending|spend up to|budget|cost|costs|pricing|paid|pay|invest|investment|cap(?:ped)? at|max(?:imum)?|limit(?:ed)? to|under|at most|no more than)\b/.test(lowered);
-  if (mentionsSpending) return "medium";
+  if (mentionsSpending) return context === "gaming_personal" || context === "consumer_personal" ? "low" : "medium";
 
   return "none";
 }
@@ -687,7 +726,7 @@ export class MissionEngine {
       depth: classification.strategy.complexity >= 7 ? "deep-analysis" : classification.strategy.complexity <= 2 ? "fast" : "balanced",
       outputFormat: this.suggestOutputFormat(classification.strategy.deliverableMode, classification.strategy.missionType),
       ...horizon,
-      budgetRange: inferExplicitBudgetRange(brief),
+      budgetRange: inferExplicitBudgetRange(brief, classification.strategy.missionType),
       riskTolerance: inferExplicitRiskTolerance(brief),
     };
     const why = [
@@ -2405,9 +2444,12 @@ export class MissionEngine {
     const hasDebugCue = /\b(debug|fix|bug|error|crash|failing|broken|fps drop|not working)\b/.test(text);
     const hasArchitectureCue = /\b(architecture|architect|system design|scalable|migration|migrate|erp|next\.js|react|database|api|multi-tenant)\b/.test(text);
     const hasFocusedCodeGenerationCue = /\b(generate|create|build|implement|make)\b/.test(text) && /\b(component|page|form|button|login|react|vue|next|css|html|typescript|javascript)\b/.test(text) && !/\b(architecture|scalable|migration|migrate|erp|system design|multi-tenant)\b/.test(text);
+    const hasGamingCue = /\b(game|gaming|gamer|esports|e-sports|rank|ranked|leaderboard|marvel rivals|fortnite|valorant|league of legends|overwatch|apex legends|call of duty|competitive|one above all|grandmaster|challenger|elo|mmr|ladder|tier|rank up|climb ranks|coaching session|video game)\b/.test(text);
+    const hasPersonalGoalCue = hasGamingCue || /\b(fitness|workout|weight loss|marathon|personal goal|hobby|for myself|self improvement)\b/.test(text);
     const hasStartupCue = /\b(startup|launch|go-to-market|saas|mvp|fundraising|investor)\b/.test(text);
     const hasBusinessCue = /\b(business plan|open a|restaurant|company|operations|market|customers|pricing)\b/.test(text);
-    const hasFinanceCue = /\b(finance|financial|budget|cost|profit|runway|investment|pricing|revenue)\b/.test(text);
+    const hasFinanceCue = /\b(finance|financial|profit|runway|investment|revenue|forecast|valuation|fundraising|financial analysis|financial plan|p&l|balance sheet)\b/.test(text)
+      || (/\b(budget|cost)\b/.test(text) && !hasPersonalGoalCue && (hasBusinessCue || hasStartupCue || /\b(business|company|corporate|enterprise|department|annual|operations)\b/.test(text)));
     const hasEducationCue = /\b(learn|study|teach|exam|course|curriculum|practice|toefl|ielts|school|competition)\b/.test(text);
     const hasCreativeCue = /\b(write|story|poem|script|creative|blog|copy|email|letter)\b/.test(text);
     const hasReviewCue = /\b(review|code review|audit|critique|evaluate)\b/.test(text);
@@ -2424,6 +2466,8 @@ export class MissionEngine {
     else if (hasArchitectureCue && /\berp\b/.test(text)) missionType = "erp_design";
     else if (hasArchitectureCue) missionType = "software_architecture";
     else if (hasStartupCue) missionType = "startup_launch";
+    else if (hasGamingCue && (hasMultiStepCue || /\b(plan|strategy|roadmap|guide|how to|reach|get to|climb|improve)\b/.test(text))) missionType = "multi_step_execution";
+    else if (hasGamingCue) missionType = "general_problem_solving";
     else if (hasBusinessCue) missionType = "business_planning";
     else if (hasFinanceCue) missionType = "financial_analysis";
     else if (hasEducationCue) missionType = "education";

@@ -189,6 +189,9 @@ export function MissionBriefComposer({
   };
 
   const editSuggestionManually = () => {
+    if (suggestion) {
+      onExampleSelect(brief, suggestion.config);
+    }
     setSuggestionReviewed(true);
     setConfigReviewOpen(false);
     onConfigOpenChange(true);
@@ -319,12 +322,14 @@ export function MissionBriefComposer({
           }}
         />
 
-        <div className="mt-4 flex flex-wrap gap-2">
-          <ConfigChip label="Type" value={MISSION_TYPE_LABELS[config.missionType ?? "general-mission"]} />
-          <ConfigChip label="Depth" value={DEPTH_LABELS[config.depth ?? "balanced"]} />
-          <ConfigChip label="Horizon" value={getTimeHorizonLabel({ timeHorizon: config.timeHorizon ?? "none", customTimeHorizon: config.customTimeHorizon })} />
-          <ConfigChip label="Format" value={OUTPUT_FORMAT_LABELS[config.outputFormat ?? "direct-result"]} />
-        </div>
+        {!suggestionVisible && (
+          <div className="mt-4 flex flex-wrap gap-2">
+            <ConfigChip label="Type" value={MISSION_TYPE_LABELS[config.missionType ?? "general-mission"]} />
+            <ConfigChip label="Depth" value={DEPTH_LABELS[config.depth ?? "balanced"]} />
+            <ConfigChip label="Horizon" value={getTimeHorizonLabel({ timeHorizon: config.timeHorizon ?? "none", customTimeHorizon: config.customTimeHorizon })} />
+            <ConfigChip label="Format" value={OUTPUT_FORMAT_LABELS[config.outputFormat ?? "direct-result"]} />
+          </div>
+        )}
 
         {understanding && (
           <div className={`mt-4 overflow-hidden rounded-2xl border p-3.5 ${understanding.valid ? "border-cyan-200/15 bg-cyan-300/[0.055]" : "border-amber-200/20 bg-amber-300/[0.055]"}`}>
