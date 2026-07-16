@@ -252,11 +252,11 @@ export function MissionBriefComposer({
           onOpenSheet={openCouncilRecommendationsSheet}
           trailing={
             <>
-              {mockMode && (
+              {/* {mockMode && (
                 <Badge variant="outline" className="mr-2 border-amber-400/30 bg-amber-400/10 text-amber-200">
                   Mock Mode
                 </Badge>
-              )}
+              )} */}
               {missionConfigControl}
             </>
           }
