@@ -11,10 +11,10 @@ import {
   Play,
   RadioTower,
   Settings,
-  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getQwenRuntimeInfo } from "@/services/qwen";
+import agentCouncilLogo from "@/assets/agent council.png";
+import { hasUsableQwenKey } from "@/lib/qwenConfig";
 import { useHistoryStore, useMissionStore } from "@/store";
 import {
   getQwenApiStatusLabel,
@@ -25,6 +25,38 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 export type MissionView = "mission-control" | "agents" | "history" | "reports" | "settings";
+
+type ConnectionPresence = "offline" | "connecting" | "online";
+
+function resolveConnectionPresence(hasApiKey: boolean, status: QwenApiStatus): ConnectionPresence {
+  if (!hasApiKey) return "offline";
+  if (status === "connected") return "online";
+  return "connecting";
+}
+
+const CONNECTION_DOT_CLASS: Record<ConnectionPresence, string> = {
+  offline: "bg-rose-400 shadow-[0_0_18px_rgba(251,113,133,0.95)]",
+  connecting: "bg-amber-300 shadow-[0_0_18px_rgba(252,211,77,0.95)]",
+  online: "bg-emerald-300 shadow-[0_0_18px_rgba(110,231,183,0.95)]",
+};
+
+const CONNECTION_BADGE: Record<ConnectionPresence, { label: string; className: string; dotClassName: string }> = {
+  offline: {
+    label: "OFFLINE",
+    className: "border-rose-200/25 bg-rose-400/10 text-rose-100",
+    dotClassName: "bg-rose-400 shadow-[0_0_12px_rgba(251,113,133,0.9)]",
+  },
+  connecting: {
+    label: "CONNECTING",
+    className: "border-amber-200/25 bg-amber-300/10 text-amber-100",
+    dotClassName: "bg-amber-300 shadow-[0_0_12px_rgba(252,211,77,0.9)]",
+  },
+  online: {
+    label: "ONLINE",
+    className: "border-emerald-200/15 bg-emerald-300/10 text-emerald-100",
+    dotClassName: "bg-emerald-300 shadow-[0_0_12px_rgba(110,231,183,0.9)]",
+  },
+};
 
 export const MISSION_NAV_ITEMS = [
   { id: "mission-control", label: "Mission Control", icon: LayoutDashboard },
@@ -47,16 +79,18 @@ function SidebarContent({
 }) {
   const historyEntries = useHistoryStore((state) => state.entries);
   const context = useMissionStore((state) => state.context);
+  const qwenApiKey = useRuntimeSettingsStore((state) => state.qwenApiKey);
   const qwenApiStatus = useRuntimeSettingsStore((state) => state.qwenApiStatus);
-  const runtime = getQwenRuntimeInfo();
+  const hasApiKey = Boolean(qwenApiKey.trim()) || hasUsableQwenKey();
+  const connectionPresence = resolveConnectionPresence(hasApiKey, qwenApiStatus);
   const runtimeBlocked = isQwenApiStatusBlocking(qwenApiStatus);
   const [activityIndex, setActivityIndex] = useState(0);
   const activityFeed = useMemo(() => [
     "Planner initialized",
-    runtimeBlocked ? `Qwen API ${getQwenApiStatusLabel(qwenApiStatus).toLocaleLowerCase()}` : runtime.hasUsableApiKey ? "Runtime connected" : "Runtime waiting for key",
+    runtimeBlocked ? `Qwen API ${getQwenApiStatusLabel(qwenApiStatus).toLocaleLowerCase()}` : hasApiKey ? "Runtime connected" : "Runtime waiting for key",
     context?.status === "completed" ? "Mission completed" : "Mission engine ready",
     historyEntries.length ? "Reports generated" : "Replay ready",
-  ], [context?.status, historyEntries.length, qwenApiStatus, runtime.hasUsableApiKey, runtimeBlocked]);
+  ], [context?.status, hasApiKey, historyEntries.length, qwenApiStatus, runtimeBlocked]);
 
   useEffect(() => {
     const interval = window.setInterval(() => setActivityIndex((index) => (index + 1) % activityFeed.length), 3200);
@@ -68,9 +102,20 @@ function SidebarContent({
       <div className="relative overflow-hidden rounded-2xl border border-cyan-200/15 bg-gradient-to-br from-cyan-300/10 via-white/[0.045] to-purple-400/10 p-4 shadow-[0_22px_70px_rgba(34,211,238,0.12)]">
         <div className="absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-cyan-200/70 to-transparent" />
         <div className="flex items-center justify-start gap-3 text-left">
-          <div className="relative grid h-12 w-12 place-items-center rounded-2xl border border-cyan-300/30 bg-cyan-300/10 shadow-[0_0_28px_rgba(34,211,238,0.24)]">
-            <Sparkles className="h-5 w-5 text-cyan-200" />
-            <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full bg-emerald-300 shadow-[0_0_18px_rgba(110,231,183,0.9)]" />
+          <div className="relative h-12 w-12 shrink-0">
+            <div className="grid h-full w-full place-items-center overflow-hidden rounded-2xl border border-cyan-300/30 bg-cyan-300/10 shadow-[0_0_28px_rgba(34,211,238,0.24)]">
+              <img
+                src={agentCouncilLogo.src}
+                alt="Agent Council"
+                className="h-full w-full object-cover"
+              />
+            </div>
+            <span
+              className={cn(
+                "absolute -right-1 -top-1 z-10 h-3.5 w-3.5 rounded-full border-2 border-[#07111f]",
+                CONNECTION_DOT_CLASS[connectionPresence],
+              )}
+            />
           </div>
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.28em] text-cyan-200/80">
@@ -117,7 +162,8 @@ function SidebarContent({
       <CommandLayerWidget
         activeView={activeView}
         onViewChange={onViewChange}
-        runtimeConnected={runtime.hasUsableApiKey}
+        connectionPresence={connectionPresence}
+        runtimeConnected={hasApiKey}
         qwenApiStatus={qwenApiStatus}
         activity={activityFeed[activityIndex] ?? "Runtime ready"}
         historyCount={historyEntries.length}
@@ -130,6 +176,7 @@ function SidebarContent({
 function CommandLayerWidget({
   activeView,
   onViewChange,
+  connectionPresence,
   runtimeConnected,
   qwenApiStatus,
   activity,
@@ -138,6 +185,7 @@ function CommandLayerWidget({
 }: {
   activeView: MissionView;
   onViewChange: (view: MissionView) => void;
+  connectionPresence: ConnectionPresence;
   runtimeConnected: boolean;
   qwenApiStatus: QwenApiStatus;
   activity: string;
@@ -145,10 +193,18 @@ function CommandLayerWidget({
   completedCount: number;
 }) {
   const runtimeBlocked = isQwenApiStatusBlocking(qwenApiStatus);
-  const apiLabel = runtimeConnected ? getQwenApiStatusLabel(qwenApiStatus) : "Needs key";
+  const apiLabel = (() => {
+    if (!runtimeConnected) return "Needs key";
+    if (qwenApiStatus === "key-exhausted") return "Exhausted";
+    if (qwenApiStatus === "connected") return "Connected";
+    if (runtimeBlocked) return getQwenApiStatusLabel(qwenApiStatus);
+    return "Ready";
+  })();
+  const runtimeLabel = connectionPresence === "online" ? "Healthy" : "Disabled";
+  const badge = CONNECTION_BADGE[connectionPresence];
   const rows = [
-    ["API", apiLabel, runtimeConnected && !runtimeBlocked],
-    ["Runtime", runtimeBlocked ? "Locked" : runtimeConnected ? "Healthy" : "Limited", runtimeConnected && !runtimeBlocked],
+    ["API", apiLabel, connectionPresence === "online"],
+    ["Runtime", runtimeLabel, connectionPresence === "online"],
     // ["Mission Engine", "Ready", true],
     // ["Replay", "Ready", true],
     ["Agents", activeView === "mission-control" ? "Idle" : "Standby", true],
@@ -167,9 +223,9 @@ function CommandLayerWidget({
           <Cpu className="h-3.5 w-3.5" />
           Command Layer
         </div>
-        <span className="flex items-center gap-1.5 rounded-full border border-emerald-200/15 bg-emerald-300/10 px-2 py-0.5 text-[0.62rem] font-semibold text-emerald-100">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-300 shadow-[0_0_12px_rgba(110,231,183,0.9)] animate-pulse" />
-          ONLINE
+        <span className={cn("flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[0.62rem] font-semibold", badge.className)}>
+          <span className={cn("h-1.5 w-1.5 animate-pulse rounded-full", badge.dotClassName)} />
+          {badge.label}
         </span>
       </div>
 

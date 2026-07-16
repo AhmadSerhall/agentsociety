@@ -35,16 +35,22 @@ export function ScrollToTop({ scrollContainer, resetKey }: { scrollContainer: HT
       type="button"
       onClick={() => scrollContainer?.scrollTo({ top: 0, behavior: "smooth" })}
       aria-label="Scroll to top"
-      className={`fixed bottom-5 right-5 z-50 grid h-14 w-14 place-items-center rounded-full border border-cyan-200/25 bg-[#07121f]/90 text-cyan-100 shadow-[0_14px_42px_rgba(34,211,238,0.24)] backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:border-cyan-200/60 hover:bg-cyan-300/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200/80 ${progress > 0 ? "scale-100 opacity-100" : "pointer-events-none scale-90 opacity-0"}`}
+      style={{
+        borderColor: "rgb(var(--agent-settings-accent) / 0.38)",
+        backgroundColor: "rgb(var(--agent-settings-accent) / 0.12)",
+        color: "rgb(var(--agent-settings-accent))",
+        boxShadow: "0 14px 42px rgb(var(--agent-settings-accent) / 0.26)",
+      }}
+      className={`fixed bottom-5 right-5 z-50 grid h-14 w-14 place-items-center rounded-full border backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:brightness-125 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 ${progress > 0 ? "scale-100 opacity-100" : "pointer-events-none scale-90 opacity-0"}`}
     >
       <svg className="pointer-events-none absolute inset-1 -rotate-90" viewBox="0 0 50 50" aria-hidden="true">
-        <circle cx="25" cy="25" r={RING_RADIUS} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="3" />
+        <circle cx="25" cy="25" r={RING_RADIUS} fill="none" stroke="rgb(var(--agent-settings-accent) / 0.16)" strokeWidth="3" />
         <circle
           cx="25"
           cy="25"
           r={RING_RADIUS}
           fill="none"
-          stroke="rgb(34 211 238)"
+          stroke="rgb(var(--agent-settings-accent))"
           strokeWidth="3"
           strokeLinecap="round"
           strokeDasharray={RING_CIRCUMFERENCE}

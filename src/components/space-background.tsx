@@ -36,7 +36,7 @@ export function SpaceBackground() {
   })), []);
   const particleCount = settings.appearance.particles === "Low" ? 3 : settings.appearance.particles === "High" ? 10 : 6;
   const starCount = settings.appearance.particles === "Low" ? 38 : settings.appearance.particles === "High" ? 100 : 72;
-  const speed = settings.appearance.animation === "Calm" ? 1.5 : settings.appearance.animation === "High" ? 0.7 : 1;
+  const speed = settings.appearance.animation === "Calm" ? 2 : settings.appearance.animation === "High" ? 0.45 : 1;
   const reduceMotion = settings.preferences.reduceMotion;
 
   useEffect(() => {
@@ -100,8 +100,8 @@ export function SpaceBackground() {
           background: "radial-gradient(circle at 40% 40%, rgb(var(--agent-settings-accent, 34 211 238) / 0.45) 0%, #140e22 100%)",
           boxShadow: "0 0 30px 5px rgb(var(--agent-settings-accent, 34 211 238) / 0.16)",
         }}
-        animate={reduceMotion ? undefined : { y: [0, -10, 0] }}
-        transition={reduceMotion ? undefined : { duration: 8 * speed, repeat: Infinity, ease: "easeInOut" }}
+        animate={reduceMotion ? undefined : { y: [0, -16, 0], scale: [1, 1.08, 1] }}
+        transition={reduceMotion ? undefined : { duration: 7 * speed, repeat: Infinity, ease: "easeInOut" }}
       />
 
       {/* Stars */}
@@ -113,10 +113,15 @@ export function SpaceBackground() {
       {Array.from({ length: particleCount }).map((_, i) => (
         <motion.div
           key={`p-${i}`}
-          className="absolute h-1 w-1 rounded-full"
-          style={{ left: `${10 + (i * 80) / Math.max(1, particleCount - 1)}%`, bottom: "-5%" }}
-          animate={reduceMotion ? { opacity: 0 } : { y: [0, -600], opacity: [0, 0.6, 0], backgroundColor: "rgb(var(--agent-settings-accent, 34 211 238) / 0.7)" }}
-          transition={reduceMotion ? undefined : { duration: (8 + i * 2) * speed, repeat: Infinity, delay: i * 1.5, ease: "easeOut" }}
+          className="absolute h-1.5 w-1.5 rounded-full"
+          style={{
+            left: `${10 + (i * 80) / Math.max(1, particleCount - 1)}%`,
+            bottom: "-5%",
+            backgroundColor: "rgb(var(--agent-settings-accent, 34 211 238) / 0.8)",
+            boxShadow: "0 0 12px rgb(var(--agent-settings-accent, 34 211 238) / 0.85)",
+          }}
+          animate={reduceMotion ? { opacity: 0 } : { y: [0, -720], opacity: [0, 0.9, 0], scale: [0.75, 1.35, 0.75] }}
+          transition={reduceMotion ? undefined : { duration: (7 + i * 1.5) * speed, repeat: Infinity, delay: i * 0.8, ease: "easeOut" }}
         />
       ))}
     </div>

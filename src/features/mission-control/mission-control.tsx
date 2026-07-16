@@ -208,15 +208,21 @@ export function MissionControl() {
     if (!appSettings.preferences.keyboardShortcuts) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (!event.altKey || !event.shiftKey) return;
-      const view = ({ S: "settings", R: "reports", H: "history", M: "mission-control" } as const)[event.key.toUpperCase() as "S" | "R" | "H" | "M"];
+      const view = ({
+        KeyS: "settings",
+        KeyR: "reports",
+        KeyH: "history",
+        KeyM: "mission-control",
+      } as const)[event.code as "KeyS" | "KeyR" | "KeyH" | "KeyM"];
       if (!view) return;
       event.preventDefault();
+      event.stopPropagation();
       setActiveView(view);
       setShowMobileNav(false);
       toast({ title: "Navigation shortcut", description: `Opened ${view === "mission-control" ? "Mission Control" : view}.` });
     };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [appSettings.preferences.keyboardShortcuts]);
 
   useEffect(() => {

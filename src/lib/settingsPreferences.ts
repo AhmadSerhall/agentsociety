@@ -193,9 +193,9 @@ function accentColor(accent: string) {
 }
 
 function glassBlur(glassBlurLevel: string) {
-  if (glassBlurLevel === "Low") return "10px";
-  if (glassBlurLevel === "Medium") return "18px";
-  return "28px";
+  if (glassBlurLevel === "Low") return "0px";
+  if (glassBlurLevel === "Medium") return "16px";
+  return "36px";
 }
 
 function themeColors(theme: string) {

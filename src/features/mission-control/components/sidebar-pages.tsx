@@ -50,6 +50,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { AGENT_DEFINITIONS } from "@/agents";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -694,6 +702,8 @@ function SettingsPage() {
   const [apiKeyDraft, setApiKeyDraft] = useState("");
   const [apiKeyEditing, setApiKeyEditing] = useState(false);
   const [apiKeyRevealed, setApiKeyRevealed] = useState(false);
+  const [replaceKeyOpen, setReplaceKeyOpen] = useState(false);
+  const [replaceKeyDraft, setReplaceKeyDraft] = useState("");
   const [baseUrlDraft, setBaseUrlDraft] = useState(qwenBaseUrl);
   const [modelDraft, setModelDraft] = useState(qwenModel);
   const [saveState, setSaveState] = useState<"idle" | "saved">("idle");
@@ -720,8 +730,13 @@ function SettingsPage() {
   const runtimeReady = runtime.hasUsableApiKey && !apiBlocked;
   const apiStatusLabel = runtime.hasUsableApiKey ? getQwenApiStatusLabel(qwenApiStatus) : "API key required";
   const activeKeyLabel = resolved.source === "saved" ? "Using saved browser key" : resolved.source === "env" ? "Using local env key" : "No API key configured";
-  const keyInputPlaceholder = !hasSavedKey && hasEnvKey ? "Using local env key - paste a key to override" : "Paste your Qwen API key";
-  const apiKeyInputValue = apiKeyEditing ? apiKeyDraft : apiKeyRevealed && hasSavedKey ? qwenApiKey : resolved.maskedApiKey;
+  const keyInputPlaceholder = !hasSavedKey && hasEnvKey ? "Using local env key - use Replace to override" : hasActiveKey ? "Use Replace to change this key" : "Paste your Qwen API key";
+  const apiKeyInputValue = !hasActiveKey && apiKeyEditing
+    ? apiKeyDraft
+    : apiKeyRevealed && hasSavedKey
+      ? qwenApiKey
+      : resolved.maskedApiKey;
+  const keyInputLocked = hasActiveKey;
   const lastVerified = connectionTest.status === "connected" && connectionTest.verifiedAt ? relativeTime(connectionTest.verifiedAt) : runtime.hasUsableApiKey ? "Not tested this session" : "Waiting for API key";
   const updatePreference = (key: keyof MissionPreferenceSettings, value: boolean) => setPreferences((current) => ({ ...current, [key]: value }));
   const refreshStorageStats = () => setStorageStats(getLocalStorageStats());
@@ -845,21 +860,16 @@ function SettingsPage() {
               <Input
                 type="text"
                 value={apiKeyInputValue}
-                onFocus={() => {
-                  if (hasActiveKey && !apiKeyEditing) {
-                    setApiKeyEditing(true);
-                    setApiKeyDraft("");
-                    setApiKeyRevealed(false);
-                  }
-                }}
+                readOnly={keyInputLocked}
                 onChange={(event) => {
+                  if (keyInputLocked) return;
                   setApiKeyEditing(true);
                   setApiKeyDraft(event.target.value);
                 }}
                 placeholder={keyInputPlaceholder}
-                className="h-11 border-cyan-200/15 bg-black/25 font-mono text-white placeholder:font-sans placeholder:text-white/28 focus-visible:border-cyan-200/45"
+                className={`h-11 border-cyan-200/15 bg-black/25 font-mono text-white placeholder:font-sans placeholder:text-white/28 focus-visible:border-cyan-200/45 ${keyInputLocked ? "cursor-default caret-transparent" : ""}`}
               />
-              <IconButton title={apiKeyRevealed ? "Hide key" : "Reveal key"} disabled={!hasSavedKey || apiKeyEditing} onClick={() => setApiKeyRevealed((value) => !value)} icon={apiKeyRevealed ? EyeOff : Eye} />
+              <IconButton title={apiKeyRevealed ? "Hide key" : "Reveal key"} disabled={!hasSavedKey} onClick={() => setApiKeyRevealed((value) => !value)} icon={apiKeyRevealed ? EyeOff : Eye} />
               <IconButton title="Copy masked key" disabled={!hasActiveKey} onClick={() => {
                 void copyText(resolved.maskedApiKey)
                   .then(() => toast({ title: "Masked key copied", description: "The full key was not copied." }))
@@ -874,11 +884,24 @@ function SettingsPage() {
           <div className="flex items-center gap-2 text-xs text-white/45"><ShieldCheck className="h-4 w-4 text-cyan-200/70" />Stored in localStorage on this device only. Masked by default and never copied in full.</div>
           <div className="flex flex-wrap gap-2">
             {!hasWorkingKey && <Button type="button" variant="outline" onClick={() => window.open(QWEN_API_KEY_URL, "_blank", "noopener,noreferrer")} className="gap-2 border-cyan-200/15 bg-cyan-300/[0.08] text-cyan-100 hover:bg-cyan-300/[0.14] hover:text-cyan-50"><ExternalLink className="h-4 w-4" />Get Qwen API Key</Button>}
-            <Button type="button" variant="outline" onClick={() => { setApiKeyEditing(true); setApiKeyDraft(""); setApiKeyRevealed(false); }} className="gap-2 border-white/10 bg-white/[0.04] text-white/70 hover:bg-white/[0.08] hover:text-white"><RefreshCcw className="h-4 w-4" />Replace</Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!hasActiveKey}
+              onClick={() => {
+                setReplaceKeyDraft("");
+                setReplaceKeyOpen(true);
+              }}
+              className="gap-2 border-white/10 bg-white/[0.04] text-white/70 hover:bg-white/[0.08] hover:text-white disabled:opacity-45"
+            >
+              <RefreshCcw className="h-4 w-4" />Replace
+            </Button>
             <Button type="button" variant="outline" disabled={!hasSavedKey} title={hasSavedKey ? "Delete the saved browser key" : "Environment keys cannot be deleted from the browser"} onClick={() => {
               clearQwenCredentials();
               setApiKeyDraft("");
               setApiKeyEditing(false);
+              setReplaceKeyOpen(false);
+              setReplaceKeyDraft("");
               clearConnectionTest();
               setConnectionState("idle");
               setConnectionTest(getSavedConnectionTest(""));
@@ -908,6 +931,71 @@ function SettingsPage() {
           </div>
         </div>
       </PremiumCard>
+
+      <Dialog
+        open={replaceKeyOpen}
+        onOpenChange={(open) => {
+          setReplaceKeyOpen(open);
+          if (!open) setReplaceKeyDraft("");
+        }}
+      >
+        <DialogContent className="border-cyan-200/20 bg-[radial-gradient(circle_at_80%_0%,rgba(34,211,238,0.14),transparent_42%),linear-gradient(145deg,rgba(7,17,31,0.98),rgba(15,23,42,0.96))] text-white shadow-[0_30px_120px_rgba(34,211,238,0.20)] backdrop-blur-2xl sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-xl text-white">Replace Qwen API key</DialogTitle>
+            <DialogDescription className="text-white/60">
+              Paste your new API key below. Confirm to replace the current key, or discard to keep the old one.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <label className="text-xs uppercase tracking-[0.18em] text-white/38">New API key</label>
+            <Input
+              type="text"
+              autoFocus
+              value={replaceKeyDraft}
+              onChange={(event) => setReplaceKeyDraft(event.target.value)}
+              placeholder="Paste your new API key"
+              className="h-11 border-cyan-200/15 bg-black/25 font-mono text-white placeholder:font-sans placeholder:text-white/28 focus-visible:border-cyan-200/45"
+            />
+          </div>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setReplaceKeyOpen(false);
+                setReplaceKeyDraft("");
+              }}
+              className="border-white/10 bg-white/[0.04] text-white/70 hover:bg-white/[0.08] hover:text-white"
+            >
+              Discard
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                const nextKey = replaceKeyDraft.trim();
+                if (!nextKey) {
+                  toast({ title: "Qwen API key required", description: "Paste a valid Qwen API key before confirming." });
+                  return;
+                }
+                setQwenCredentials({ apiKey: nextKey, baseUrl: baseUrlDraft, model: modelDraft });
+                setApiKeyDraft("");
+                setApiKeyEditing(false);
+                setApiKeyRevealed(false);
+                setReplaceKeyDraft("");
+                setReplaceKeyOpen(false);
+                clearConnectionTest();
+                setConnectionState("idle");
+                setConnectionTest(getSavedConnectionTest(""));
+                refreshStorageStats();
+                toast({ title: "API key replaced", description: "Your new Qwen API key was saved locally." });
+              }}
+              className="bg-gradient-to-r from-cyan-300 to-purple-400 text-[#06101f] hover:from-cyan-200 hover:to-purple-300"
+            >
+              Confirm
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
         <PremiumCard>
