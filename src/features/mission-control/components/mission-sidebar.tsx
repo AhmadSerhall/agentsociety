@@ -47,7 +47,7 @@ const CONNECTION_BADGE: Record<ConnectionPresence, { label: string; className: s
     dotClassName: "bg-rose-400 shadow-[0_0_12px_rgba(251,113,133,0.9)]",
   },
   connecting: {
-    label: "CONNECTING",
+    label: "LOADING",
     className: "border-amber-200/25 bg-amber-300/10 text-amber-100",
     dotClassName: "bg-amber-300 shadow-[0_0_12px_rgba(252,211,77,0.9)]",
   },

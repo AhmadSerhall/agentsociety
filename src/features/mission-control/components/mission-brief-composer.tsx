@@ -755,11 +755,11 @@ function LaunchSequence({ stage }: { stage: number }) {
       className="absolute inset-0 z-10 grid place-items-center overflow-hidden rounded-2xl border border-cyan-200/20 bg-[radial-gradient(circle_at_50%_0%,rgba(34,211,238,0.18),transparent_42%),rgba(4,12,24,0.94)] p-6 backdrop-blur-xl"
     >
       <div className="w-full max-w-md">
-        <div className="mb-5 flex items-center justify-center">
+        {/* <div className="mb-5 flex items-center justify-center">
           <motion.span animate={{ scale: [1, 1.12, 1], rotate: [0, 8, 0] }} transition={{ duration: 1.1, repeat: Infinity, ease: "easeInOut" }} className="grid h-14 w-14 place-items-center rounded-2xl border border-cyan-200/30 bg-cyan-300/10 shadow-[0_0_34px_rgba(34,211,238,0.22)]">
             <Rocket className="h-6 w-6 text-cyan-100" />
           </motion.span>
-        </div>
+        </div> */}
         <p className="text-center text-[0.66rem] font-semibold uppercase tracking-[0.22em] text-cyan-100/60">Council launch sequence</p>
         <AnimatePresence mode="wait">
           <motion.p key={LAUNCH_SEQUENCE[stage]} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="mt-2 text-center text-xl font-semibold text-white">
